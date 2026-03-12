@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$TemplatePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\PDF2Excel_Converter.xlsm'),
     [string]$VbaModulePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelMacros.bas')
 )
@@ -41,22 +41,32 @@ function Set-ControlSheetLayout {
 
     $Worksheet.Cells.Clear() | Out-Null
     $Worksheet.Name = 'Control'
-    $Worksheet.Range('A1').Value2 = 'Key'
-    $Worksheet.Range('B1').Value2 = 'Value'
-    $Worksheet.Range('A2').Value2 = 'InputFolder'
-    $Worksheet.Range('A3').Value2 = 'OutputFile'
-    $Worksheet.Range('A4').Value2 = 'LogFile'
-    $Worksheet.Range('A5').Value2 = 'LastRunAt'
-    $Worksheet.Range('A6').Value2 = 'Status'
-    $Worksheet.Range('A8').Value2 = 'Usage'
-    $Worksheet.Range('B8').Value2 = 'Run run_pdf2excel.bat or scripts\run_pdf2excel.ps1.'
-    $Worksheet.Range('A10').Value2 = 'Notes'
-    $Worksheet.Range('B10').Value2 = 'Text PDF and similar table layout are required.'
+    $Worksheet.Range('A1').Value2 = '項目'
+    $Worksheet.Range('B1').Value2 = '内容'
+    $Worksheet.Range('A2').Value2 = '入力フォルダ'
+    $Worksheet.Range('A3').Value2 = '出力ファイル'
+    $Worksheet.Range('A4').Value2 = 'ログファイル'
+    $Worksheet.Range('A5').Value2 = '最終実行日時'
+    $Worksheet.Range('A6').Value2 = '状態'
+    $Worksheet.Range('A7').Value2 = '対象PDF数'
+    $Worksheet.Range('A8').Value2 = '取込データ行数'
+    $Worksheet.Range('A9').Value2 = 'エラー件数'
+    $Worksheet.Range('A11').Value2 = 'かんたんな使い方'
+    $Worksheet.Range('B11').Value2 = '1. run_pdf2excel.bat を実行  2. PDF を選択  3. Result と Errors を確認'
+    $Worksheet.Range('A12').Value2 = '確認ポイント'
+    $Worksheet.Range('B12').Value2 = 'Result は変換成功データ、Errors は失敗した PDF と理由です。'
+    $Worksheet.Range('A13').Value2 = '注意'
+    $Worksheet.Range('B13').Value2 = '文字を選択できるテキスト PDF と、ほぼ同じレイアウトの帳票を想定しています。'
     $Worksheet.Range('A1:B1').Font.Bold = $true
-    $Worksheet.Range('A8:A10').Font.Bold = $true
+    $Worksheet.Range('A1:B1').Interior.Color = 15773696
+    $Worksheet.Range('A11:A13').Font.Bold = $true
     $Worksheet.Columns.Item('A').ColumnWidth = 18
-    $Worksheet.Columns.Item('B').ColumnWidth = 90
-    $Worksheet.Range('B6').Value2 = 'Ready'
+    $Worksheet.Columns.Item('B').ColumnWidth = 92
+    $Worksheet.Range('A1:B13').VerticalAlignment = -4160
+    $Worksheet.Range('A1:B13').WrapText = $true
+    $Worksheet.Range('B6').Value2 = '待機中'
+    $Worksheet.Application.ActiveWindow.SplitRow = 1
+    $Worksheet.Application.ActiveWindow.FreezePanes = $true
 }
 
 function Set-DataSheetLayout {
@@ -71,6 +81,7 @@ function Set-DataSheetLayout {
     $Worksheet.Range('A1').Value2 = $SheetName
     $Worksheet.Range('A2').Value2 = $Description
     $Worksheet.Range('A1').Font.Bold = $true
+    $Worksheet.Range('A1').Font.Size = 14
     $Worksheet.Columns.Item('A').ColumnWidth = 24
     $Worksheet.Columns.Item('B').ColumnWidth = 24
 }
@@ -126,8 +137,8 @@ try {
     $sheet3 = $workbook.Worksheets.Item(3)
 
     Set-ControlSheetLayout -Worksheet $sheet1
-    Set-DataSheetLayout -Worksheet $sheet2 -SheetName 'Result' -Description 'Power Query result will be loaded here.'
-    Set-DataSheetLayout -Worksheet $sheet3 -SheetName 'Errors' -Description 'Failed files will be listed here.'
+    Set-DataSheetLayout -Worksheet $sheet2 -SheetName 'Result' -Description '変換成功データがここに読み込まれます。A列はPDFファイル名、B列から30列分の表データです。'
+    Set-DataSheetLayout -Worksheet $sheet3 -SheetName 'Errors' -Description '失敗したPDFと理由がここに一覧表示されます。'
 
     $workbook.SaveAs($TemplatePath, 52)
     Import-VbaModule -Workbook $workbook -ModulePath $VbaModulePath
@@ -156,3 +167,5 @@ try {
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
 }
+
+

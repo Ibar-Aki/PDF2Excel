@@ -1,9 +1,14 @@
-param(
+﻿param(
     [string]$InputFolder,
+    [string[]]$InputFiles,
     [string]$OutputFile,
     [switch]$KeepInput,
     [switch]$RebuildTemplate,
-    [switch]$OpenOutput
+    [switch]$OpenOutput,
+    [switch]$OpenOutputFolder,
+    [switch]$SelectInputFolder,
+    [switch]$PromptForOutputFile,
+    [Alias('h')][switch]$Help
 )
 
 Set-StrictMode -Version Latest
@@ -24,6 +29,39 @@ $buildTemplateScript = Join-Path $scriptDir 'build_excel_template.ps1'
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $script:logPath = Join-Path $logsDir "run_$timestamp.log"
 
+function Show-Usage {
+@'
+PDF2Excel 使い方
+
+1. かんたん操作:
+   run_pdf2excel.bat をダブルクリックします。
+
+2. PowerShell から直接実行:
+
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Path\To\PdfFolder
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Path\To\PdfFolder -OutputFile C:\Path\To\result.xlsx
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -SelectInputFolder -PromptForOutputFile
+
+オプション
+  -InputFolder         PDF が入っているフォルダを指定します。
+  -InputFiles          変換対象の PDF ファイルを個別指定します。
+  -OutputFile          出力する xlsx の保存先を指定します。
+  -KeepInput           今回対象外の input 内 PDF を消さずに残します。
+  -RebuildTemplate     xlsm テンプレートを再生成します。
+  -OpenOutput          完成した xlsx を自動で開きます。
+  -OpenOutputFolder    完成後に保存先フォルダを開きます。
+  -SelectInputFolder   フォルダ選択ダイアログを開いて入力フォルダを選びます。
+  -PromptForOutputFile 保存先の xlsx をダイアログで選びます。
+  -Help                このヘルプを表示します。
+'@ | Write-Host
+}
+
+if ($Help) {
+    Show-Usage
+    exit 0
+}
+
 function Write-Log {
     param(
         [Parameter(Mandatory = $true)][string]$Message,
@@ -33,6 +71,32 @@ function Write-Log {
     $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
     Add-Content -LiteralPath $script:logPath -Value $line -Encoding UTF8
     Write-Host $line
+}
+
+function Write-Banner {
+    Write-Host ''
+    Write-Host '==========================================' -ForegroundColor Cyan
+    Write-Host ' PDF2Excel - PDF表 一括変換ツール' -ForegroundColor Cyan
+    Write-Host '==========================================' -ForegroundColor Cyan
+    Write-Host ''
+}
+
+function Show-RunSummary {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$SourceFiles,
+        [Parameter(Mandatory = $true)][string]$OutputPath,
+        [int]$ResultRows = 0,
+        [int]$ErrorRows = 0
+    )
+
+    Write-Host ''
+    Write-Host '実行結果' -ForegroundColor Green
+    Write-Host ('  対象PDF数       : {0}' -f $SourceFiles.Count)
+    Write-Host ('  取込データ行数   : {0}' -f $ResultRows)
+    Write-Host ('  エラー件数      : {0}' -f $ErrorRows)
+    Write-Host ('  出力ファイル     : {0}' -f $OutputPath)
+    Write-Host ('  ログファイル     : {0}' -f $script:logPath)
+    Write-Host ''
 }
 
 function Release-ComObject {
@@ -97,34 +161,104 @@ function Compact-RuntimeArtifacts {
     }
 }
 
+function Select-InputFolderDialog {
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = 'PDF が入っているフォルダを選択してください。'
+    $dialog.ShowNewFolderButton = $false
+
+    if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+        throw '入力フォルダが選択されませんでした。'
+    }
+
+    return $dialog.SelectedPath
+}
+
 function Select-PdfFiles {
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
-    $dialog.Title = 'Select PDF files'
+    $dialog.Title = '変換したい PDF を選択してください'
     $dialog.Filter = 'PDF files (*.pdf)|*.pdf'
     $dialog.Multiselect = $true
 
     if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
-        throw 'No PDF files were selected.'
+        throw 'PDF ファイルが選択されませんでした。'
     }
 
     return @($dialog.FileNames)
 }
 
+function Select-OutputFileDialog {
+    param([Parameter(Mandatory = $true)][string]$DefaultOutputPath)
+
+    $dialog = New-Object System.Windows.Forms.SaveFileDialog
+    $dialog.Title = '出力する Excel ファイルの保存先を選択してください'
+    $dialog.Filter = 'Excel workbook (*.xlsx)|*.xlsx'
+    $dialog.FileName = [System.IO.Path]::GetFileName($DefaultOutputPath)
+    $dialog.InitialDirectory = Split-Path -Path $DefaultOutputPath -Parent
+    $dialog.OverwritePrompt = $true
+
+    if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+        throw '出力ファイルの保存先が選択されませんでした。'
+    }
+
+    return $dialog.FileName
+}
+
 function Resolve-InputPdfFiles {
-    param([string]$SourceFolder)
+    param(
+        [string]$SourceFolder,
+        [string[]]$SourceFiles
+    )
+
+    if ($SourceFiles) {
+        $normalizedSourceFiles = @()
+        foreach ($sourceFileEntry in $SourceFiles) {
+            foreach ($candidate in ($sourceFileEntry -split '[,;\r\n]+')) {
+                $trimmedCandidate = $candidate.Trim()
+                if (-not [string]::IsNullOrWhiteSpace($trimmedCandidate)) {
+                    $normalizedSourceFiles += $trimmedCandidate
+                }
+            }
+        }
+
+        $resolvedFiles = @()
+        foreach ($sourceFile in $normalizedSourceFiles) {
+            if (-not (Test-Path -LiteralPath $sourceFile)) {
+                throw "入力ファイルが存在しません: $sourceFile"
+            }
+
+            $resolvedPath = (Resolve-Path -LiteralPath $sourceFile).Path
+            if ([System.IO.Path]::GetExtension($resolvedPath).ToLowerInvariant() -ne '.pdf') {
+                throw "PDF 以外のファイルは指定できません: $resolvedPath"
+            }
+
+            $resolvedFiles += $resolvedPath
+        }
+
+        if ($resolvedFiles.Count -eq 0) {
+            throw '入力ファイルが指定されていません。'
+        }
+
+        return @($resolvedFiles)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($SourceFolder)) {
+        if ($SelectInputFolder) {
+            $SourceFolder = Select-InputFolderDialog
+        }
+    }
 
     if ([string]::IsNullOrWhiteSpace($SourceFolder)) {
         return Select-PdfFiles
     }
 
     if (-not (Test-Path -LiteralPath $SourceFolder)) {
-        throw "InputFolder does not exist: $SourceFolder"
+        throw "入力フォルダが存在しません: $SourceFolder"
     }
 
     $folderPath = (Resolve-Path -LiteralPath $SourceFolder).Path
     $files = Get-ChildItem -LiteralPath $folderPath -Filter '*.pdf' -File | Sort-Object Name | Select-Object -ExpandProperty FullName
     if (-not $files) {
-        throw "No PDF files were found in the specified folder: $folderPath"
+        throw "指定したフォルダに PDF が見つかりません: $folderPath"
     }
 
     return @($files)
@@ -144,7 +278,7 @@ function Stage-PdfFiles {
         $targetKey = $targetPath.ToLowerInvariant()
 
         if ($selectedTargets.ContainsKey($targetKey) -and $selectedTargets[$targetKey] -ne $sourcePath) {
-            throw "Duplicate PDF file names are not supported: $([System.IO.Path]::GetFileName($sourcePath))"
+            throw "同名の PDF は同時に処理できません: $([System.IO.Path]::GetFileName($sourcePath))"
         }
 
         $selectedTargets[$targetKey] = $sourcePath
@@ -173,7 +307,7 @@ function Stage-PdfFiles {
     }
 
     if (-not $staged) {
-        throw 'Failed to stage PDF files.'
+        throw 'PDF の準備に失敗しました。'
     }
 
     return $staged
@@ -185,10 +319,13 @@ function Ensure-Template {
     if ($ForceRebuild -or -not (Test-Path -LiteralPath $templatePath)) {
         Write-Log "Creating Excel template: $templatePath"
         & powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript -TemplatePath $templatePath
+        if ($LASTEXITCODE -ne 0) {
+            throw "テンプレート生成スクリプトが失敗しました。終了コード: $LASTEXITCODE"
+        }
     }
 
     if (-not (Test-Path -LiteralPath $templatePath)) {
-        throw "Template creation failed: $templatePath"
+        throw "テンプレートの作成に失敗しました: $templatePath"
     }
 }
 
@@ -220,133 +357,147 @@ let
         each
             let
                 fileName = [Name],
-                pdfTry = try Pdf.Tables([Content]),
-                pdfTables = if pdfTry[HasError] then null else pdfTry[Value],
-                pdfError = if pdfTry[HasError] then Error.Message(pdfTry[Error]) else null,
-                candidateRecords = if pdfTables = null then {} else Table.ToRecords(pdfTables),
-                scoredCandidates =
-                    List.Transform(
-                        candidateRecords,
-                        each
-                            let
-                                dataTry = try Record.Field(_, "Data"),
-                                dataValue = if dataTry[HasError] then null else dataTry[Value],
-                                columnCount = if dataValue = null then null else Table.ColumnCount(dataValue),
-                                rowCount = if dataValue = null then null else Table.RowCount(dataValue),
-                                score =
-                                    if dataValue = null or rowCount = null then
-                                        999999
-                                    else
-                                        Number.Abs(columnCount - ExpectedColumns) * 1000 + Number.Abs(rowCount - 100),
-                                tableId = try Text.From(Record.Field(_, "Id")) otherwise "",
-                                tableKind = try Text.From(Record.Field(_, "Kind")) otherwise "",
-                                tableName = try Text.From(Record.Field(_, "Name")) otherwise ""
-                            in
-                                [
-                                    Data = dataValue,
-                                    ColumnCount = columnCount,
-                                    RowCount = rowCount,
-                                    Score = score,
-                                    TableId = tableId,
-                                    TableKind = tableKind,
-                                    TableName = tableName
-                                ]
-                    ),
-                viableCandidates = List.Select(scoredCandidates, each [Data] <> null and [RowCount] <> null and [RowCount] > 1),
-                sortedCandidates =
-                    List.Sort(
-                        viableCandidates,
-                        (left, right) =>
-                            if left[Score] < right[Score] then
-                                -1
-                            else if left[Score] > right[Score] then
-                                1
-                            else
-                                0
-                    ),
-                chosen = if List.Count(sortedCandidates) = 0 then null else List.First(sortedCandidates),
-                chosenColumns = if chosen = null then null else chosen[ColumnCount],
-                chosenRows = if chosen = null then null else chosen[RowCount],
-                failureReason =
-                    if pdfTry[HasError] then
-                        "Pdf.Tables failed: " & pdfError
-                    else if chosen = null then
-                        "No suitable table was detected."
-                    else if chosenColumns <> null and chosenColumns > ExpectedColumns then
-                        "Column count exceeded 30: " & Text.From(chosenColumns)
-                    else
-                        null,
-                rawData =
-                    if failureReason <> null or chosen = null then
-                        null
-                    else
-                        Table.Skip(chosen[Data], 1),
-                originalColumns = if rawData = null then {} else Table.ColumnNames(rawData),
-                renamed =
-                    if rawData = null then
-                        null
-                    else
-                        Table.RenameColumns(
-                            rawData,
-                            List.Transform(List.Positions(originalColumns), each {originalColumns{_}, "Column" & Text.From(_ + 1)}),
-                            MissingField.Ignore
-                        ),
-                renamedCount = if renamed = null then 0 else Table.ColumnCount(renamed),
-                missingColumns =
-                    if renamed = null or renamedCount >= ExpectedColumns then
-                        {}
-                    else
-                        List.Transform({renamedCount + 1 .. ExpectedColumns}, each "Column" & Text.From(_)),
-                padded =
-                    if renamed = null then
-                        null
-                    else
-                        List.Accumulate(
-                            missingColumns,
-                            renamed,
-                            (state, columnName) => Table.AddColumn(state, columnName, each null, type text)
-                        ),
-                selected =
-                    if padded = null then
-                        null
-                    else
-                        Table.SelectColumns(
-                            padded,
-                            List.Transform({1 .. ExpectedColumns}, each "Column" & Text.From(_)),
-                            MissingField.UseNull
-                        ),
-                textified =
-                    if selected = null then
-                        null
-                    else
-                        Table.TransformColumns(
-                            selected,
-                            List.Transform(
-                                Table.ColumnNames(selected),
-                                each {_, (value) => if value = null then "" else Text.From(value), type text}
-                            )
-                        ),
-                withFileName =
-                    if textified = null then
-                        null
-                    else
-                        Table.AddColumn(textified, "SourceFile", each fileName, type text),
-                reordered =
-                    if withFileName = null then
-                        null
-                    else
-                        Table.ReorderColumns(
-                            withFileName,
-                            List.Combine({{"SourceFile"}, List.Transform({1 .. ExpectedColumns}, each "Column" & Text.From(_))})
-                        )
+                processingTry =
+                    try
+                        let
+                            pdfTry = try Pdf.Tables([Content]),
+                            pdfTables = if pdfTry[HasError] then null else pdfTry[Value],
+                            pdfError = if pdfTry[HasError] then try Error.Message(pdfTry[Error]) otherwise "Pdf.Tables の読み取りに失敗しました。" else null,
+                            candidateRecords = if pdfTables = null then {} else Table.ToRecords(pdfTables),
+                            scoredCandidates =
+                                List.Transform(
+                                    candidateRecords,
+                                    each
+                                        let
+                                            dataTry = try Record.Field(_, "Data"),
+                                            dataValue = if dataTry[HasError] then null else dataTry[Value],
+                                            columnCount = if dataValue = null then null else Table.ColumnCount(dataValue),
+                                            rowCount = if dataValue = null then null else Table.RowCount(dataValue),
+                                            score =
+                                                if dataValue = null or rowCount = null then
+                                                    999999
+                                                else
+                                                    Number.Abs(columnCount - ExpectedColumns) * 1000 + Number.Abs(rowCount - 100),
+                                            tableId = try Text.From(Record.Field(_, "Id")) otherwise "",
+                                            tableKind = try Text.From(Record.Field(_, "Kind")) otherwise "",
+                                            tableName = try Text.From(Record.Field(_, "Name")) otherwise ""
+                                        in
+                                            [
+                                                Data = dataValue,
+                                                ColumnCount = columnCount,
+                                                RowCount = rowCount,
+                                                Score = score,
+                                                TableId = tableId,
+                                                TableKind = tableKind,
+                                                TableName = tableName
+                                            ]
+                                ),
+                            viableCandidates = List.Select(scoredCandidates, each [Data] <> null and [RowCount] <> null and [RowCount] > 1),
+                            sortedCandidates =
+                                List.Sort(
+                                    viableCandidates,
+                                    (left, right) =>
+                                        if left[Score] < right[Score] then
+                                            -1
+                                        else if left[Score] > right[Score] then
+                                            1
+                                        else
+                                            0
+                                ),
+                            chosen = if List.Count(sortedCandidates) = 0 then null else List.First(sortedCandidates),
+                            chosenColumns = if chosen = null then null else chosen[ColumnCount],
+                            chosenRows = if chosen = null then null else chosen[RowCount],
+                            failureReason =
+                                if pdfTry[HasError] then
+                                    "Pdf.Tables の読み取りに失敗しました: " & pdfError
+                                else if chosen = null then
+                                    "適切な表を検出できませんでした。"
+                                else if chosenColumns <> null and chosenColumns > ExpectedColumns then
+                                    "列数が 30 を超えています: " & Text.From(chosenColumns)
+                                else
+                                    null,
+                            rawData =
+                                if failureReason <> null or chosen = null then
+                                    null
+                                else
+                                    Table.Skip(chosen[Data], 1),
+                            originalColumns = if rawData = null then {} else Table.ColumnNames(rawData),
+                            renamed =
+                                if rawData = null then
+                                    null
+                                else
+                                    Table.RenameColumns(
+                                        rawData,
+                                        List.Transform(List.Positions(originalColumns), each {originalColumns{_}, "Column" & Text.From(_ + 1)}),
+                                        MissingField.Ignore
+                                    ),
+                            renamedCount = if renamed = null then 0 else Table.ColumnCount(renamed),
+                            missingColumns =
+                                if renamed = null or renamedCount >= ExpectedColumns then
+                                    {}
+                                else
+                                    List.Transform({renamedCount + 1 .. ExpectedColumns}, each "Column" & Text.From(_)),
+                            padded =
+                                if renamed = null then
+                                    null
+                                else
+                                    List.Accumulate(
+                                        missingColumns,
+                                        renamed,
+                                        (state, columnName) => Table.AddColumn(state, columnName, each null, type text)
+                                    ),
+                            selected =
+                                if padded = null then
+                                    null
+                                else
+                                    Table.SelectColumns(
+                                        padded,
+                                        List.Transform({1 .. ExpectedColumns}, each "Column" & Text.From(_)),
+                                        MissingField.UseNull
+                                    ),
+                            textified =
+                                if selected = null then
+                                    null
+                                else
+                                    Table.TransformColumns(
+                                        selected,
+                                        List.Transform(
+                                            Table.ColumnNames(selected),
+                                            each {_, (value) => if value = null then "" else Text.From(value), type text}
+                                        )
+                                    ),
+                            withFileName =
+                                if textified = null then
+                                    null
+                                else
+                                    Table.AddColumn(textified, "SourceFile", each fileName, type text),
+                            reordered =
+                                if withFileName = null then
+                                    null
+                                else
+                                    Table.ReorderColumns(
+                                        withFileName,
+                                        List.Combine({{"SourceFile"}, List.Transform({1 .. ExpectedColumns}, each "Column" & Text.From(_))})
+                                    )
+                        in
+                            [
+                                IsError = failureReason <> null,
+                                Reason = failureReason,
+                                CandidateColumns = chosenColumns,
+                                CandidateRows = chosenRows,
+                                Data = reordered
+                            ]
             in
-                [
-                    IsError = failureReason <> null,
-                    Reason = failureReason,
-                    CandidateColumns = chosenColumns,
-                    CandidateRows = chosenRows,
-                    Data = reordered
-                ],
+                if processingTry[HasError] then
+                    [
+                        IsError = true,
+                        Reason = "この PDF の処理中に予期しないエラーが発生しました。",
+                        CandidateColumns = null,
+                        CandidateRows = null,
+                        Data = null
+                    ]
+                else
+                    processingTry[Value],
         type record
     ),
     Expanded = Table.ExpandRecordColumn(
@@ -483,7 +634,52 @@ function Set-ControlValues {
     $Worksheet.Range('B3').Value2 = $OutputPath
     $Worksheet.Range('B4').Value2 = $LogPath
     $Worksheet.Range('B5').Value2 = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-    $Worksheet.Range('B6').Value2 = 'Prepared'
+    $Worksheet.Range('B6').Value2 = '準備完了'
+    $Worksheet.Range('B7').Value2 = ''
+    $Worksheet.Range('B8').Value2 = ''
+    $Worksheet.Range('B9').Value2 = ''
+}
+
+function Get-DataRowCount {
+    param(
+        [Parameter(Mandatory = $true)]$Worksheet,
+        [string]$ExpectedTableName
+    )
+
+    $listObject = $null
+    try {
+        if ($Worksheet.ListObjects.Count -gt 0) {
+            if ([string]::IsNullOrWhiteSpace($ExpectedTableName)) {
+                $listObject = $Worksheet.ListObjects.Item(1)
+            } else {
+                $listObject = $Worksheet.ListObjects.Item($ExpectedTableName)
+            }
+
+            if ($null -eq $listObject.DataBodyRange) {
+                return 0
+            }
+
+            return [int]$listObject.DataBodyRange.Rows.Count
+        }
+
+        $usedRows = [int]$Worksheet.UsedRange.Rows.Count
+        return [Math]::Max($usedRows - 1, 0)
+    } finally {
+        $listObject | Release-ComObject
+    }
+}
+
+function Set-ControlMetrics {
+    param(
+        [Parameter(Mandatory = $true)]$Worksheet,
+        [int]$SourcePdfCount,
+        [int]$ResultRowCount,
+        [int]$ErrorRowCount
+    )
+
+    $Worksheet.Range('B7').Value2 = $SourcePdfCount
+    $Worksheet.Range('B8').Value2 = $ResultRowCount
+    $Worksheet.Range('B9').Value2 = $ErrorRowCount
 }
 
 function Try-RunMacro {
@@ -493,7 +689,8 @@ function Try-RunMacro {
         [Parameter(Mandatory = $true)][string]$MacroName
     )
 
-    $macroTarget = "'$WorkbookPath'!$MacroName"
+    $workbookName = [System.IO.Path]::GetFileName($WorkbookPath)
+    $macroTarget = "'$workbookName'!$MacroName"
     $Excel.Run($macroTarget) | Out-Null
 }
 
@@ -518,29 +715,42 @@ $excel = $null
 $workbook = $null
 $runtimeWorkbookPath = $null
 $controlSheet = $null
+$resultRowCount = 0
+$errorRowCount = 0
 
 try {
-    Write-Log "Resolving input PDF files."
-    $sourceFiles = Resolve-InputPdfFiles -SourceFolder $InputFolder
-    Write-Log ("PDF files detected: {0}" -f $sourceFiles.Count)
+    Write-Banner
+    Write-Log '入力 PDF を確認しています。'
+    $inputFileCandidates = @($InputFiles)
+    if ($inputFileCandidates.Count -gt 0) {
+        $inputFileCandidates += @($args)
+    } elseif ($args.Count -gt 0) {
+        throw "不明な引数があります: $($args -join ', ')"
+    }
+
+    $sourceFiles = @(Resolve-InputPdfFiles -SourceFolder $InputFolder -SourceFiles $inputFileCandidates)
+    Write-Log ("対象 PDF 数: {0}" -f $sourceFiles.Count)
 
     $stagedFiles = Stage-PdfFiles -Files $sourceFiles -KeepExisting:$KeepInput
-    Write-Log ("Staging complete: {0}" -f ($stagedFiles -join ', '))
+    Write-Log ("入力準備が完了しました: {0}" -f ($stagedFiles -join ', '))
     Start-Sleep -Seconds 2
 
     Ensure-Template -ForceRebuild:$RebuildTemplate
     $runtimeWorkbookPath = Copy-TemplateToRuntime
 
+    $defaultOutputPath = Join-Path $outputDir "PDF2Excel_$timestamp.xlsx"
     if ([string]::IsNullOrWhiteSpace($OutputFile)) {
-        $OutputFile = Join-Path $outputDir "PDF2Excel_$timestamp.xlsx"
-    } else {
+        $OutputFile = if ($PromptForOutputFile) { Select-OutputFileDialog -DefaultOutputPath $defaultOutputPath } else { $defaultOutputPath }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($OutputFile)) {
         $OutputFile = [System.IO.Path]::GetFullPath($OutputFile)
     }
 
     $outputParent = Split-Path -Path $OutputFile -Parent
     Ensure-Directory -Path $outputParent
 
-    Write-Log "Launching Excel."
+    Write-Log 'Excel を起動しています。'
     $excel = New-Object -ComObject Excel.Application
     $excel.Visible = $false
     $excel.DisplayAlerts = $false
@@ -552,12 +762,12 @@ try {
 
     Set-ControlValues -Worksheet $controlSheet -StagingInputFolder $inputDir -OutputPath $OutputFile -LogPath $script:logPath
 
-    Write-Log 'Configuring Power Query.'
+    Write-Log 'Power Query を設定しています。'
     Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Staging' -Formula (Get-StagingQueryFormula -InputPath $inputDir)
     Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Result' -Formula (Get-ResultQueryFormula)
     Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Errors' -Formula (Get-ErrorsQueryFormula)
 
-    Write-Log 'Loading queries into Result and Errors sheets.'
+    Write-Log 'Result / Errors シートへ読み込んでいます。'
 
     $resultLoadSheet = $null
     $resultLoadListObject = $null
@@ -601,30 +811,48 @@ try {
         $errorsLoadSheet | Release-ComObject
     }
 
-    $controlSheet.Range('B6').Value2 = 'Prepared'
+    $resultSummarySheet = $null
+    $errorsSummarySheet = $null
+    try {
+        $resultSummarySheet = $workbook.Worksheets.Item('Result')
+        $errorsSummarySheet = $workbook.Worksheets.Item('Errors')
+        $resultRowCount = Get-DataRowCount -Worksheet $resultSummarySheet -ExpectedTableName 'tblResult'
+        $errorRowCount = Get-DataRowCount -Worksheet $errorsSummarySheet -ExpectedTableName 'tblErrors'
+    } finally {
+        $errorsSummarySheet | Release-ComObject
+        $resultSummarySheet | Release-ComObject
+    }
+
+    Set-ControlMetrics -Worksheet $controlSheet -SourcePdfCount $sourceFiles.Count -ResultRowCount $resultRowCount -ErrorRowCount $errorRowCount
+    $controlSheet.Range('B6').Value2 = '出力準備完了'
     $workbook.Save()
 
     $usedMacro = $false
     try {
-        Write-Log 'Running VBA macros.'
+        Write-Log 'Excel 出力処理を実行しています。'
         Try-RunMacro -Excel $excel -WorkbookPath $runtimeWorkbookPath -MacroName 'ExportResultAsXlsx'
         $usedMacro = $true
     } catch {
-        Write-Log "VBA macros were unavailable. Saving xlsx directly from PowerShell. Reason: $($_.Exception.Message)" 'WARN'
+        Write-Log "VBA マクロが使えなかったため、PowerShell 側で xlsx を保存します。理由: $($_.Exception.Message)" 'WARN'
     }
 
     if (-not $usedMacro) {
-        Write-Log 'Saving xlsx directly from PowerShell.'
+        Write-Log 'PowerShell 側で xlsx を保存しています。'
         Export-WorkbookDirectly -Workbook $workbook -OutputPath $OutputFile
     }
 
-    Write-Log "Completed: $OutputFile"
+    Write-Log "処理が完了しました: $OutputFile"
+    Show-RunSummary -SourceFiles $sourceFiles -OutputPath $OutputFile -ResultRows $resultRowCount -ErrorRows $errorRowCount
 
     if ($OpenOutput) {
         Invoke-Item -LiteralPath $OutputFile
     }
+
+    if ($OpenOutputFolder) {
+        Invoke-Item -LiteralPath $outputParent
+    }
 } catch {
-    Write-Log "Processing failed: $($_.Exception.Message)" 'ERROR'
+    Write-Log "処理に失敗しました: $($_.Exception.Message)" 'ERROR'
     throw
 } finally {
     if ($workbook) {
@@ -656,3 +884,5 @@ try {
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
 }
+
+

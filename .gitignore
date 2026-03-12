@@ -13,3 +13,7 @@ output/runtime/*
 
 *.xlsx
 ~$*.xls*
+
+tests/work/*
+tests/results/*
+!tests/results/.gitkeep
