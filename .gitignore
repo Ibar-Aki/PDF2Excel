@@ -1,0 +1,15 @@
+input/*
+!input/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+output/*
+!output/.gitkeep
+!output/runtime/
+
+output/runtime/*
+!output/runtime/.gitkeep
+
+*.xlsx
+~$*.xls*
