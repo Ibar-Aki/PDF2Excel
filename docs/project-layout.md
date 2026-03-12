@@ -2,6 +2,7 @@
 
 - 作成日: 2026-03-13 00:49 JST
 - 作成者: Codex (GPT-5)
+- 更新日: 2026-03-13
 
 ## 目的
 
@@ -26,6 +27,8 @@ PDF2Excel
 
 ## 利用者が主に触る場所
 
+- [index.md](C:\Work_Codex\PDF2Excel\docs\index.md)
+  - 文書の入口です。
 - [run_pdf2excel.bat](C:\Work_Codex\PDF2Excel\run_pdf2excel.bat)
   - 変換を始める入口です。
 - [README.md](C:\Work_Codex\PDF2Excel\README.md)

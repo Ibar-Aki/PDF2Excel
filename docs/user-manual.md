@@ -6,7 +6,9 @@
 
 補助資料:
 
+- 文書一覧: [index.md](C:\Work_Codex\PDF2Excel\docs\index.md)
 - 構成ガイド: [project-layout.md](C:\Work_Codex\PDF2Excel\docs\project-layout.md)
+- 障害対応: [troubleshooting.md](C:\Work_Codex\PDF2Excel\docs\troubleshooting.md)
 - サンプルPDF: `C:\Work_Codex\PDF2Excel\samples\pdf`
 
 ## 1. このツールの概要
