@@ -14,6 +14,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - 構成説明: [project-layout.md](C:\Work_Codex\PDF2Excel\docs\project-layout.md)
 - 障害対応: [troubleshooting.md](C:\Work_Codex\PDF2Excel\docs\troubleshooting.md)
 - 保守手順: [maintenance-guide.md](C:\Work_Codex\PDF2Excel\docs\maintenance-guide.md)
+- 改善提案: [improvement-proposals.md](C:\Work_Codex\PDF2Excel\docs\improvement-proposals.md)
 
 詳しい使い方は [ユーザーマニュアル](C:\Work_Codex\PDF2Excel\docs\user-manual.md) を参照してください。
 フォルダ構成は [project-layout.md](C:\Work_Codex\PDF2Excel\docs\project-layout.md) を参照してください。

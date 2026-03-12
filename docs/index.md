@@ -2,6 +2,7 @@
 
 - 作成日: 2026-03-13 00:51 JST
 - 作成者: Codex (GPT-5)
+- 更新日: 2026-03-13
 
 ## はじめに
 
@@ -16,6 +17,8 @@
   - 初回利用、日常運用、確認ポイントまで含めた詳しい手順書です。
 - [project-layout.md](C:\Work_Codex\PDF2Excel\docs\project-layout.md)
   - フォルダ構成と、どのファイルが何のためにあるかを説明しています。
+- [improvement-proposals.md](C:\Work_Codex\PDF2Excel\docs\improvement-proposals.md)
+  - 今後の改善余地を、優先度と効果つきで整理した提案書です。
 
 ## 障害対応向け
 
