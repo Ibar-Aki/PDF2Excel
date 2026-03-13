@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-13 00:51 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-13
+- 更新日: 2026-03-14
 
 ## はじめに
 
@@ -19,6 +19,12 @@
   - フォルダ構成と、どのファイルが何のためにあるかを説明しています。
 - [improvement-proposals.md](C:\Work_Codex\PDF2Excel\docs\improvement-proposals.md)
   - 今後の改善余地を、優先度と効果つきで整理した提案書です。
+- [copilot-implementation-report.md](C:\Work_Codex\PDF2Excel\docs\copilot-implementation-report.md)
+  - Microsoft Copilot に段階実装させるための進め方とプロンプト雛形です。
+- [requirements-specification.md](C:\Work_Codex\PDF2Excel\docs\requirements-specification.md)
+  - 現行システムの要件、対象範囲、機能要件、非機能要件を整理した要件定義書です。
+- [technical-description.md](C:\Work_Codex\PDF2Excel\docs\technical-description.md)
+  - 動作フロー、技術スタック、アーキテクチャ、主要モジュールを整理した技術説明書です。
 
 ## 障害対応向け
 
@@ -31,6 +37,10 @@
 
 - [maintenance-guide.md](C:\Work_Codex\PDF2Excel\docs\maintenance-guide.md)
   - テンプレート更新、テスト、リリース前確認のための保守手順です。
+- [requirements-specification.md](C:\Work_Codex\PDF2Excel\docs\requirements-specification.md)
+  - 仕様確認や変更影響の整理を行うときの基準文書です。
+- [technical-description.md](C:\Work_Codex\PDF2Excel\docs\technical-description.md)
+  - 実装構造と処理のつながりを把握するための技術文書です。
 - [run_pdf2excel.ps1](C:\Work_Codex\PDF2Excel\scripts\run_pdf2excel.ps1)
   - 変換処理の本体です。
 - [build_excel_template.ps1](C:\Work_Codex\PDF2Excel\scripts\build_excel_template.ps1)
