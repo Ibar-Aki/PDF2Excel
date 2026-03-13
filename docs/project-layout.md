@@ -15,6 +15,7 @@ PDF2Excel
 ├─ run_pdf2excel.bat        利用者向けの入口
 ├─ README.md                最初に読む概要
 ├─ docs/                    マニュアルと構成説明
+├─ config/profiles/         帳票プロファイル
 ├─ samples/pdf/             動作確認用のサンプル PDF
 ├─ scripts/                 PowerShell 本体
 ├─ template/                Excel テンプレートと VBA
@@ -35,6 +36,8 @@ PDF2Excel
   - 全体概要を短く確認できます。
 - [user-manual.md](C:\Work_Codex\PDF2Excel\docs\user-manual.md)
   - 詳しい使い方です。
+- `config/profiles`
+  - 帳票プロファイルです。
 - `samples/pdf`
   - サンプル PDF です。
 - `output`
@@ -60,6 +63,7 @@ PDF2Excel
 - `input` は一時置き場です。常設保管には使いません。
 - `output` は成果物置き場です。必要なものだけ残してください。
 - `logs` は実行ごとに増えるため、不要になったら消して構いません。
+- `config/profiles` は帳票ごとの設定置き場です。新しい帳票を増やすときはここへ JSON を追加します。
 - `tests/results` と `tests/work` はテストの生成物です。通常は空で問題ありません。
 
 ## おすすめの見方

@@ -1,9 +1,10 @@
-Attribute VB_Name = "PDF2ExcelMacros"
+﻿Attribute VB_Name = "PDF2ExcelMacros"
 Option Explicit
 
 Private Const CONTROL_SHEET As String = "Control"
 Private Const RESULT_SHEET As String = "Result"
 Private Const ERRORS_SHEET As String = "Errors"
+Private Const SUMMARY_SHEET As String = "Summary"
 
 Private Function ControlSheet() As Worksheet
     Set ControlSheet = ThisWorkbook.Worksheets(CONTROL_SHEET)
@@ -54,6 +55,7 @@ Public Sub RefreshAndBuildWorkbook()
 
     ThisWorkbook.Worksheets(RESULT_SHEET).Columns.AutoFit
     ThisWorkbook.Worksheets(ERRORS_SHEET).Columns.AutoFit
+    ThisWorkbook.Worksheets(SUMMARY_SHEET).Columns.AutoFit
     SetStatus "Refreshed"
     Application.ScreenUpdating = True
 
@@ -82,7 +84,7 @@ Public Sub ExportResultAsXlsx()
     End If
 
     SetStatus "Exporting"
-    ThisWorkbook.Worksheets(Array(CONTROL_SHEET, RESULT_SHEET, ERRORS_SHEET)).Copy
+    ThisWorkbook.Worksheets(Array(CONTROL_SHEET, SUMMARY_SHEET, RESULT_SHEET, ERRORS_SHEET)).Copy
     Set outputWorkbook = ActiveWorkbook
 
     Application.DisplayAlerts = False

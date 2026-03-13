@@ -19,7 +19,8 @@
 出力される Excel は、次の形に統一されます。
 
 - A列: PDF ファイル名
-- B列〜AE列: 表の 30 列分
+- B列以降: プロファイルに応じた表データ列
+- `Summary` シート: 成功件数、失敗件数、PDFごとの内訳
 - `Errors` シート: 壊れた PDF や列数不一致などの失敗情報
 
 向いている用途:
@@ -40,9 +41,11 @@
 2. 表示されたメニューで `1` を押します。
 3. 変換したい PDF を複数選びます。
 4. 出力する Excel ファイルの保存先を選びます。
-5. 完了後、保存した `xlsx` を開きます。
-6. `Result` シートを確認します。
-7. 失敗した PDF がないか `Errors` シートも確認します。
+5. 実行前チェックの内容を確認して `Y` を押します。
+6. 完了後、保存した `xlsx` を開きます。
+7. `Summary` シートで全体件数を確認します。
+8. `Result` シートを確認します。
+9. 失敗した PDF がないか `Errors` シートも確認します。
 
 迷ったときは、まずこのやり方で十分です。
 
@@ -70,7 +73,12 @@
 - `output` フォルダを開きます。
 - 過去の出力ファイルを見たいときに使います。
 
-### [5] 終了
+### [5] プロファイルフォルダを開く
+
+- `config\profiles` フォルダを開きます。
+- 帳票プロファイルを確認、複製、編集したいときに使います。
+
+### [6] 終了
 
 - 何もせず終了します。
 
@@ -78,10 +86,26 @@
 
 変換前に次を確認すると失敗が減ります。
 
+### 4-0. 実行前チェックとは
+
+変換開始前に、次の内容が画面に表示されます。
+
+- 対象 PDF 数
+- 出力ファイル
+- 上書き有無
+- 使用プロファイル
+- 想定列数
+- ヘッダー除外行数
+- 想定行数
+- 代表ファイル名
+
+内容に誤りがあれば `N` で中止してください。  
+自動実行やテストでは `-NoConfirm` を付けると確認入力を省略できます。
+
 ### 4-1. PDF の条件
 
 - PDF を開いて文字をドラッグ選択できること
-- 対象の表がおおむね 30 列以内であること
+- 対象の表が、使用するプロファイルの想定列数に近いこと
 - 似たレイアウトの帳票をまとめて処理すること
 
 ### 4-2. ファイル名の条件
@@ -110,8 +134,9 @@
 3. 変換したい PDF を選びます。
 4. `開く` を押します。
 5. 保存先の `xlsx` を選びます。
-6. 処理完了を待ちます。
-7. 保存した `xlsx` を開いて確認します。
+6. 実行前チェックを確認して `Y` を押します。
+7. 処理完了を待ちます。
+8. 保存した `xlsx` を開いて確認します。
 
 ### パターンB: フォルダごと変換する
 
@@ -119,8 +144,9 @@
 2. `2` を押します。
 3. PDF が入っているフォルダを選びます。
 4. 保存先の `xlsx` を選びます。
-5. 処理完了を待ちます。
-6. 保存した `xlsx` を開いて確認します。
+5. 実行前チェックを確認して `Y` を押します。
+6. 処理完了を待ちます。
+7. 保存した `xlsx` を開いて確認します。
 
 ### パターンC: PowerShell から実行する
 
@@ -148,26 +174,72 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx -OpenOutput
 ```
 
-## 6. 実行中に表示される内容の見方
+プロファイルを名前で指定する場合:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -ProfileName default -OutputFile C:\Work\result.xlsx
+```
+
+プロファイルを JSON ファイルで直接指定する場合:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\custom-profile.json -OutputFile C:\Work\result.xlsx
+```
+
+## 6. 帳票プロファイルの使い方
+
+帳票プロファイルは、帳票ごとの抽出条件をまとめた JSON です。  
+既定では `C:\Work_Codex\PDF2Excel\config\profiles\default.json` を使います。
+
+プロファイルで主に調整する項目:
+
+- `expectedColumns`
+  - 想定列数です。
+- `headerRowsToSkip`
+  - 先頭から除外するヘッダー行数です。
+- `targetRowCount`
+  - 表候補を選ぶときの目安行数です。
+- `allowMoreColumns`
+  - 想定列数を超える表を許可するかどうかです。
+- `preferredTableKinds`
+  - 優先したい表種別です。
+- `preferredTableNameContains`
+  - 表名に含まれていると優先する文字列です。
+- `preferredTableIdContains`
+  - 表 ID に含まれていると優先する文字列です。
+
+おすすめの始め方:
+
+1. `default.json` をコピーして別名にします。
+2. `expectedColumns` と `headerRowsToSkip` だけ先に調整します。
+3. 少数の PDF で試します。
+4. `Summary` と `Errors` を見て、調整が効いているか確認します。
+
+## 7. 実行中に表示される内容の見方
 
 PowerShell 実行時には、主に次の情報が表示されます。
 
+- 実行前チェック
 - 対象 PDF 数
 - 読み込み準備の完了
 - Excel 起動中
 - Power Query 設定中
-- Result / Errors シートへの読込中
+- Result / Errors / Summary シートへの読込中
 - 実行結果の要約
 
 最後に表示される `実行結果` の見方:
 
 - `対象PDF数`: 読み込んだ PDF の数
+- `成功PDF数`: 正常に変換できた PDF の数
+- `失敗PDF数`: `Errors` シートへ出た PDF の数
 - `取込データ行数`: `Result` シートへ入った明細行数
 - `エラー件数`: `Errors` シートに出た件数
+- `処理時間(秒)`: 実行にかかった時間
+- `使用プロファイル`: 今回使った帳票プロファイル
 - `出力ファイル`: 作成された `xlsx`
 - `ログファイル`: 詳細な実行ログ
 
-## 7. 出力される Excel の見方
+## 8. 出力される Excel の見方
 
 ### Control シート
 
@@ -184,12 +256,25 @@ PowerShell 実行時には、主に次の情報が表示されます。
 
 初見の人は、まずこのシートを見ると全体像がわかります。
 
+### Summary シート
+
+- 実行結果の総括が入ります。
+- 主な確認項目:
+  - 対象PDF数
+  - 成功PDF数
+  - 失敗PDF数
+  - 取込データ行数
+  - エラー件数
+  - 処理時間
+  - PDF ごとの取込件数
+  - エラー分類別件数
+
 ### Result シート
 
 - 1行目は見出しです。
 - 2行目以降が変換結果です。
 - A列に元 PDF 名が入ります。
-- B列〜AE列に表データが入ります。
+- B列以降にプロファイルに応じた表データが入ります。
 
 確認ポイント:
 
@@ -203,11 +288,18 @@ PowerShell 実行時には、主に次の情報が表示されます。
 - 主な例:
   - PDF が壊れている
   - 表を見つけられない
-  - 30列を超えていて対象外
+  - プロファイルの想定列数と合わない
+
+`Errors` シートには次の情報が入ります。
+
+- `ErrorCode`
+- `ErrorCategory`
+- `UserMessage`
+- `TechnicalDetail`
 
 `Errors` シートに何もなければ、変換ロジック上の異常は起きていません。
 
-## 8. 失敗したときの見方
+## 9. 失敗したときの見方
 
 確認の順番は次の通りです。
 
@@ -222,12 +314,13 @@ PowerShell 実行時には、主に次の情報が表示されます。
 | 症状 | よくある原因 | 対処 |
 | --- | --- | --- |
 | 何も出力されない | PDF 未選択、入力フォルダ空、Excel 起動失敗 | PDF の選択と Excel 利用可否を確認 |
-| `Errors` に多く出る | レイアウト差が大きい | 似た帳票ごとに分けて実行 |
+| `Errors` に多く出る | レイアウト差が大きい、またはプロファイル不一致 | 似た帳票ごとに分けるか、プロファイルを見直す |
 | 列がずれる | 元PDFの表認識が不安定 | 実PDFを数件確認し、対象グループを絞る |
 | 同名PDFエラー | 別フォルダでファイル名が重複 | 事前に片方の名前を変更 |
 | 壊れたPDF | PDF が不完全 | 元ファイルを再取得 |
+| 実行前チェックの内容が違う | 入力元、保存先、プロファイル指定ミス | いったん `N` で中止して選び直す |
 
-## 9. おすすめの運用方法
+## 10. おすすめの運用方法
 
 ### パターンA: 毎回ばらばらのPDFを処理したい
 
@@ -247,7 +340,7 @@ PowerShell 実行時には、主に次の情報が表示されます。
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx
 ```
 
-## 10. よくある質問
+## 11. よくある質問
 
 ### Q. どんな PDF でも読めますか？
 
@@ -257,7 +350,7 @@ OCR 前提の画像 PDF ではなく、文字を選択できるテキスト PDF 
 ### Q. PDF のレイアウトが少し違っても使えますか？
 
 少しの差なら読める場合があります。  
-ただし、列構成が大きく違うと `Errors` シートへ出る可能性があります。
+ただし、列構成が大きく違うと `Errors` シートへ出る可能性があります。必要に応じて別プロファイルを作成してください。
 
 ### Q. 同じ名前の PDF を別フォルダから一緒に選べますか？
 
@@ -269,12 +362,19 @@ OCR 前提の画像 PDF ではなく、文字を選択できるテキスト PDF 
 大丈夫です。  
 現在の版では自己削除しないように修正済みです。
 
-## 11. ファイルとログの場所
+### Q. 帳票が 30 列ではない場合も使えますか？
+
+使えます。  
+`config\profiles` にあるプロファイルを複製し、`expectedColumns` を調整してください。
+
+## 12. ファイルとログの場所
 
 - 実行ログ:
   - `C:\Work_Codex\PDF2Excel\logs`
 - 出力された Excel:
   - `C:\Work_Codex\PDF2Excel\output`
+- プロファイル:
+  - `C:\Work_Codex\PDF2Excel\config\profiles`
 - サンプル PDF:
   - `C:\Work_Codex\PDF2Excel\samples\pdf`
 - テンプレート:
@@ -282,12 +382,14 @@ OCR 前提の画像 PDF ではなく、文字を選択できるテキスト PDF 
 - テスト結果レポート:
   - [test-report.md](C:\Work_Codex\PDF2Excel\reports\test-report.md)
 
-## 12. テスト済みの内容
+## 13. テスト済みの内容
 
 このツールは次の観点で統合テスト済みです。
 
 - PowerShell 実行
 - BAT 実行
+- 実行前チェックの自動スキップ
+- プロファイル切替
 - `input` 自己参照
 - 壊れた PDF 混在
 - 深い出力先フォルダ
@@ -296,7 +398,7 @@ OCR 前提の画像 PDF ではなく、文字を選択できるテキスト PDF 
 
 詳しい結果は [test-report.md](C:\Work_Codex\PDF2Excel\reports\test-report.md) を参照してください。
 
-## 13. 最後に
+## 14. 最後に
 
 まずは少数の実PDFで一度変換し、`Result` と `Errors` の出方を確認してください。  
 問題なければ、そのまま 50 件前後の一括処理へ広げるのが安全です。

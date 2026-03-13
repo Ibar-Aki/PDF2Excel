@@ -12,8 +12,10 @@ $mixedPdfDir = Join-Path $fixturesRoot 'mixed'
 $duplicateRoot = Join-Path $fixturesRoot 'duplicate'
 $duplicateA = Join-Path $duplicateRoot 'a'
 $duplicateB = Join-Path $duplicateRoot 'b'
+$profileFixtureDir = Join-Path $fixturesRoot 'profile10'
 $resultsRoot = Join-Path $testsRoot 'results'
 $reportsRoot = Join-Path $projectRoot 'reports'
+$profilesRoot = Join-Path $projectRoot 'config\profiles'
 $runScript = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'
 $buildTemplateScript = Join-Path $projectRoot 'scripts\build_excel_template.ps1'
 $batScript = Join-Path $projectRoot 'run_pdf2excel.bat'
@@ -148,6 +150,7 @@ function Get-WorkbookSnapshot {
     $resultSheet = $null
     $errorsSheet = $null
     $controlSheet = $null
+    $summarySheet = $null
 
     try {
         $excel = New-Object -ComObject Excel.Application
@@ -155,6 +158,7 @@ function Get-WorkbookSnapshot {
         $excel.DisplayAlerts = $false
         $workbook = $excel.Workbooks.Open($WorkbookPath)
         $controlSheet = $workbook.Worksheets.Item('Control')
+        $summarySheet = $workbook.Worksheets.Item('Summary')
         $resultSheet = $workbook.Worksheets.Item('Result')
         $errorsSheet = $workbook.Worksheets.Item('Errors')
 
@@ -188,6 +192,14 @@ function Get-WorkbookSnapshot {
             ControlSourceCount  = [string]$controlSheet.Range('B7').Value2
             ControlResultCount  = [string]$controlSheet.Range('B8').Value2
             ControlErrorCount   = [string]$controlSheet.Range('B9').Value2
+            ControlSuccessCount = [string]$controlSheet.Range('B10').Value2
+            ControlFailedCount  = [string]$controlSheet.Range('B11').Value2
+            ControlElapsed      = [string]$controlSheet.Range('B12').Value2
+            ControlProfile      = [string]$controlSheet.Range('B13').Value2
+            SummaryTitle        = [string]$summarySheet.Range('A1').Value2
+            SummaryFileCount    = [string]$summarySheet.Range('B5').Value2
+            SummarySuccessCount = [string]$summarySheet.Range('B6').Value2
+            SummaryFailedCount  = [string]$summarySheet.Range('B7').Value2
             Sample              = $sample
         }
     } finally {
@@ -203,7 +215,7 @@ function Get-WorkbookSnapshot {
             } catch {
             }
         }
-        foreach ($comObject in @($controlSheet, $errorsSheet, $resultSheet, $workbook, $excel)) {
+        foreach ($comObject in @($summarySheet, $controlSheet, $errorsSheet, $resultSheet, $workbook, $excel)) {
             try {
                 if ($null -ne $comObject -and [System.Runtime.InteropServices.Marshal]::IsComObject($comObject)) {
                     [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($comObject)
@@ -330,6 +342,7 @@ Ensure-Directory -Path $validPdfDir
 Ensure-Directory -Path $mixedPdfDir
 Ensure-Directory -Path $duplicateA
 Ensure-Directory -Path $duplicateB
+Ensure-Directory -Path $profileFixtureDir
 Ensure-Directory -Path $resultsRoot
 Ensure-Directory -Path $reportsRoot
 
@@ -339,6 +352,28 @@ Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join
 Set-Content -LiteralPath (Join-Path $mixedPdfDir 'broken.pdf') -Value 'not-a-real-pdf' -Encoding ASCII
 New-ExcelPdfFixture -OutputPath (Join-Path $duplicateA 'duplicate.pdf') -Prefix 'DUPA'
 New-ExcelPdfFixture -OutputPath (Join-Path $duplicateB 'duplicate.pdf') -Prefix 'DUPB'
+New-ExcelPdfFixture -OutputPath (Join-Path $profileFixtureDir 'profile10.pdf') -Prefix 'P10' -Columns 10
+
+$customProfilePath = Join-Path $workRoot 'profile10.json'
+ $customProfileJson = @'
+{
+  "name": "profile10",
+  "displayName": "10列テストプロファイル",
+  "description": "統合テスト用の 10 列プロファイルです。",
+  "expectedColumns": 10,
+  "headerRowsToSkip": 1,
+  "targetRowCount": 4,
+  "allowMoreColumns": false,
+  "preferredTableKinds": [
+    "Table"
+  ],
+  "preferredTableNameContains": [],
+  "preferredTableIdContains": [],
+  "sourceFileColumnName": "SourceFile",
+  "dataColumnPrefix": "Column"
+}
+'@
+$customProfileJson | Set-Content -LiteralPath $customProfilePath -Encoding UTF8
 
 $templateTimestampBefore = if (Test-Path -LiteralPath $templatePath) { (Get-Item -LiteralPath $templatePath).LastWriteTimeUtc } else { $null }
 
@@ -353,7 +388,7 @@ $testResults += Invoke-TestCase -Name 'Template build' -Scenario 'Template rebui
 
 $testResults += Invoke-TestCase -Name 'PowerShell conversion' -Scenario 'Convert two valid PDFs via PowerShell and verify Result row count' -Body {
     $outputPath = Join-Path $resultsRoot 'powershell_success.xlsx'
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $validPdfDir -OutputFile $outputPath
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
     Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'PowerShell output workbook was not created.'
     $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
     Assert-True -Condition ($snapshot.ResultColumns -eq 31) -Message "Expected 31 columns but got $($snapshot.ResultColumns)."
@@ -363,6 +398,11 @@ $testResults += Invoke-TestCase -Name 'PowerShell conversion' -Scenario 'Convert
     Assert-True -Condition ($snapshot.ControlSourceCount -eq '2') -Message "Control sheet source count is unexpected: $($snapshot.ControlSourceCount)"
     Assert-True -Condition ($snapshot.ControlResultCount -eq '8') -Message "Control sheet result count is unexpected: $($snapshot.ControlResultCount)"
     Assert-True -Condition ($snapshot.ControlErrorCount -eq '0') -Message "Control sheet error count is unexpected: $($snapshot.ControlErrorCount)"
+    Assert-True -Condition ($snapshot.ControlSuccessCount -eq '2') -Message "Control sheet success count is unexpected: $($snapshot.ControlSuccessCount)"
+    Assert-True -Condition ($snapshot.ControlFailedCount -eq '0') -Message "Control sheet failed count is unexpected: $($snapshot.ControlFailedCount)"
+    Assert-True -Condition ($snapshot.ControlProfile -eq '標準30列プロファイル') -Message "Control sheet profile is unexpected: $($snapshot.ControlProfile)"
+    Assert-True -Condition ($snapshot.SummaryTitle -eq 'Summary') -Message 'Summary sheet title is missing.'
+    Assert-True -Condition ($snapshot.SummaryFileCount -eq '2') -Message "Summary file count is unexpected: $($snapshot.SummaryFileCount)"
     "ResultRows=$($snapshot.ResultRows), ErrorsRows=$($snapshot.ErrorsRows)"
 }
 
@@ -371,7 +411,7 @@ $testResults += Invoke-TestCase -Name 'Single PDF conversion' -Scenario 'A folde
     Reset-Directory -Path $singlePdfDir
     Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join-Path $singlePdfDir 'valid_a.pdf') -Force
     $outputPath = Join-Path $resultsRoot 'single_pdf_success.xlsx'
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $singlePdfDir -OutputFile $outputPath
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $singlePdfDir -OutputFile $outputPath -NoConfirm
     Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Single PDF output workbook was not created.'
     $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
     Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "Expected 5 rows including header for one PDF but got $($snapshot.ResultRows)."
@@ -385,7 +425,7 @@ $testResults += Invoke-TestCase -Name 'InputFiles conversion' -Scenario 'Documen
         (Join-Path $validPdfDir 'valid_a.pdf'),
         (Join-Path $validPdfDir 'valid_b.pdf')
     ) -join ','
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFiles $inputFilesArg -OutputFile $outputPath
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFiles $inputFilesArg -OutputFile $outputPath -NoConfirm
     Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'InputFiles output workbook was not created.'
     $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
     Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "InputFiles conversion returned unexpected Result row count: $($snapshot.ResultRows)."
@@ -395,7 +435,7 @@ $testResults += Invoke-TestCase -Name 'InputFiles conversion' -Scenario 'Documen
 
 $testResults += Invoke-TestCase -Name 'BAT conversion' -Scenario 'Convert the same valid PDFs through BAT' -Body {
     $outputPath = Join-Path $resultsRoot 'bat_success.xlsx'
-    & cmd /c $batScript -InputFolder $validPdfDir -OutputFile $outputPath
+    & cmd /c $batScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
     Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT output workbook was not created.'
     $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
     Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "BAT conversion returned unexpected Result row count: $($snapshot.ResultRows)."
@@ -404,7 +444,7 @@ $testResults += Invoke-TestCase -Name 'BAT conversion' -Scenario 'Convert the sa
 
 $testResults += Invoke-TestCase -Name 'BAT direct no-pause' -Scenario 'BAT direct execution with arguments should exit without waiting for key input' -Body {
     $outputPath = Join-Path $resultsRoot 'bat_direct_no_pause.xlsx'
-    $process = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', $batScript, '-InputFolder', $validPdfDir, '-OutputFile', $outputPath -NoNewWindow -Wait -PassThru
+    $process = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', $batScript, '-InputFolder', $validPdfDir, '-OutputFile', $outputPath, '-NoConfirm' -NoNewWindow -Wait -PassThru
     Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT direct output workbook was not created.'
     Assert-True -Condition ($process.ExitCode -eq 0) -Message "BAT direct execution failed with exit code $($process.ExitCode)."
     'BAT direct execution finished without pause'
@@ -415,7 +455,7 @@ $testResults += Invoke-TestCase -Name 'Input self-reference' -Scenario 'Using in
     Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join-Path $projectRoot 'input\valid_a.pdf') -Force
     Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_b.pdf') -Destination (Join-Path $projectRoot 'input\valid_b.pdf') -Force
     $outputPath = Join-Path $resultsRoot 'input_self_reference.xlsx'
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder (Join-Path $projectRoot 'input') -OutputFile $outputPath
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder (Join-Path $projectRoot 'input') -OutputFile $outputPath -NoConfirm
     Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Self-reference output workbook was not created.'
     $remaining = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'input') -Filter '*.pdf' -File)
     $remainingNames = @($remaining | Select-Object -ExpandProperty Name)
@@ -436,7 +476,7 @@ $testResults += Invoke-TestCase -Name 'Duplicate filename rejection' -Scenario '
     $output = ''
     $duplicateFailed = $false
     try {
-        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFiles $duplicatePaths -OutputFile $outputPath 2>&1 | Out-String
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFiles $duplicatePaths -OutputFile $outputPath -NoConfirm 2>&1 | Out-String
     } catch {
         $duplicateFailed = $true
         $output = $_ | Out-String
@@ -452,12 +492,13 @@ $testResults += Invoke-TestCase -Name 'Duplicate filename rejection' -Scenario '
 
 $testResults += Invoke-TestCase -Name 'Broken PDF handling' -Scenario 'A broken PDF should not crash the run and should be reported in Errors' -Body {
     $outputPath = Join-Path $resultsRoot 'mixed_broken.xlsx'
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $mixedPdfDir -OutputFile $outputPath
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $mixedPdfDir -OutputFile $outputPath -NoConfirm
     Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Mixed output workbook was not created.'
     $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
     Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "Expected 5 Result rows for one valid PDF but got $($snapshot.ResultRows)."
     Assert-True -Condition ($snapshot.ErrorsRows -ge 2) -Message 'Broken PDF was not reported in Errors sheet.'
     Assert-True -Condition ($snapshot.ControlErrorCount -eq '1') -Message "Control sheet error count is unexpected: $($snapshot.ControlErrorCount)"
+    Assert-True -Condition ($snapshot.ControlFailedCount -eq '1') -Message "Control sheet failed count is unexpected: $($snapshot.ControlFailedCount)"
     "ResultRows=$($snapshot.ResultRows), ErrorsRows=$($snapshot.ErrorsRows)"
 }
 
@@ -467,9 +508,20 @@ $testResults += Invoke-TestCase -Name 'Nested output path' -Scenario 'Workbook c
     if (Test-Path -LiteralPath $nestedDir) {
         Remove-Item -LiteralPath $nestedDir -Recurse -Force
     }
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $validPdfDir -OutputFile $outputPath
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
     Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Nested output workbook was not created.'
     "Nested output created"
+}
+
+$testResults += Invoke-TestCase -Name 'Profile-based conversion' -Scenario 'A custom profile should change the expected output columns and summary metadata' -Body {
+    $outputPath = Join-Path $resultsRoot 'profile10_success.xlsx'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $profileFixtureDir -ProfilePath $customProfilePath -OutputFile $outputPath -NoConfirm
+    Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Profile-based output workbook was not created.'
+    $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+    Assert-True -Condition ($snapshot.ResultColumns -eq 11) -Message "Expected 11 columns for the 10-column profile but got $($snapshot.ResultColumns)."
+    Assert-True -Condition ($snapshot.ControlProfile -eq '10列テストプロファイル') -Message "Profile name was not written to Control: $($snapshot.ControlProfile)"
+    Assert-True -Condition ($snapshot.SummarySuccessCount -eq '1') -Message "Summary success count is unexpected: $($snapshot.SummarySuccessCount)"
+    'Custom profile conversion succeeded'
 }
 
 $testResults += Invoke-TestCase -Name 'Runtime cleanup' -Scenario 'No temporary xlsm remains in output/runtime after execution' -Body {

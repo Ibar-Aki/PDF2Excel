@@ -3,6 +3,7 @@ setlocal
 
 set "SCRIPT_DIR=%~dp0"
 set "MANUAL_PATH=%SCRIPT_DIR%docs\user-manual.md"
+set "PROFILE_DIR=%SCRIPT_DIR%config\profiles"
 set "INTERACTIVE_MODE=1"
 
 if not "%~1"=="" (
@@ -23,11 +24,13 @@ echo  [1] Select PDF files and convert
 echo  [2] Select a PDF folder and convert
 echo  [3] Open the user manual
 echo  [4] Open the output folder
-echo  [5] Exit
+echo  [5] Open the profile folder
+echo  [6] Exit
 echo.
-choice /c 12345 /n /m "Choose an option: "
+choice /c 123456 /n /m "Choose an option: "
 
-if errorlevel 5 goto END
+if errorlevel 6 goto END
+if errorlevel 5 goto OPEN_PROFILE
 if errorlevel 4 goto OPEN_OUTPUT
 if errorlevel 3 goto OPEN_MANUAL
 if errorlevel 2 goto RUN_FOLDER_DIALOG
@@ -57,6 +60,15 @@ if exist "%SCRIPT_DIR%output" (
   start "" "%SCRIPT_DIR%output"
 ) else (
   echo Output folder was not found: %SCRIPT_DIR%output
+  pause
+)
+goto MENU
+
+:OPEN_PROFILE
+if exist "%PROFILE_DIR%" (
+  start "" "%PROFILE_DIR%"
+) else (
+  echo Profile folder was not found: %PROFILE_DIR%
   pause
 )
 goto MENU

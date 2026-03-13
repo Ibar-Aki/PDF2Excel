@@ -28,9 +28,11 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `2`: PDFフォルダを選んで変換
 - `3`: 使い方マニュアルを開く
 - `4`: 出力フォルダを開く
-- `5`: 終了
+- `5`: プロファイルフォルダを開く
+- `6`: 終了
 
 保存先を指定しない場合は、`output` フォルダに `PDF2Excel_yyyyMMdd_HHmmss.xlsx` が作成されます。
+変換前には、対象件数、保存先、使用プロファイル、想定列数を確認する「実行前チェック」が表示されます。
 
 ## 構成
 
@@ -46,6 +48,8 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
   - `template/PDF2Excel_Converter.xlsm` を自動生成します。
 - `template/vba/PDF2ExcelMacros.bas`
   - Excel テンプレートへ取り込む VBA モジュールです。
+- `config/profiles/`
+  - 帳票プロファイルを置きます。既定は `default.json` です。
 - `input/`
   - 処理対象PDFを一時配置する staging フォルダです。
 - `output/`
@@ -82,7 +86,8 @@ PDF2Excel
 2. メニューで `1` または `2` を選びます。
 3. PDF または PDF フォルダを選択します。
 4. 保存先を選びます。
-5. 処理完了後、`Result` シートと `Errors` シートを確認します。
+5. 実行前チェックの内容を確認して続行します。
+6. 処理完了後、`Summary`、`Result`、`Errors` シートを確認します。
 
 PowerShell から実行する場合:
 
@@ -98,16 +103,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFiles "C:\PDF\a.pdf,C:\Other\b.pdf" -OutputFile C:\Work\result.xlsx
 ```
 
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -ProfileName default -OutputFile C:\Work\result.xlsx
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\profile10.json -OutputFile C:\Work\result.xlsx -NoConfirm
+```
+
 ## 出力仕様
 
 - `Control` シート
   - 実行時の入力フォルダ、出力先、ログファイル、最終実行状態を保持します。
-  - あわせて、対象PDF数、取込データ行数、エラー件数を表示します。
+  - あわせて、対象PDF数、取込データ行数、エラー件数、成功PDF数、失敗PDF数、処理時間、使用プロファイルを表示します。
+- `Summary` シート
+  - PDFごとの取込件数と成功/失敗の内訳を表示します。
+  - エラー分類別件数も表示します。
 - `Result` シート
   - `A列=SourceFile`
-  - `B〜AE列=Column1〜Column30`
+  - `B列以降=プロファイルに応じた表データ列`
 - `Errors` シート
-  - 抽出失敗したPDFのファイル名、失敗理由、候補表の列数・行数を出力します。
+  - 抽出失敗したPDFのファイル名、エラーコード、エラー分類、利用者向けメッセージ、技術詳細、候補表の列数・行数を出力します。
 
 ## 前提条件
 
