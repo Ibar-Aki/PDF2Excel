@@ -27,12 +27,19 @@ $configDir = Join-Path $baseDir 'config'
 $profilesDir = Join-Path $configDir 'profiles'
 $inputDir = Join-Path $baseDir 'input'
 $outputDir = Join-Path $baseDir 'output'
-$runtimeDir = Join-Path $outputDir 'runtime'
+$runtimeRootDir = Join-Path $outputDir 'runtime'
+$runtimeRunsDir = Join-Path $runtimeRootDir 'runs'
 $logsDir = Join-Path $baseDir 'logs'
 $templatePath = Join-Path $templateDir 'PDF2Excel_Converter.xlsm'
 $buildTemplateScript = Join-Path $scriptDir 'build_excel_template.ps1'
 
-$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss_fff'
+$script:runInstanceId = "run_${timestamp}_$PID"
+$script:runWorkspaceDir = Join-Path $runtimeRunsDir $script:runInstanceId
+$script:runStagingDir = Join-Path $script:runWorkspaceDir 'staging'
+$script:runRuntimeDir = Join-Path $script:runWorkspaceDir 'runtime'
+$script:lockFilePath = Join-Path $runtimeRootDir 'run.lock'
+$script:runMutex = $null
 $script:logPath = Join-Path $logsDir "run_$timestamp.log"
 
 function Show-Usage {
@@ -55,7 +62,7 @@ function Show-Usage {
         '  -OutputFile          出力する xlsx の保存先を指定します。',
         '  -ProfileName         使用する帳票プロファイル名を指定します。既定値は default です。',
         '  -ProfilePath         使用する帳票プロファイル JSON のフルパスを指定します。',
-        '  -KeepInput           今回対象外の input 内 PDF を消さずに残します。',
+        '  -KeepInput           input 内の過去PDFを保持します。実際の変換は今回分だけ別 staging で実行します。',
         '  -RebuildTemplate     xlsm テンプレートを再生成します。',
         '  -OpenOutput          完成した xlsx を自動で開きます。',
         '  -OpenOutputFolder    完成後に保存先フォルダを開きます。',
@@ -146,7 +153,12 @@ function Remove-PathWithRetry {
         }
 
         try {
-            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+            if ($item.PSIsContainer) {
+                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            } else {
+                Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            }
             return $true
         } catch {
             if ($attempt -eq $MaxAttempts) {
@@ -163,7 +175,8 @@ function Ensure-Workspace {
     foreach ($path in @(
         $inputDir,
         $outputDir,
-        $runtimeDir,
+        $runtimeRootDir,
+        $runtimeRunsDir,
         $logsDir,
         $templateDir,
         (Join-Path $templateDir 'vba'),
@@ -175,15 +188,76 @@ function Ensure-Workspace {
 }
 
 function Compact-RuntimeArtifacts {
-    if (-not (Test-Path -LiteralPath $runtimeDir)) {
+    if (-not (Test-Path -LiteralPath $runtimeRootDir)) {
         return
     }
 
-    Get-ChildItem -LiteralPath $runtimeDir -File -ErrorAction SilentlyContinue | ForEach-Object {
+    Get-ChildItem -LiteralPath $runtimeRunsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
         $deleted = Remove-PathWithRetry -Path $_.FullName
         if (-not $deleted) {
             Write-Log "Runtime artifact could not be removed: $($_.FullName)" 'WARN'
         }
+    }
+
+    Get-ChildItem -LiteralPath $runtimeRootDir -File -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -notin @('.gitkeep', 'run.lock')
+    } | ForEach-Object {
+        $deleted = Remove-PathWithRetry -Path $_.FullName
+        if (-not $deleted) {
+            Write-Log "Runtime artifact could not be removed: $($_.FullName)" 'WARN'
+        }
+    }
+}
+
+function Acquire-RunLock {
+    Ensure-Directory -Path $runtimeRootDir
+
+    $mutexName = 'Global\PDF2Excel_RunMutex'
+    $createdNew = $false
+    $script:runMutex = New-Object System.Threading.Mutex($false, $mutexName, [ref]$createdNew)
+
+    if (-not $script:runMutex.WaitOne(0, $false)) {
+        $lockSummary = ''
+        if (Test-Path -LiteralPath $script:lockFilePath) {
+            try {
+                $lockInfo = Get-Content -LiteralPath $script:lockFilePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $lockSummary = " 実行中情報: 開始=$($lockInfo.startedAt), PID=$($lockInfo.pid), User=$($lockInfo.userName)"
+            } catch {
+                $lockSummary = ' 実行中情報: run.lock は存在しますが内容を読めませんでした。'
+            }
+        }
+
+        throw "別の PDF2Excel 実行が進行中です。完了後に再実行してください。$lockSummary"
+    }
+
+    $lockPayload = [ordered]@{
+        runInstanceId = $script:runInstanceId
+        pid           = $PID
+        startedAt     = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+        machineName   = $env:COMPUTERNAME
+        userName      = $env:USERNAME
+    } | ConvertTo-Json
+
+    Set-Content -LiteralPath $script:lockFilePath -Value $lockPayload -Encoding UTF8
+}
+
+function Release-RunLock {
+    if ($script:runMutex) {
+        try {
+            $script:runMutex.ReleaseMutex() | Out-Null
+        } catch {
+        }
+
+        try {
+            $script:runMutex.Dispose()
+        } catch {
+        }
+
+        $script:runMutex = $null
+    }
+
+    if (Test-Path -LiteralPath $script:lockFilePath) {
+        Remove-PathWithRetry -Path $script:lockFilePath | Out-Null
     }
 }
 
@@ -380,14 +454,20 @@ function Get-ProfileOutputColumnNames {
 function Stage-PdfFiles {
     param(
         [Parameter(Mandatory = $true)][string[]]$Files,
-        [switch]$KeepExisting
+        [Parameter(Mandatory = $true)][string]$StagingDirectory
     )
+
+    Ensure-Directory -Path $StagingDirectory
+
+    Get-ChildItem -LiteralPath $StagingDirectory -Filter '*.pdf' -File -ErrorAction SilentlyContinue | ForEach-Object {
+        Remove-Item -LiteralPath $_.FullName -Force
+    }
 
     $selectedTargets = @{}
     $normalizedPairs = @()
     foreach ($file in $Files) {
         $sourcePath = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $file).Path)
-        $targetPath = Join-Path $inputDir ([System.IO.Path]::GetFileName($sourcePath))
+        $targetPath = Join-Path $StagingDirectory ([System.IO.Path]::GetFileName($sourcePath))
         $targetKey = $targetPath.ToLowerInvariant()
 
         if ($selectedTargets.ContainsKey($targetKey) -and $selectedTargets[$targetKey] -ne $sourcePath) {
@@ -399,15 +479,6 @@ function Stage-PdfFiles {
             SourcePath = $sourcePath
             TargetPath = $targetPath
             TargetKey  = $targetKey
-        }
-    }
-
-    if (-not $KeepExisting) {
-        Get-ChildItem -LiteralPath $inputDir -Filter '*.pdf' -File -ErrorAction SilentlyContinue | ForEach-Object {
-            $existingPath = [System.IO.Path]::GetFullPath($_.FullName)
-            if (-not $selectedTargets.ContainsKey($existingPath.ToLowerInvariant())) {
-                Remove-Item -LiteralPath $existingPath -Force
-            }
         }
     }
 
@@ -424,6 +495,48 @@ function Stage-PdfFiles {
     }
 
     return $staged
+}
+
+function Sync-InputStorage {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Files,
+        [switch]$KeepExisting
+    )
+
+    Ensure-Directory -Path $inputDir
+
+    $selectedByName = @{}
+    foreach ($file in $Files) {
+        $sourcePath = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $file).Path)
+        $fileName = [System.IO.Path]::GetFileName($sourcePath)
+        $fileKey = $fileName.ToLowerInvariant()
+
+        if ($selectedByName.ContainsKey($fileKey) -and $selectedByName[$fileKey] -ne $sourcePath) {
+            throw "同名の PDF は同時に処理できません: $fileName"
+        }
+
+        $selectedByName[$fileKey] = $sourcePath
+    }
+
+    if (-not $KeepExisting) {
+        Get-ChildItem -LiteralPath $inputDir -Filter '*.pdf' -File -ErrorAction SilentlyContinue | ForEach-Object {
+            if (-not $selectedByName.ContainsKey($_.Name.ToLowerInvariant())) {
+                Remove-Item -LiteralPath $_.FullName -Force
+            }
+        }
+    }
+
+    $stored = @()
+    foreach ($fileKey in $selectedByName.Keys) {
+        $sourcePath = $selectedByName[$fileKey]
+        $targetPath = Join-Path $inputDir ([System.IO.Path]::GetFileName($sourcePath))
+        if ($sourcePath -ne [System.IO.Path]::GetFullPath($targetPath)) {
+            Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
+        }
+        $stored += $targetPath
+    }
+
+    return @($stored | Sort-Object)
 }
 
 function Ensure-Template {
@@ -443,7 +556,8 @@ function Ensure-Template {
 }
 
 function Copy-TemplateToRuntime {
-    $runtimePath = Join-Path $runtimeDir "PDF2Excel_runtime_$timestamp.xlsm"
+    Ensure-Directory -Path $script:runRuntimeDir
+    $runtimePath = Join-Path $script:runRuntimeDir "PDF2Excel_runtime_$timestamp.xlsm"
     Copy-Item -LiteralPath $templatePath -Destination $runtimePath -Force
     return $runtimePath
 }
@@ -722,9 +836,12 @@ in
 }
 
 function Get-ResultQueryFormula {
-    param([Parameter(Mandatory = $true)]$Profile)
+    param(
+        [Parameter(Mandatory = $true)][string]$InputPath,
+        [Parameter(Mandatory = $true)]$Profile
+    )
 
-    $escapedPath = Escape-MString -Value $inputDir
+    $escapedPath = Escape-MString -Value $InputPath
     $outputColumnsLiteral = ConvertTo-MTextListLiteral -Values (Get-ProfileOutputColumnNames -Profile $Profile)
     $dataColumnsLiteral = ConvertTo-MTextListLiteral -Values @((1..$Profile.ExpectedColumns | ForEach-Object { '{0}{1}' -f $Profile.DataColumnPrefix, $_ }))
     $preferredKindsLiteral = ConvertTo-MTextListLiteral -Values @($Profile.PreferredTableKinds | ForEach-Object { $_.ToUpperInvariant() })
@@ -1341,6 +1458,9 @@ function Resolve-RunErrorInfo {
     if ($normalizedMessage.Contains('同名の pdf')) {
         return [pscustomobject]@{ ErrorCode = 'DUPLICATE_FILE_NAME'; ErrorCategory = '入力エラー' }
     }
+    if ($normalizedMessage.Contains('別の pdf2excel 実行が進行中')) {
+        return [pscustomobject]@{ ErrorCode = 'RUN_LOCKED'; ErrorCategory = '実行競合' }
+    }
     if ($normalizedMessage.Contains('入力フォルダ') -or $normalizedMessage.Contains('入力ファイル')) {
         return [pscustomobject]@{ ErrorCode = 'INPUT_RESOLUTION_ERROR'; ErrorCategory = '入力エラー' }
     }
@@ -1354,10 +1474,6 @@ function Resolve-RunErrorInfo {
     return [pscustomobject]@{ ErrorCode = 'UNEXPECTED_RUN_ERROR'; ErrorCategory = 'システムエラー' }
 }
 
-Ensure-Workspace
-Set-Content -LiteralPath $script:logPath -Value "PDF2Excel run started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Encoding UTF8
-Compact-RuntimeArtifacts
-
 $excel = $null
 $workbook = $null
 $runtimeWorkbookPath = $null
@@ -1370,6 +1486,14 @@ $failedPdfCount = 0
 $elapsedSeconds = 0
 
 try {
+    Ensure-Workspace
+    Set-Content -LiteralPath $script:logPath -Value "PDF2Excel run started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Encoding UTF8
+    Acquire-RunLock
+    Compact-RuntimeArtifacts
+    Ensure-Directory -Path $script:runWorkspaceDir
+    Ensure-Directory -Path $script:runStagingDir
+    Ensure-Directory -Path $script:runRuntimeDir
+
     Write-Banner
     Write-Log '入力 PDF を確認しています。'
     $inputFileCandidates = @($InputFiles)
@@ -1400,8 +1524,10 @@ try {
     $preflightState = Get-PreflightState -SourceFiles $sourceFiles -OutputPath $OutputFile -Profile $profile
     Confirm-Preflight -PreflightState $preflightState
 
-    $stagedFiles = Stage-PdfFiles -Files $sourceFiles -KeepExisting:$KeepInput
-    Write-Log ("入力準備が完了しました: {0}" -f ($stagedFiles -join ', '))
+    $stagedFiles = Stage-PdfFiles -Files $sourceFiles -StagingDirectory $script:runStagingDir
+    $storedFiles = Sync-InputStorage -Files $sourceFiles -KeepExisting:$KeepInput
+    Write-Log ("今回実行分の staging が完了しました: {0}" -f ($stagedFiles -join ', '))
+    Write-Log ("input フォルダ同期が完了しました: {0}" -f ($storedFiles -join ', '))
     Start-Sleep -Seconds 1
 
     Ensure-Template -ForceRebuild:$RebuildTemplate
@@ -1422,12 +1548,12 @@ try {
     $resultSheetRef | Release-ComObject
     $errorsSheetRef | Release-ComObject
 
-    Set-ControlValues -Worksheet $controlSheet -StagingInputFolder $inputDir -OutputPath $OutputFile -LogPath $script:logPath -Profile $profile
+    Set-ControlValues -Worksheet $controlSheet -StagingInputFolder $script:runStagingDir -OutputPath $OutputFile -LogPath $script:logPath -Profile $profile
     Initialize-SummarySheet -Worksheet $summarySheet
 
     Write-Log 'Power Query を設定しています。'
-    Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Staging' -Formula (Get-StagingQueryFormula -InputPath $inputDir -Profile $profile)
-    Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Result' -Formula (Get-ResultQueryFormula -Profile $profile)
+    Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Staging' -Formula (Get-StagingQueryFormula -InputPath $script:runStagingDir -Profile $profile)
+    Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Result' -Formula (Get-ResultQueryFormula -InputPath $script:runStagingDir -Profile $profile)
     Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Errors' -Formula (Get-ErrorsQueryFormula)
     Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_FileSummary' -Formula (Get-FileSummaryQueryFormula)
     Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_ErrorSummary' -Formula (Get-ErrorSummaryQueryFormula)
@@ -1515,12 +1641,13 @@ try {
         }
     }
 
-    if ($runtimeWorkbookPath) {
-        $deleted = Remove-PathWithRetry -Path $runtimeWorkbookPath
+    if (Test-Path -LiteralPath $script:runWorkspaceDir) {
+        $deleted = Remove-PathWithRetry -Path $script:runWorkspaceDir
         if (-not $deleted) {
-            Write-Log "Runtime workbook could not be removed: $runtimeWorkbookPath" 'WARN'
+            Write-Log "Run workspace could not be removed: $script:runWorkspaceDir" 'WARN'
         }
     }
+    Release-RunLock
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
 }

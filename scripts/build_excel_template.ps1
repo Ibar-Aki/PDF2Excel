@@ -138,6 +138,9 @@ function Import-VbaModule {
 
     try {
         $components = $Workbook.VBProject.VBComponents
+        $moduleCode = Get-Content -LiteralPath $ModulePath -Raw -Encoding UTF8
+        $moduleCode = $moduleCode -replace '^\s*Attribute VB_Name = ".*?"\r?\n', ''
+
         for ($index = $components.Count; $index -ge 1; $index -= 1) {
             $component = $components.Item($index)
             try {
@@ -148,7 +151,11 @@ function Import-VbaModule {
                 $component | Release-ComObject
             }
         }
-        $null = $components.Import($ModulePath)
+
+        $moduleComponent = $components.Add(1)
+        $moduleComponent.Name = 'PDF2ExcelMacros'
+        $moduleComponent.CodeModule.AddFromString($moduleCode)
+        $moduleComponent | Release-ComObject
         $components | Release-ComObject
     } catch {
         Write-Warning "VBA module import failed: $($_.Exception.Message)"

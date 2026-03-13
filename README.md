@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-12 23:14 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-13
+- 更新日: 2026-03-14
 
 Excel(M365) の Power Query を使って、複数のテキストPDFをまとめて Excel に変換するローカルツールです。  
 追加インストールなしで、`BAT + PowerShell + Excel` のみで動く構成にしています。
@@ -15,6 +15,9 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - 障害対応: [troubleshooting.md](C:\Work_Codex\PDF2Excel\docs\troubleshooting.md)
 - 保守手順: [maintenance-guide.md](C:\Work_Codex\PDF2Excel\docs\maintenance-guide.md)
 - 改善提案: [improvement-proposals.md](C:\Work_Codex\PDF2Excel\docs\improvement-proposals.md)
+- Copilot 実装委任: [copilot-implementation-report.md](C:\Work_Codex\PDF2Excel\docs\copilot-implementation-report.md)
+- 要件定義書: [requirements-specification.md](C:\Work_Codex\PDF2Excel\docs\requirements-specification.md)
+- 技術説明書: [technical-description.md](C:\Work_Codex\PDF2Excel\docs\technical-description.md)
 
 詳しい使い方は [ユーザーマニュアル](C:\Work_Codex\PDF2Excel\docs\user-manual.md) を参照してください。
 フォルダ構成は [project-layout.md](C:\Work_Codex\PDF2Excel\docs\project-layout.md) を参照してください。
@@ -51,13 +54,13 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `config/profiles/`
   - 帳票プロファイルを置きます。既定は `default.json` です。
 - `input/`
-  - 処理対象PDFを一時配置する staging フォルダです。
+  - 処理対象PDFの保管先です。実行時の抽出は `output/runtime/runs/.../staging` で分離して行います。
 - `output/`
   - 出力された `xlsx` を保存します。
 - `logs/`
   - 実行ログを保存します。
 - `output/runtime/`
-  - 実行中の一時 `xlsm` を置きます。通常は実行ごとに自動クリーンアップされます。
+  - 実行中の一時領域です。`runs/` 配下に実行単位の staging / runtime を作成し、通常は実行ごとに自動クリーンアップされます。
 - `tests/`
   - 統合テストとその一時生成物を置きます。
 - `reports/`
@@ -139,6 +142,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
 - 列数が 30 未満のときは空列を補完して 30 列へ揃えます。
 - マクロはテンプレート作成時に自動で取り込みます。PowerShell 側でも同等の fallback 処理を持たせているため、マクロ実行に失敗しても処理継続できる設計です。
 - 同名PDFを別フォルダから同時投入する運用は非対応です。ファイル名が衝突した場合はエラーで止めます。
+- `-KeepInput` は `input` フォルダの保管内容を残すためのオプションです。今回の変換対象は毎回専用 staging に切り出して処理するため、過去PDFが混ざることはありません。
+- ツールは同時に 1 実行だけ許可します。別実行が動作中の場合は `RUN_LOCKED` として即時停止します。
 
 ## テスト
 
