@@ -83,6 +83,59 @@ function Get-ProfileOutputColumnNames {
     return $names
 }
 
+function Get-ControlSheetStaticCells {
+    return [ordered]@{
+        'A1'  = '項目'
+        'B1'  = '内容'
+        'A2'  = '入力フォルダ'
+        'A3'  = '出力ファイル'
+        'A4'  = 'ログファイル'
+        'A5'  = '最終実行日時'
+        'A6'  = '状態'
+        'A7'  = '対象PDF数'
+        'A8'  = '取込データ行数'
+        'A9'  = 'エラー件数'
+        'A10' = '成功PDF数'
+        'A11' = '失敗PDF数'
+        'A12' = '処理時間(秒)'
+        'A13' = '使用プロファイル'
+        'A14' = 'プロファイル説明'
+        'A16' = 'かんたんな使い方'
+        'B16' = '1. run_pdf2excel.bat を実行  2. PDF を選択  3. 実行前チェックを確認  4. Result / Summary / Errors を確認'
+        'A17' = '確認ポイント'
+        'B17' = 'Summary は件数の全体像、Result は変換成功データ、Errors は失敗した PDF と理由です。'
+        'A18' = '注意'
+        'B18' = '文字を選択できるテキスト PDF と、ほぼ同じレイアウトの帳票を想定しています。'
+    }
+}
+
+function Set-ControlSheetStaticCells {
+    param([Parameter(Mandatory = $true)]$Worksheet)
+
+    foreach ($entry in (Get-ControlSheetStaticCells).GetEnumerator()) {
+        $Worksheet.Range($entry.Key).Value2 = $entry.Value
+    }
+}
+
+function Get-SummarySheetStaticCells {
+    return [ordered]@{
+        'A1'  = 'Summary'
+        'A2'  = '実行結果の集計と、PDFごとの内訳を表示します。'
+        'A4'  = '項目'
+        'B4'  = '内容'
+        'A13' = 'PDF別サマリー'
+        'M13' = 'エラー分類別件数'
+    }
+}
+
+function Set-SummarySheetStaticCells {
+    param([Parameter(Mandatory = $true)]$Worksheet)
+
+    foreach ($entry in (Get-SummarySheetStaticCells).GetEnumerator()) {
+        $Worksheet.Range($entry.Key).Value2 = $entry.Value
+    }
+}
+
 function Resolve-RunErrorInfo {
     param([Parameter(Mandatory = $true)][string]$Message)
 

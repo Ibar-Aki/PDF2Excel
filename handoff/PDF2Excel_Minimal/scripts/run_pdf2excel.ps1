@@ -44,6 +44,10 @@ $script:lockFilePath = Join-Path $runtimeRootDir 'run.lock'
 $script:runMutex = $null
 $script:logPath = Join-Path $logsDir "run_$timestamp.log"
 
+# ============================================================
+# Section: User-Facing Console Output
+# ============================================================
+
 function Show-Usage {
     @(
         'PDF2Excel 使い方',
@@ -155,6 +159,10 @@ function Remove-PathWithRetry {
     return $false
 }
 
+# ============================================================
+# Section: Workspace and Run Lifecycle
+# ============================================================
+
 function Ensure-Workspace {
     foreach ($path in @(
         $inputDir,
@@ -256,6 +264,10 @@ function Select-InputFolderDialog {
 
     return $dialog.SelectedPath
 }
+
+# ============================================================
+# Section: Input Resolution and Profile Loading
+# ============================================================
 
 function Select-PdfFiles {
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
@@ -535,6 +547,10 @@ function Copy-TemplateToRuntime {
     Copy-Item -LiteralPath $templatePath -Destination $runtimePath -Force
     return $runtimePath
 }
+
+# ============================================================
+# Section: Power Query Formula Builders
+# ============================================================
 
 function Get-StagingQueryFormula {
     param(
@@ -871,6 +887,10 @@ in
 "@
 }
 
+# ============================================================
+# Section: Excel Workbook Operations
+# ============================================================
+
 function Remove-WorkbookQuery {
     param(
         [Parameter(Mandatory = $true)]$Workbook,
@@ -995,21 +1015,7 @@ function Set-ControlValues {
         [Parameter(Mandatory = $true)]$Profile
     )
 
-    $Worksheet.Range('A1').Value2 = '項目'
-    $Worksheet.Range('B1').Value2 = '内容'
-    $Worksheet.Range('A2').Value2 = '入力フォルダ'
-    $Worksheet.Range('A3').Value2 = '出力ファイル'
-    $Worksheet.Range('A4').Value2 = 'ログファイル'
-    $Worksheet.Range('A5').Value2 = '最終実行日時'
-    $Worksheet.Range('A6').Value2 = '状態'
-    $Worksheet.Range('A7').Value2 = '対象PDF数'
-    $Worksheet.Range('A8').Value2 = '取込データ行数'
-    $Worksheet.Range('A9').Value2 = 'エラー件数'
-    $Worksheet.Range('A10').Value2 = '成功PDF数'
-    $Worksheet.Range('A11').Value2 = '失敗PDF数'
-    $Worksheet.Range('A12').Value2 = '処理時間(秒)'
-    $Worksheet.Range('A13').Value2 = '使用プロファイル'
-    $Worksheet.Range('A14').Value2 = 'プロファイル説明'
+    Set-ControlSheetStaticCells -Worksheet $Worksheet
 
     $Worksheet.Range('B2').Value2 = $StagingInputFolder
     $Worksheet.Range('B3').Value2 = $OutputPath
@@ -1019,12 +1025,6 @@ function Set-ControlValues {
     $Worksheet.Range('B7:B12').Value2 = ''
     $Worksheet.Range('B13').Value2 = $Profile.DisplayName
     $Worksheet.Range('B14').Value2 = $Profile.Description
-    $Worksheet.Range('A16').Value2 = 'かんたんな使い方'
-    $Worksheet.Range('B16').Value2 = '1. run_pdf2excel.bat を実行  2. PDF を選択  3. 実行前チェックを確認  4. Result / Summary / Errors を確認'
-    $Worksheet.Range('A17').Value2 = '確認ポイント'
-    $Worksheet.Range('B17').Value2 = 'Summary は件数の全体像、Result は変換成功データ、Errors は失敗した PDF と理由です。'
-    $Worksheet.Range('A18').Value2 = '注意'
-    $Worksheet.Range('B18').Value2 = '文字を選択できるテキスト PDF と、ほぼ同じレイアウトの帳票を想定しています。'
 }
 
 function Set-ControlMetrics {
@@ -1060,12 +1060,7 @@ function Initialize-SummarySheet {
     }
 
     $Worksheet.Cells.Clear() | Out-Null
-    $Worksheet.Range('A1').Value2 = 'Summary'
-    $Worksheet.Range('A2').Value2 = '実行結果の集計と、PDFごとの内訳を表示します。'
-    $Worksheet.Range('A4').Value2 = '項目'
-    $Worksheet.Range('B4').Value2 = '内容'
-    $Worksheet.Range('A13').Value2 = 'PDF別サマリー'
-    $Worksheet.Range('M13').Value2 = 'エラー分類別件数'
+    Set-SummarySheetStaticCells -Worksheet $Worksheet
     $Worksheet.Range('A1').Font.Bold = $true
     $Worksheet.Range('A1').Font.Size = 14
     $Worksheet.Range('A4:B4').Font.Bold = $true
@@ -1228,32 +1223,7 @@ function Confirm-Preflight {
     }
 }
 
-if ($SkipMain) {
-    return
-}
-
-$excel = $null
-$workbook = $null
-$runtimeWorkbookPath = $null
-$controlSheet = $null
-$summarySheet = $null
-$resultRowCount = 0
-$errorRowCount = 0
-$successPdfCount = 0
-$failedPdfCount = 0
-$elapsedSeconds = 0
-
-try {
-    Ensure-Workspace
-    Set-Content -LiteralPath $script:logPath -Value "PDF2Excel run started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Encoding UTF8
-    Acquire-RunLock
-    Compact-RuntimeArtifacts
-    Ensure-Directory -Path $script:runWorkspaceDir
-    Ensure-Directory -Path $script:runStagingDir
-    Ensure-Directory -Path $script:runRuntimeDir
-
-    Write-Banner
-    Write-Log '入力 PDF を確認しています。'
+function Get-EffectiveInputFileCandidates {
     $inputFileCandidates = @($InputFiles)
     if ($inputFileCandidates.Count -gt 0) {
         $inputFileCandidates += @($args)
@@ -1261,6 +1231,11 @@ try {
         throw "不明な引数があります: $($args -join ', ')"
     }
 
+    return @($inputFileCandidates)
+}
+
+function Resolve-ExecutionPlan {
+    $inputFileCandidates = @(Get-EffectiveInputFileCandidates)
     $sourceFiles = @(Resolve-InputPdfFiles -SourceFolder $InputFolder -SourceFiles $inputFileCandidates)
     Write-Log ("対象 PDF 数: {0}" -f $sourceFiles.Count)
 
@@ -1268,28 +1243,64 @@ try {
     Write-Log ("使用プロファイル: {0} ({1})" -f $profile.DisplayName, $profile.ProfilePath)
 
     $defaultOutputPath = Join-Path $outputDir "PDF2Excel_$timestamp.xlsx"
-    if ([string]::IsNullOrWhiteSpace($OutputFile)) {
-        $OutputFile = if ($PromptForOutputFile) { Select-OutputFileDialog -DefaultOutputPath $defaultOutputPath } else { $defaultOutputPath }
+    $effectiveOutputPath = $OutputFile
+    if ([string]::IsNullOrWhiteSpace($effectiveOutputPath)) {
+        $effectiveOutputPath = if ($PromptForOutputFile) { Select-OutputFileDialog -DefaultOutputPath $defaultOutputPath } else { $defaultOutputPath }
     }
 
-    if (-not [string]::IsNullOrWhiteSpace($OutputFile)) {
-        $OutputFile = [System.IO.Path]::GetFullPath($OutputFile)
+    if (-not [string]::IsNullOrWhiteSpace($effectiveOutputPath)) {
+        $effectiveOutputPath = [System.IO.Path]::GetFullPath($effectiveOutputPath)
     }
 
-    $outputParent = Split-Path -Path $OutputFile -Parent
+    $outputParent = Split-Path -Path $effectiveOutputPath -Parent
     Ensure-Directory -Path $outputParent
 
-    $preflightState = Get-PreflightState -SourceFiles $sourceFiles -OutputPath $OutputFile -Profile $profile
+    $preflightState = Get-PreflightState -SourceFiles $sourceFiles -OutputPath $effectiveOutputPath -Profile $profile
     Confirm-Preflight -PreflightState $preflightState
 
-    $stagedFiles = Stage-PdfFiles -Files $sourceFiles -StagingDirectory $script:runStagingDir
-    $storedFiles = Sync-InputStorage -Files $sourceFiles -KeepExisting:$KeepInput
+    return [pscustomobject]@{
+        SourceFiles    = $sourceFiles
+        Profile        = $profile
+        OutputPath     = $effectiveOutputPath
+        OutputParent   = $outputParent
+        PreflightState = $preflightState
+    }
+}
+
+function Initialize-RunWorkspace {
+    Ensure-Workspace
+    Set-Content -LiteralPath $script:logPath -Value "PDF2Excel run started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Encoding UTF8
+    Acquire-RunLock
+    Compact-RuntimeArtifacts
+    Ensure-Directory -Path $script:runWorkspaceDir
+    Ensure-Directory -Path $script:runStagingDir
+    Ensure-Directory -Path $script:runRuntimeDir
+}
+
+function Prepare-RunInputs {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$SourceFiles
+    )
+
+    $stagedFiles = Stage-PdfFiles -Files $SourceFiles -StagingDirectory $script:runStagingDir
+    $storedFiles = Sync-InputStorage -Files $SourceFiles -KeepExisting:$KeepInput
     Write-Log ("今回実行分の staging が完了しました: {0}" -f ($stagedFiles -join ', '))
     Write-Log ("input フォルダ同期が完了しました: {0}" -f ($storedFiles -join ', '))
+    # Give Excel's PDF connector a brief moment to observe freshly staged files on disk.
     Start-Sleep -Seconds 1
 
-    Ensure-Template -ForceRebuild:$RebuildTemplate
-    $runtimeWorkbookPath = Copy-TemplateToRuntime
+    return [pscustomobject]@{
+        StagedFiles = $stagedFiles
+        StoredFiles = $storedFiles
+    }
+}
+
+function Open-ExcelRuntimeContext {
+    param(
+        [Parameter(Mandatory = $true)][string]$RuntimeWorkbookPath,
+        [Parameter(Mandatory = $true)][string]$OutputPath,
+        [Parameter(Mandatory = $true)]$Profile
+    )
 
     Write-Log 'Excel を起動しています。'
     $excel = New-Object -ComObject Excel.Application
@@ -1298,7 +1309,7 @@ try {
     $excel.AskToUpdateLinks = $false
     $excel.AutomationSecurity = 1
 
-    $workbook = $excel.Workbooks.Open($runtimeWorkbookPath)
+    $workbook = $excel.Workbooks.Open($RuntimeWorkbookPath)
     $controlSheet = Get-OrCreateWorksheet -Workbook $workbook -WorksheetName 'Control'
     $summarySheet = Get-OrCreateWorksheet -Workbook $workbook -WorksheetName 'Summary'
     $resultSheetRef = Get-OrCreateWorksheet -Workbook $workbook -WorksheetName 'Result'
@@ -1306,47 +1317,98 @@ try {
     $resultSheetRef | Release-ComObject
     $errorsSheetRef | Release-ComObject
 
-    Set-ControlValues -Worksheet $controlSheet -StagingInputFolder $script:runStagingDir -OutputPath $OutputFile -LogPath $script:logPath -Profile $profile
+    Set-ControlValues -Worksheet $controlSheet -StagingInputFolder $script:runStagingDir -OutputPath $OutputPath -LogPath $script:logPath -Profile $Profile
     Initialize-SummarySheet -Worksheet $summarySheet
 
+    return [pscustomobject]@{
+        Excel        = $excel
+        Workbook     = $workbook
+        ControlSheet = $controlSheet
+        SummarySheet = $summarySheet
+    }
+}
+
+function Configure-WorkbookQueries {
+    param(
+        [Parameter(Mandatory = $true)]$Workbook,
+        [Parameter(Mandatory = $true)]$Profile
+    )
+
     Write-Log 'Power Query を設定しています。'
-    Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Staging' -Formula (Get-StagingQueryFormula -InputPath $script:runStagingDir -Profile $profile)
-    Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Result' -Formula (Get-ResultQueryFormula -InputPath $script:runStagingDir -Profile $profile)
-    Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Errors' -Formula (Get-ErrorsQueryFormula)
-    Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_FileSummary' -Formula (Get-FileSummaryQueryFormula)
-    Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_ErrorSummary' -Formula (Get-ErrorSummaryQueryFormula)
+    Add-OrReplaceWorkbookQuery -Workbook $Workbook -QueryName 'PDF2Excel_Staging' -Formula (Get-StagingQueryFormula -InputPath $script:runStagingDir -Profile $Profile)
+    Add-OrReplaceWorkbookQuery -Workbook $Workbook -QueryName 'PDF2Excel_Result' -Formula (Get-ResultQueryFormula -InputPath $script:runStagingDir -Profile $Profile)
+    Add-OrReplaceWorkbookQuery -Workbook $Workbook -QueryName 'PDF2Excel_Errors' -Formula (Get-ErrorsQueryFormula)
+    Add-OrReplaceWorkbookQuery -Workbook $Workbook -QueryName 'PDF2Excel_FileSummary' -Formula (Get-FileSummaryQueryFormula)
+    Add-OrReplaceWorkbookQuery -Workbook $Workbook -QueryName 'PDF2Excel_ErrorSummary' -Formula (Get-ErrorSummaryQueryFormula)
+}
+
+function Load-WorkbookOutputSheets {
+    param(
+        [Parameter(Mandatory = $true)]$Workbook
+    )
 
     Write-Log 'Result / Errors / Summary シートへ読み込んでいます。'
-    Load-WorkbookQueryToWorksheet -Workbook $workbook -WorksheetName 'Result' -QueryName 'PDF2Excel_Result' -TableName 'tblResult'
-    Load-WorkbookQueryToWorksheet -Workbook $workbook -WorksheetName 'Errors' -QueryName 'PDF2Excel_Errors' -TableName 'tblErrors'
-    Load-WorkbookQueryToWorksheet -Workbook $workbook -WorksheetName 'Summary' -QueryName 'PDF2Excel_FileSummary' -TableName 'tblFileSummary' -DestinationAddress 'A14' -ClearSheet:$false
-    Load-WorkbookQueryToWorksheet -Workbook $workbook -WorksheetName 'Summary' -QueryName 'PDF2Excel_ErrorSummary' -TableName 'tblErrorSummary' -DestinationAddress 'M14' -ClearSheet:$false
-    $summarySheet = $workbook.Worksheets.Item('Summary')
+    Load-WorkbookQueryToWorksheet -Workbook $Workbook -WorksheetName 'Result' -QueryName 'PDF2Excel_Result' -TableName 'tblResult'
+    Load-WorkbookQueryToWorksheet -Workbook $Workbook -WorksheetName 'Errors' -QueryName 'PDF2Excel_Errors' -TableName 'tblErrors'
+    Load-WorkbookQueryToWorksheet -Workbook $Workbook -WorksheetName 'Summary' -QueryName 'PDF2Excel_FileSummary' -TableName 'tblFileSummary' -DestinationAddress 'A14' -ClearSheet:$false
+    Load-WorkbookQueryToWorksheet -Workbook $Workbook -WorksheetName 'Summary' -QueryName 'PDF2Excel_ErrorSummary' -TableName 'tblErrorSummary' -DestinationAddress 'M14' -ClearSheet:$false
+}
+
+function Measure-WorkbookOutcome {
+    param(
+        [Parameter(Mandatory = $true)]$Workbook,
+        [Parameter(Mandatory = $true)][int]$SourcePdfCount
+    )
 
     $resultSummarySheet = $null
     $errorsSummarySheet = $null
+
     try {
-        $resultSummarySheet = $workbook.Worksheets.Item('Result')
-        $errorsSummarySheet = $workbook.Worksheets.Item('Errors')
+        $resultSummarySheet = $Workbook.Worksheets.Item('Result')
+        $errorsSummarySheet = $Workbook.Worksheets.Item('Errors')
         $resultRowCount = Get-DataRowCount -Worksheet $resultSummarySheet -ExpectedTableName 'tblResult'
         $errorRowCount = Get-DataRowCount -Worksheet $errorsSummarySheet -ExpectedTableName 'tblErrors'
         $failedPdfCount = $errorRowCount
-        $successPdfCount = [Math]::Max($sourceFiles.Count - $failedPdfCount, 0)
+        $successPdfCount = [Math]::Max($SourcePdfCount - $failedPdfCount, 0)
     } finally {
         $errorsSummarySheet | Release-ComObject
         $resultSummarySheet | Release-ComObject
     }
 
-    $elapsedSeconds = [int][Math]::Ceiling(((Get-Date) - $script:runStartedAt).TotalSeconds)
-    Set-ControlMetrics -Worksheet $controlSheet -SourcePdfCount $sourceFiles.Count -ResultRowCount $resultRowCount -ErrorRowCount $errorRowCount -SuccessPdfCount $successPdfCount -FailedPdfCount $failedPdfCount -ElapsedSeconds $elapsedSeconds
-    Set-SummaryMetrics -Worksheet $summarySheet -SourcePdfCount $sourceFiles.Count -SuccessPdfCount $successPdfCount -FailedPdfCount $failedPdfCount -ResultRowCount $resultRowCount -ErrorRowCount $errorRowCount -ElapsedSeconds $elapsedSeconds -Profile $profile -OutputPath $OutputFile
-    $controlSheet.Range('B6').Value2 = '出力準備完了'
-    $workbook.Save()
+    return [pscustomobject]@{
+        ResultRowCount  = $resultRowCount
+        ErrorRowCount   = $errorRowCount
+        SuccessPdfCount = $successPdfCount
+        FailedPdfCount  = $failedPdfCount
+        ElapsedSeconds  = [int][Math]::Ceiling(((Get-Date) - $script:runStartedAt).TotalSeconds)
+    }
+}
+
+function Update-WorkbookSummaryState {
+    param(
+        [Parameter(Mandatory = $true)]$ControlSheet,
+        [Parameter(Mandatory = $true)]$SummarySheet,
+        [Parameter(Mandatory = $true)]$RunPlan,
+        [Parameter(Mandatory = $true)]$Outcome
+    )
+
+    Set-ControlMetrics -Worksheet $ControlSheet -SourcePdfCount $RunPlan.SourceFiles.Count -ResultRowCount $Outcome.ResultRowCount -ErrorRowCount $Outcome.ErrorRowCount -SuccessPdfCount $Outcome.SuccessPdfCount -FailedPdfCount $Outcome.FailedPdfCount -ElapsedSeconds $Outcome.ElapsedSeconds
+    Set-SummaryMetrics -Worksheet $SummarySheet -SourcePdfCount $RunPlan.SourceFiles.Count -SuccessPdfCount $Outcome.SuccessPdfCount -FailedPdfCount $Outcome.FailedPdfCount -ResultRowCount $Outcome.ResultRowCount -ErrorRowCount $Outcome.ErrorRowCount -ElapsedSeconds $Outcome.ElapsedSeconds -Profile $RunPlan.Profile -OutputPath $RunPlan.OutputPath
+    $ControlSheet.Range('B6').Value2 = '出力準備完了'
+}
+
+function Publish-WorkbookOutput {
+    param(
+        [Parameter(Mandatory = $true)]$Excel,
+        [Parameter(Mandatory = $true)]$Workbook,
+        [Parameter(Mandatory = $true)][string]$RuntimeWorkbookPath,
+        [Parameter(Mandatory = $true)][string]$OutputPath
+    )
 
     $usedMacro = $false
     try {
         Write-Log 'Excel 出力処理を実行しています。'
-        Try-RunMacro -Excel $excel -WorkbookPath $runtimeWorkbookPath -MacroName 'ExportResultAsXlsx'
+        Try-RunMacro -Excel $Excel -WorkbookPath $RuntimeWorkbookPath -MacroName 'ExportResultAsXlsx'
         $usedMacro = $true
     } catch {
         Write-Log "VBA マクロが使えなかったため、PowerShell 側で xlsx を保存します。理由: $($_.Exception.Message)" 'WARN'
@@ -1354,57 +1416,111 @@ try {
 
     if (-not $usedMacro) {
         Write-Log 'PowerShell 側で xlsx を保存しています。'
-        Export-WorkbookDirectly -Workbook $workbook -OutputPath $OutputFile
+        Export-WorkbookDirectly -Workbook $Workbook -OutputPath $OutputPath
     }
+}
 
-    Write-Log "処理が完了しました: $OutputFile"
-    Show-RunSummary -SourceFiles $sourceFiles -OutputPath $OutputFile -Profile $profile -ResultRows $resultRowCount -ErrorRows $errorRowCount -SuccessPdfCount $successPdfCount -FailedPdfCount $failedPdfCount -ElapsedSeconds $elapsedSeconds
-
-    if ($OpenOutput) {
-        Invoke-Item -LiteralPath $OutputFile
-    }
-
-    if ($OpenOutputFolder) {
-        Invoke-Item -LiteralPath $outputParent
-    }
-} catch {
-    $runError = Resolve-RunErrorInfo -Message $_.Exception.Message
-    Write-Log ("処理に失敗しました: [{0}] [{1}] {2}" -f $runError.ErrorCategory, $runError.ErrorCode, $_.Exception.Message) 'ERROR'
-    if ($controlSheet) {
-        try {
-            $controlSheet.Range('B6').Value2 = '失敗'
-            $workbook.Save()
-        } catch {
-        }
-    }
-    throw
-} finally {
-    if ($workbook) {
-        try {
-            $workbook.Close($false)
-        } catch {
-        }
-    }
-    if ($excel) {
-        try {
-            $excel.Quit()
-        } catch {
-        }
-    }
-
-    foreach ($comObject in @($summarySheet, $controlSheet, $workbook, $excel)) {
-        try {
-            $comObject | Release-ComObject
-        } catch {
-        }
-    }
-
+function Finalize-RunWorkspace {
     if (Test-Path -LiteralPath $script:runWorkspaceDir) {
         $deleted = Remove-PathWithRetry -Path $script:runWorkspaceDir
         if (-not $deleted) {
             Write-Log "Run workspace could not be removed: $script:runWorkspaceDir" 'WARN'
         }
     }
+}
+
+function Close-ExcelRuntimeContext {
+    param(
+        $RuntimeContext
+    )
+
+    if ($null -eq $RuntimeContext) {
+        return
+    }
+
+    if ($RuntimeContext.Workbook) {
+        try {
+            $RuntimeContext.Workbook.Close($false)
+        } catch {
+        }
+    }
+    if ($RuntimeContext.Excel) {
+        try {
+            $RuntimeContext.Excel.Quit()
+        } catch {
+        }
+    }
+
+    foreach ($comObject in @($RuntimeContext.SummarySheet, $RuntimeContext.ControlSheet, $RuntimeContext.Workbook, $RuntimeContext.Excel)) {
+        try {
+            $comObject | Release-ComObject
+        } catch {
+        }
+    }
+}
+
+if ($SkipMain) {
+    return
+}
+
+$runtimeContext = $null
+$runtimeWorkbookPath = $null
+$runPlan = $null
+$resultRowCount = 0
+$errorRowCount = 0
+$successPdfCount = 0
+$failedPdfCount = 0
+$elapsedSeconds = 0
+
+try {
+    Initialize-RunWorkspace
+    Write-Banner
+    Write-Log '入力 PDF を確認しています。'
+    $runPlan = Resolve-ExecutionPlan
+    Prepare-RunInputs -SourceFiles $runPlan.SourceFiles | Out-Null
+
+    Ensure-Template -ForceRebuild:$RebuildTemplate
+    $runtimeWorkbookPath = Copy-TemplateToRuntime
+    $runtimeContext = Open-ExcelRuntimeContext -RuntimeWorkbookPath $runtimeWorkbookPath -OutputPath $runPlan.OutputPath -Profile $runPlan.Profile
+    Configure-WorkbookQueries -Workbook $runtimeContext.Workbook -Profile $runPlan.Profile
+    Load-WorkbookOutputSheets -Workbook $runtimeContext.Workbook
+    $runtimeContext.SummarySheet = $runtimeContext.Workbook.Worksheets.Item('Summary')
+
+    $outcome = Measure-WorkbookOutcome -Workbook $runtimeContext.Workbook -SourcePdfCount $runPlan.SourceFiles.Count
+    $resultRowCount = $outcome.ResultRowCount
+    $errorRowCount = $outcome.ErrorRowCount
+    $successPdfCount = $outcome.SuccessPdfCount
+    $failedPdfCount = $outcome.FailedPdfCount
+    $elapsedSeconds = $outcome.ElapsedSeconds
+
+    Update-WorkbookSummaryState -ControlSheet $runtimeContext.ControlSheet -SummarySheet $runtimeContext.SummarySheet -RunPlan $runPlan -Outcome $outcome
+    $runtimeContext.Workbook.Save()
+    Publish-WorkbookOutput -Excel $runtimeContext.Excel -Workbook $runtimeContext.Workbook -RuntimeWorkbookPath $runtimeWorkbookPath -OutputPath $runPlan.OutputPath
+
+    Write-Log "処理が完了しました: $($runPlan.OutputPath)"
+    Show-RunSummary -SourceFiles $runPlan.SourceFiles -OutputPath $runPlan.OutputPath -Profile $runPlan.Profile -ResultRows $resultRowCount -ErrorRows $errorRowCount -SuccessPdfCount $successPdfCount -FailedPdfCount $failedPdfCount -ElapsedSeconds $elapsedSeconds
+
+    if ($OpenOutput) {
+        Invoke-Item -LiteralPath $runPlan.OutputPath
+    }
+
+    if ($OpenOutputFolder) {
+        Invoke-Item -LiteralPath $runPlan.OutputParent
+    }
+} catch {
+    $runError = Resolve-RunErrorInfo -Message $_.Exception.Message
+    Write-Log ("処理に失敗しました: [{0}] [{1}] {2}" -f $runError.ErrorCategory, $runError.ErrorCode, $_.Exception.Message) 'ERROR'
+    if ($runtimeContext -and $runtimeContext.ControlSheet) {
+        try {
+            $runtimeContext.ControlSheet.Range('B6').Value2 = '失敗'
+            $runtimeContext.Workbook.Save()
+        } catch {
+        }
+    }
+    throw
+} finally {
+    Close-ExcelRuntimeContext -RuntimeContext $runtimeContext
+    Finalize-RunWorkspace
     Release-RunLock
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
