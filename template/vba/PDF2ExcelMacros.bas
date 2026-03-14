@@ -99,5 +99,3 @@ EH:
     Application.DisplayAlerts = True
     Err.Raise Err.Number, "ExportResultAsXlsx", Err.Description
 End Sub
-
-

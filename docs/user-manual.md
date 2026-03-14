@@ -6,10 +6,10 @@
 
 補助資料:
 
-- 文書一覧: [index.md](C:\Work_Codex\PDF2Excel\docs\index.md)
-- 構成ガイド: [project-layout.md](C:\Work_Codex\PDF2Excel\docs\project-layout.md)
-- 障害対応: [troubleshooting.md](C:\Work_Codex\PDF2Excel\docs\troubleshooting.md)
-- サンプルPDF: `C:\Work_Codex\PDF2Excel\samples\pdf`
+- 文書一覧: [index.md](index.md)
+- 構成ガイド: [project-layout.md](project-layout.md)
+- 障害対応: [troubleshooting.md](troubleshooting.md)
+- サンプルPDF: `samples/pdf`
 
 ## 1. このツールの概要
 
@@ -37,7 +37,7 @@
 
 ## 2. まずこれだけ見れば使える最短手順
 
-1. [run_pdf2excel.bat](C:\Work_Codex\PDF2Excel\run_pdf2excel.bat) をダブルクリックします。
+1. [run_pdf2excel.bat](../run_pdf2excel.bat) をダブルクリックします。
 2. 表示されたメニューで `1` を押します。
 3. 変換したい PDF を複数選びます。
 4. 出力する Excel ファイルの保存先を選びます。
@@ -61,7 +61,7 @@
 ### [1] PDFファイルを選んで変換
 
 - もっともかんたんな使い方です。
-- 複数のフォルダにある PDF を一度に選べます。
+- 1つの選択ダイアログから複数の PDF を選べます。
 - 毎回対象ファイルが変わる場合に向いています。
 
 ### [2] PDFフォルダを選んで変換
@@ -202,7 +202,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
 ## 6. 帳票プロファイルの使い方
 
 帳票プロファイルは、帳票ごとの抽出条件をまとめた JSON です。  
-既定では `C:\Work_Codex\PDF2Excel\config\profiles\default.json` を使います。
+既定では `config/profiles/default.json` を使います。
 
 プロファイルで主に調整する項目:
 
@@ -384,17 +384,18 @@ OCR 前提の画像 PDF ではなく、文字を選択できるテキスト PDF 
 ## 12. ファイルとログの場所
 
 - 実行ログ:
-  - `C:\Work_Codex\PDF2Excel\logs`
+  - `logs`
+  - 古いログは 30 日超または 200 件超で自動整理されます。
 - 出力された Excel:
-  - `C:\Work_Codex\PDF2Excel\output`
+- `output`
 - プロファイル:
-  - `C:\Work_Codex\PDF2Excel\config\profiles`
+- `config/profiles`
 - サンプル PDF:
-  - `C:\Work_Codex\PDF2Excel\samples\pdf`
+- `samples/pdf`
 - テンプレート:
-  - `C:\Work_Codex\PDF2Excel\template\PDF2Excel_Converter.xlsm`
+- `template/PDF2Excel_Converter.xlsm`
 - テスト結果レポート:
-  - [test-report.md](C:\Work_Codex\PDF2Excel\reports\test-report.md)
+- [test-report.md](../reports/test-report.md)
 
 ## 13. テスト済みの内容
 
@@ -410,7 +411,7 @@ OCR 前提の画像 PDF ではなく、文字を選択できるテキスト PDF 
 - 一時ファイル清掃
 - Excel プロセス残留なし
 
-詳しい結果は [test-report.md](C:\Work_Codex\PDF2Excel\reports\test-report.md) を参照してください。
+詳しい結果は [test-report.md](../reports/test-report.md) を参照してください。
 
 ## 14. 最後に
 

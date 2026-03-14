@@ -20,6 +20,10 @@
   - Excel マクロ
 - [PDF2ExcelMacros.sjis.bas](../template/vba/PDF2ExcelMacros.sjis.bas)
   - Excel マクロの Shift_JIS ミラー
+- [PDF2ExcelTemplateBuilder.bas](../template/vba/PDF2ExcelTemplateBuilder.bas)
+  - 空ブックからテンプレート相当のシートと基本マクロを生成するブートストラップ用 VBA
+- [PDF2ExcelTemplateBuilder.sjis.bas](../template/vba/PDF2ExcelTemplateBuilder.sjis.bas)
+  - ブートストラップ用 VBA の Shift_JIS ミラー
 - [run_integration_tests.ps1](../tests/run_integration_tests.ps1)
   - 統合テスト
 - [run_unit_tests.ps1](../tests/run_unit_tests.ps1)
@@ -31,6 +35,7 @@
 - 実行時生成物は `input`、`output`、`logs`、`tests/results` に閉じ込める
 - ドキュメント更新をコード変更と同じタイミングで行う
 - 帳票認識精度の変更は、実PDFを使った目視確認まで行う
+- `logs` は 30 日超または 200 件超で自動整理される前提で運用する
 
 ## よくある改修と見るべき場所
 
@@ -55,13 +60,26 @@
 - [build_excel_template.ps1](../scripts/build_excel_template.ps1)
 - [PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas)
 - [PDF2ExcelMacros.sjis.bas](../template/vba/PDF2ExcelMacros.sjis.bas)
+- [PDF2ExcelTemplateBuilder.bas](../template/vba/PDF2ExcelTemplateBuilder.bas)
+- [PDF2ExcelTemplateBuilder.sjis.bas](../template/vba/PDF2ExcelTemplateBuilder.sjis.bas)
 
 手順:
 
 1. `build_excel_template.ps1` または VBA を修正する
 2. テンプレートを再生成する
-3. `template/PDF2Excel_Converter.xlsm` と `PDF2ExcelMacros.sjis.bas` の更新を確認する
+3. `template/PDF2Excel_Converter.xlsm` と `template/vba/*.sjis.bas` の更新を確認する
 4. ユニットテストと統合テストを実行する
+
+空ブックから手動で起こす場合:
+
+1. マクロ有効ブック (`.xlsm`) を新規作成する
+2. VBA エディタで `PDF2ExcelTemplateBuilder.sjis.bas` をインポートする
+3. `BuildPDF2ExcelTemplateInActiveWorkbook` を実行する
+4. 必要に応じて `template/PDF2Excel_Converter.xlsm` として保存する
+
+注意:
+
+- このブートストラップ用 VBA は空ブック専用です。既存の `PDF2Excel_Converter.xlsm` へ重ねてインポートしないでください。
 
 テンプレート再生成:
 

@@ -6,7 +6,7 @@
 
 ## 目的
 
-このファイルは、`C:\Work_Codex\PDF2Excel` の中身を誰でも迷わず理解できるようにするための案内です。
+このファイルは、PDF2Excel プロジェクトルートの中身を誰でも迷わず理解できるようにするための案内です。
 
 ## ひと目でわかる構成
 
@@ -57,6 +57,10 @@ PDF2Excel
   - Excel 側のマクロです。
 - [PDF2ExcelMacros.sjis.bas](../template/vba/PDF2ExcelMacros.sjis.bas)
   - Shift_JIS 互換用のミラーです。
+- [PDF2ExcelTemplateBuilder.bas](../template/vba/PDF2ExcelTemplateBuilder.bas)
+  - 空ブックをテンプレート相当に初期化する VBA です。
+- [PDF2ExcelTemplateBuilder.sjis.bas](../template/vba/PDF2ExcelTemplateBuilder.sjis.bas)
+  - その Shift_JIS 互換用ミラーです。
 - [run_integration_tests.ps1](../tests/run_integration_tests.ps1)
   - 統合テストです。
 - [run_unit_tests.ps1](../tests/run_unit_tests.ps1)
@@ -70,7 +74,7 @@ PDF2Excel
 
 - `input` は保管置き場です。実行時の抽出対象は `output/runtime/runs/<run-id>/staging` に分離されます。
 - `output` は成果物置き場です。必要なものだけ残してください。
-- `logs` は実行ごとに増えるため、不要になったら消して構いません。
+- `logs` は実行ごとに増えますが、30日超または200件超の古いログは自動整理されます。
 - `config/profiles` は帳票ごとの設定置き場です。新しい帳票を増やすときはここへ JSON を追加します。
 - `tests/results` と `tests/work` はテストの生成物です。通常は空で問題ありません。
 

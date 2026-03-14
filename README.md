@@ -15,6 +15,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - 障害対応: [troubleshooting.md](docs/troubleshooting.md)
 - 保守手順: [maintenance-guide.md](docs/maintenance-guide.md)
 - 改善提案: [improvement-proposals.md](docs/improvement-proposals.md)
+- 変更履歴: [CHANGELOG.md](CHANGELOG.md)
 - Copilot 実装委任: [copilot-implementation-report.md](docs/copilot-implementation-report.md)
 - 要件定義書: [requirements-specification.md](docs/requirements-specification.md)
 - 技術説明書: [technical-description.md](docs/technical-description.md)
@@ -51,6 +52,8 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
   - `template/PDF2Excel_Converter.xlsm` を自動生成します。
 - `template/vba/PDF2ExcelMacros.bas`
   - Excel テンプレートへ取り込む VBA モジュールです。
+- `template/vba/PDF2ExcelTemplateBuilder.bas`
+  - 空の Excel ブックに取り込んで実行すると、テンプレート相当のシート構成と基本マクロを生成するブートストラップ用 VBA モジュールです。
 - `config/profiles/`
   - 帳票プロファイルを置きます。既定は `default.json` です。
 - `input/`
@@ -58,7 +61,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `output/`
   - 出力された `xlsx` を保存します。
 - `logs/`
-  - 実行ログを保存します。
+  - 実行ログを保存します。30日超または200件超の古いログは自動整理されます。
 - `output/runtime/`
   - 実行中の一時領域です。`runs/` 配下に実行単位の staging / runtime を作成し、通常は実行ごとに自動クリーンアップされます。
 - `tests/`
@@ -141,6 +144,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
 - 列数が 30 を超えると `Errors` シートへ退避します。
 - 列数が 30 未満のときは空列を補完して 30 列へ揃えます。
 - マクロはテンプレート作成時に自動で取り込みます。PowerShell 側でも同等の fallback 処理を持たせているため、マクロ実行に失敗しても処理継続できる設計です。
+- 空ブックからテンプレートを作りたい場合は `template/vba/PDF2ExcelTemplateBuilder.bas` または `template/vba/PDF2ExcelTemplateBuilder.sjis.bas` を VBA エディタへインポートし、`BuildPDF2ExcelTemplateInActiveWorkbook` を実行してください。
+- `PDF2ExcelTemplateBuilder.*.bas` は空ブック専用です。既存の `PDF2Excel_Converter.xlsm` へ追加インポートすると同名マクロが重複します。
 - 同名PDFを別フォルダから同時投入する運用は非対応です。ファイル名が衝突した場合はエラーで止めます。
 - `-KeepInput` は `input` フォルダの保管内容を残すためのオプションです。今回の変換対象は毎回専用 staging に切り出して処理するため、過去PDFが混ざることはありません。
 - ツールは同時に 1 実行だけ許可します。別実行が動作中の場合は `RUN_LOCKED` として即時停止します。

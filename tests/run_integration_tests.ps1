@@ -274,27 +274,27 @@ function New-ReportMarkdown {
     $testEnv = "Windows / PowerShell $($PSVersionTable.PSVersion) / Excel(M365) COM"
 
     $lines = @(
-        '# PDF2Excel Test Report',
+        '# PDF2Excel 統合テストレポート',
         '',
-        ('- CreatedAt: {0} JST' -f $StartedAt.ToString("yyyy-MM-dd HH:mm")),
-        '- Author: Codex (GPT-5)',
-        ('- UpdatedAt: {0}' -f $FinishedAt.ToString("yyyy-MM-dd")),
+        ('- 作成日: {0} JST' -f $StartedAt.ToString("yyyy-MM-dd HH:mm")),
+        '- 作成者: Codex (GPT-5)',
+        ('- 更新日: {0}' -f $FinishedAt.ToString("yyyy-MM-dd")),
         '',
-        '## Summary',
+        '## サマリー',
         '',
-        ('- ExecutedAt: {0} JST - {1} JST' -f $StartedAt.ToString("yyyy-MM-dd HH:mm:ss"), $FinishedAt.ToString("yyyy-MM-dd HH:mm:ss")),
-        ('- Environment: {0}' -f $testEnv),
-        '- Target: Local PowerShell / BAT / Excel(M365) PDF2Excel batch conversion',
-        ('- Result: {0} passed / {1} failed' -f $passCount, $failCount),
-        ('- TotalDurationSeconds: {0}' -f $duration),
-        ("- ErrorsPresent: {0}" -f $(if ($failCount -eq 0) { 'No' } else { 'Yes' })),
-        ("- FailureSummary: {0}" -f $(if ($failCount -eq 0) { 'None' } else { 'See failed scenarios below' })),
+        ('- 実施日時: {0} JST - {1} JST' -f $StartedAt.ToString("yyyy-MM-dd HH:mm:ss"), $FinishedAt.ToString("yyyy-MM-dd HH:mm:ss")),
+        ('- 対象環境: {0}' -f $testEnv),
+        '- 対象機能: PowerShell / BAT / Excel(M365) による PDF2Excel 一括変換',
+        ('- 結果概要: {0} 件成功 / {1} 件失敗' -f $passCount, $failCount),
+        ('- 所要時間: {0} 秒' -f $duration),
+        ("- エラー有無: {0}" -f $(if ($failCount -eq 0) { 'なし' } else { 'あり' })),
+        ("- 失敗概要: {0}" -f $(if ($failCount -eq 0) { 'なし' } else { '失敗シナリオ一覧を参照' })),
         '',
-        '## Scenarios',
+        '## シナリオ別結果',
         ''
     )
 
-    $lines += '| No | Scenario | Status | Duration | Notes |'
+    $lines += '| No | シナリオ | 結果 | 所要時間 | 補足 |'
     $lines += '| --- | --- | --- | --- | --- |'
 
     $index = 1
@@ -305,26 +305,26 @@ function New-ReportMarkdown {
     }
 
     $lines += ''
-    $lines += '## Verdict'
+    $lines += '## 総評'
     $lines += ''
     if ($failCount -eq 0) {
-        $lines += '- All major normal, error, and operational scenarios passed.'
-        $lines += '- Each scenario ran in an isolated child process with a timeout guard.'
-        $lines += '- No extra Excel processes remained after execution.'
-        $lines += '- No temporary run workspace remained under `output/runtime/runs`.'
+        $lines += '- 主要な正常系、異常系、運用系シナリオはすべて成功しました。'
+        $lines += '- 各シナリオは子プロセス隔離とタイムアウト監視付きで実行されました。'
+        $lines += '- 実行後に余分な Excel プロセスは残りませんでした。'
+        $lines += '- `output/runtime/runs` 配下に一時ワークスペースは残りませんでした。'
     } else {
-        $lines += '- Some tests failed. Check the scenario table above.'
+        $lines += '- 一部のテストが失敗しました。上記のシナリオ一覧を確認してください。'
     }
 
     $lines += ''
-    $lines += '## Notes'
+    $lines += '## 補足'
     $lines += ''
-    $lines += '- Extraction accuracy still depends on `Pdf.Tables`; verify with real business PDFs.'
-    $lines += '- Test PDFs were generated from Excel as text PDFs.'
+    $lines += '- 抽出精度は引き続き `Pdf.Tables` に依存するため、実業務PDFでの確認が必要です。'
+    $lines += '- テスト用 PDF は Excel から生成したテキスト PDF を使用しています。'
 
     if ($failCount -gt 0) {
         $lines += ''
-        $lines += '## Failure Details'
+        $lines += '## 失敗詳細'
         $lines += ''
         foreach ($result in $TestResults | Where-Object Status -eq 'FAIL') {
             $lines += "- $($result.Name): $($result.ErrorMessage)"
@@ -768,6 +768,6 @@ if ($failed.Count -gt 0) {
     Write-Error ("Integration tests failed: " + ($failed.Name -join ', '))
 }
 
-Write-Host "Integration tests passed: $(@($testResults | Where-Object Status -eq 'PASS').Count) / $($testResults.Count)"
-Write-Host "Markdown report: $markdownReportPath"
-Write-Host "JSON report: $jsonReportPath"
+Write-Host "統合テスト成功: $(@($testResults | Where-Object Status -eq 'PASS').Count) / $($testResults.Count)"
+Write-Host "Markdown レポート: $markdownReportPath"
+Write-Host "JSON レポート: $jsonReportPath"

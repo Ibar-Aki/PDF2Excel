@@ -10,7 +10,7 @@
 
 ## まず最初に確認すること
 
-1. [Control シート](C:\Work_Codex\PDF2Excel\docs\user-manual.md) の状態、件数、ログパスを確認する
+1. [Control シート](user-manual.md) の状態、件数、ログパスを確認する
 2. `Errors` シートに何が出ているか確認する
 3. `logs` フォルダの最新ログを開く
 4. 元PDFがテキスト選択可能か確認する
@@ -143,7 +143,7 @@
 
 - Excel を手動ですべて閉じる
 - `output/runtime` が空になるか確認する
-- 再現する場合は [test-report.md](C:\Work_Codex\PDF2Excel\reports\test-report.md) とログをあわせて確認する
+- 再現する場合は [test-report.md](../reports/test-report.md) とログをあわせて確認する
 
 ### 7. 実行前チェックの内容が想定と違う
 
@@ -168,6 +168,11 @@
   - スクリプトまたは Excel 実行時の予期しない失敗です。
 
 ## ログの見方
+
+補足:
+
+- `logs` フォルダでは 30 日超または 200 件超の古いログが自動整理されます。
+- 長期保管が必要なログは別の場所へ退避してください。
 
 ログに出やすいメッセージ例:
 

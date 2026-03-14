@@ -13,6 +13,8 @@
 
 - [README.md](../README.md)
   - 最短で全体像をつかむための概要です。
+- [CHANGELOG.md](../CHANGELOG.md)
+  - 版ごとの主な変更点を確認できます。
 - [user-manual.md](user-manual.md)
   - 初回利用、日常運用、確認ポイントまで含めた詳しい手順書です。
 - [project-layout.md](project-layout.md)

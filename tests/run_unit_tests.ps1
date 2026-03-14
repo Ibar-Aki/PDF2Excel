@@ -68,24 +68,24 @@ function New-UnitReportMarkdown {
     $failCount = @($TestResults | Where-Object Status -eq 'FAIL').Count
 
     $lines = @(
-        '# PDF2Excel Unit Test Report',
+        '# PDF2Excel ユニットテストレポート',
         '',
         ('- 作成日: {0} JST' -f $StartedAt.ToString('yyyy-MM-dd HH:mm')),
         '- 作成者: Codex (GPT-5)',
         ('- 更新日: {0}' -f $FinishedAt.ToString('yyyy-MM-dd')),
         '',
-        '## Summary',
+        '## サマリー',
         '',
         ('- 実施日時: {0} JST - {1} JST' -f $StartedAt.ToString('yyyy-MM-dd HH:mm:ss'), $FinishedAt.ToString('yyyy-MM-dd HH:mm:ss')),
         ('- 対象環境: Windows / PowerShell {0}' -f $PSVersionTable.PSVersion),
         '- 対象機能: 共通関数、プロファイル解決、Power Query 文字列生成',
-        ('- 結果概要: {0} passed / {1} failed' -f $passCount, $failCount),
+        ('- 結果概要: {0} 件成功 / {1} 件失敗' -f $passCount, $failCount),
         ('- 所要時間: {0} 秒' -f $duration),
         ("- エラー有無: {0}" -f $(if ($failCount -eq 0) { 'なし' } else { 'あり' })),
         '',
-        '## Cases',
+        '## テスト結果',
         '',
-        '| No | Test | Status | Duration | Notes |',
+        '| No | テスト | 結果 | 所要時間 | 補足 |',
         '| --- | --- | --- | --- | --- |'
     )
 
@@ -98,7 +98,7 @@ function New-UnitReportMarkdown {
 
     if ($failCount -gt 0) {
         $lines += ''
-        $lines += '## Failure Details'
+        $lines += '## 失敗詳細'
         $lines += ''
         foreach ($result in $TestResults | Where-Object Status -eq 'FAIL') {
             $lines += "- $($result.Name): $($result.ErrorMessage)"

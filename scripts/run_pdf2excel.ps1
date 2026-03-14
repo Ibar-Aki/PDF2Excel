@@ -18,7 +18,6 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Add-Type -AssemblyName System.Windows.Forms
 . (Join-Path $PSScriptRoot 'pdf2excel.common.ps1')
 
 $script:runStartedAt = Get-Date
@@ -129,6 +128,14 @@ function Show-RunSummary {
     Write-Host ''
 }
 
+function Ensure-UiAssembliesLoaded {
+    if ('System.Windows.Forms.Form' -as [type]) {
+        return
+    }
+
+    Add-Type -AssemblyName System.Windows.Forms
+}
+
 function Remove-PathWithRetry {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -176,6 +183,40 @@ function Ensure-Workspace {
         $profilesDir
     )) {
         Ensure-Directory -Path $path
+    }
+}
+
+function Rotate-LogFiles {
+    param(
+        [int]$RetentionDays = 30,
+        [int]$MaxFiles = 200
+    )
+
+    if (-not (Test-Path -LiteralPath $logsDir)) {
+        return [pscustomobject]@{ RemovedByAge = 0; RemovedByCount = 0 }
+    }
+
+    $removedByAge = 0
+    $removedByCount = 0
+    $cutoff = (Get-Date).AddDays(-1 * $RetentionDays)
+    $logFiles = @(Get-ChildItem -LiteralPath $logsDir -Filter 'run_*.log' -File -ErrorAction SilentlyContinue)
+
+    foreach ($oldFile in @($logFiles | Where-Object LastWriteTime -lt $cutoff)) {
+        Remove-Item -LiteralPath $oldFile.FullName -Force -ErrorAction SilentlyContinue
+        $removedByAge += 1
+    }
+
+    $remaining = @(Get-ChildItem -LiteralPath $logsDir -Filter 'run_*.log' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+    if ($remaining.Count -gt $MaxFiles) {
+        foreach ($extraFile in @($remaining | Select-Object -Skip $MaxFiles)) {
+            Remove-Item -LiteralPath $extraFile.FullName -Force -ErrorAction SilentlyContinue
+            $removedByCount += 1
+        }
+    }
+
+    return [pscustomobject]@{
+        RemovedByAge   = $removedByAge
+        RemovedByCount = $removedByCount
     }
 }
 
@@ -254,6 +295,7 @@ function Release-RunLock {
 }
 
 function Select-InputFolderDialog {
+    Ensure-UiAssembliesLoaded
     $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
     $dialog.Description = 'PDF が入っているフォルダを選択してください。'
     $dialog.ShowNewFolderButton = $false
@@ -270,6 +312,7 @@ function Select-InputFolderDialog {
 # ============================================================
 
 function Select-PdfFiles {
+    Ensure-UiAssembliesLoaded
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
     $dialog.Title = '変換したい PDF を選択してください'
     $dialog.Filter = 'PDF files (*.pdf)|*.pdf'
@@ -285,6 +328,7 @@ function Select-PdfFiles {
 function Select-OutputFileDialog {
     param([Parameter(Mandatory = $true)][string]$DefaultOutputPath)
 
+    Ensure-UiAssembliesLoaded
     $dialog = New-Object System.Windows.Forms.SaveFileDialog
     $dialog.Title = '出力する Excel ファイルの保存先を選択してください'
     $dialog.Filter = 'Excel workbook (*.xlsx)|*.xlsx'
@@ -1269,7 +1313,11 @@ function Resolve-ExecutionPlan {
 
 function Initialize-RunWorkspace {
     Ensure-Workspace
+    $rotation = Rotate-LogFiles
     Set-Content -LiteralPath $script:logPath -Value "PDF2Excel run started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Encoding UTF8
+    if ($rotation.RemovedByAge -gt 0 -or $rotation.RemovedByCount -gt 0) {
+        Write-Log ("ログ整理を実行しました: 期限切れ削除={0}, 件数調整削除={1}" -f $rotation.RemovedByAge, $rotation.RemovedByCount)
+    }
     Acquire-RunLock
     Compact-RuntimeArtifacts
     Ensure-Directory -Path $script:runWorkspaceDir

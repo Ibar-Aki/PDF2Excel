@@ -1,7 +1,9 @@
 ﻿param(
     [string]$TemplatePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\PDF2Excel_Converter.xlsm'),
     [string]$VbaModulePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelMacros.bas'),
-    [string]$VbaModuleShiftJisPath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelMacros.sjis.bas')
+    [string]$VbaModuleShiftJisPath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelMacros.sjis.bas'),
+    [string]$TemplateBuilderModulePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelTemplateBuilder.bas'),
+    [string]$TemplateBuilderModuleShiftJisPath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelTemplateBuilder.sjis.bas')
 )
 
 Set-StrictMode -Version Latest
@@ -139,7 +141,9 @@ function Import-VbaModule {
 
 Ensure-Directory -Path (Split-Path -Path $TemplatePath -Parent)
 Ensure-Directory -Path (Split-Path -Path $VbaModuleShiftJisPath -Parent)
+Ensure-Directory -Path (Split-Path -Path $TemplateBuilderModuleShiftJisPath -Parent)
 Sync-VbaModuleEncodingMirror -Utf8Path $VbaModulePath -ShiftJisPath $VbaModuleShiftJisPath
+Sync-VbaModuleEncodingMirror -Utf8Path $TemplateBuilderModulePath -ShiftJisPath $TemplateBuilderModuleShiftJisPath
 
 $excel = $null
 $workbook = $null
@@ -172,6 +176,7 @@ try {
 
     Write-Host "Template created: $TemplatePath"
     Write-Host "Shift_JIS VBA mirror: $VbaModuleShiftJisPath"
+    Write-Host "Shift_JIS bootstrap VBA mirror: $TemplateBuilderModuleShiftJisPath"
 } finally {
     if ($workbook) {
         try {
