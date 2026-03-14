@@ -9,22 +9,22 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 
 関連ドキュメント:
 
-- 文書一覧: [index.md](C:\Work_Codex\PDF2Excel\docs\index.md)
-- 詳しい使い方: [user-manual.md](C:\Work_Codex\PDF2Excel\docs\user-manual.md)
-- 構成説明: [project-layout.md](C:\Work_Codex\PDF2Excel\docs\project-layout.md)
-- 障害対応: [troubleshooting.md](C:\Work_Codex\PDF2Excel\docs\troubleshooting.md)
-- 保守手順: [maintenance-guide.md](C:\Work_Codex\PDF2Excel\docs\maintenance-guide.md)
-- 改善提案: [improvement-proposals.md](C:\Work_Codex\PDF2Excel\docs\improvement-proposals.md)
-- Copilot 実装委任: [copilot-implementation-report.md](C:\Work_Codex\PDF2Excel\docs\copilot-implementation-report.md)
-- 要件定義書: [requirements-specification.md](C:\Work_Codex\PDF2Excel\docs\requirements-specification.md)
-- 技術説明書: [technical-description.md](C:\Work_Codex\PDF2Excel\docs\technical-description.md)
+- 文書一覧: [index.md](docs/index.md)
+- 詳しい使い方: [user-manual.md](docs/user-manual.md)
+- 構成説明: [project-layout.md](docs/project-layout.md)
+- 障害対応: [troubleshooting.md](docs/troubleshooting.md)
+- 保守手順: [maintenance-guide.md](docs/maintenance-guide.md)
+- 改善提案: [improvement-proposals.md](docs/improvement-proposals.md)
+- Copilot 実装委任: [copilot-implementation-report.md](docs/copilot-implementation-report.md)
+- 要件定義書: [requirements-specification.md](docs/requirements-specification.md)
+- 技術説明書: [technical-description.md](docs/technical-description.md)
 
-詳しい使い方は [ユーザーマニュアル](C:\Work_Codex\PDF2Excel\docs\user-manual.md) を参照してください。
-フォルダ構成は [project-layout.md](C:\Work_Codex\PDF2Excel\docs\project-layout.md) を参照してください。
+詳しい使い方は [ユーザーマニュアル](docs/user-manual.md) を参照してください。
+フォルダ構成は [project-layout.md](docs/project-layout.md) を参照してください。
 
 ## はじめに
 
-最初に使うときは、[run_pdf2excel.bat](C:\Work_Codex\PDF2Excel\run_pdf2excel.bat) をダブルクリックしてください。  
+最初に使うときは、[run_pdf2excel.bat](run_pdf2excel.bat) をダブルクリックしてください。  
 画面に出る番号メニューから選ぶだけで変換できます。
 
 - `1`: PDFファイルを複数選んで変換
@@ -85,7 +85,7 @@ PDF2Excel
 
 ## 使い方
 
-1. [run_pdf2excel.bat](C:\Work_Codex\PDF2Excel\run_pdf2excel.bat) を実行します。
+1. [run_pdf2excel.bat](run_pdf2excel.bat) を実行します。
 2. メニューで `1` または `2` を選びます。
 3. PDF または PDF フォルダを選択します。
 4. 保存先を選びます。
@@ -147,7 +147,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
 
 ## テスト
 
-統合テストは [run_integration_tests.ps1](C:\Work_Codex\PDF2Excel\tests\run_integration_tests.ps1) で実行できます。
+統合テストは [run_integration_tests.ps1](tests/run_integration_tests.ps1) で実行できます。
+
+ユニットテストは [run_unit_tests.ps1](tests/run_unit_tests.ps1) で実行できます。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_integration_tests.ps1
@@ -155,5 +157,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_integration_test
 
 結果は次に出力されます。
 
-- レポート: [test-report.md](C:\Work_Codex\PDF2Excel\reports\test-report.md)
-- JSON: [integration-test-results.json](C:\Work_Codex\PDF2Excel\tests\results\integration-test-results.json)
+- レポート: [test-report.md](reports/test-report.md)
+- JSON: [integration-test-results.json](tests/results/integration-test-results.json)
+- ユニットテストレポート: [unit-test-report.md](reports/unit-test-report.md)

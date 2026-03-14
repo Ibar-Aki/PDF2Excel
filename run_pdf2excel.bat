@@ -94,5 +94,3 @@ if "%INTERACTIVE_MODE%"=="1" pause
 
 :END
 exit /b %EXIT_CODE%
-
-

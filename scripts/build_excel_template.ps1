@@ -1,27 +1,27 @@
 ﻿param(
     [string]$TemplatePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\PDF2Excel_Converter.xlsm'),
-    [string]$VbaModulePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelMacros.bas')
+    [string]$VbaModulePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelMacros.bas'),
+    [string]$VbaModuleShiftJisPath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelMacros.sjis.bas')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Release-ComObject {
-    param([Parameter(ValueFromPipeline = $true)]$InputObject)
+. (Join-Path $PSScriptRoot 'pdf2excel.common.ps1')
 
-    process {
-        if ($null -ne $InputObject -and [System.Runtime.InteropServices.Marshal]::IsComObject($InputObject)) {
-            [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($InputObject)
-        }
+function Sync-VbaModuleEncodingMirror {
+    param(
+        [Parameter(Mandatory = $true)][string]$Utf8Path,
+        [Parameter(Mandatory = $true)][string]$ShiftJisPath
+    )
+
+    if (-not (Test-Path -LiteralPath $Utf8Path)) {
+        throw "VBA module file was not found: $Utf8Path"
     }
-}
 
-function Ensure-Directory {
-    param([Parameter(Mandatory = $true)][string]$Path)
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        New-Item -ItemType Directory -Path $Path -Force | Out-Null
-    }
+    $moduleText = Get-Content -LiteralPath $Utf8Path -Raw -Encoding UTF8
+    $encoding = [System.Text.Encoding]::GetEncoding(932)
+    [System.IO.File]::WriteAllBytes($ShiftJisPath, $encoding.GetBytes($moduleText))
 }
 
 function Ensure-WorkbookHasRequiredSheets {
@@ -163,6 +163,8 @@ function Import-VbaModule {
 }
 
 Ensure-Directory -Path (Split-Path -Path $TemplatePath -Parent)
+Ensure-Directory -Path (Split-Path -Path $VbaModuleShiftJisPath -Parent)
+Sync-VbaModuleEncodingMirror -Utf8Path $VbaModulePath -ShiftJisPath $VbaModuleShiftJisPath
 
 $excel = $null
 $workbook = $null
@@ -194,6 +196,7 @@ try {
     $workbook.Save()
 
     Write-Host "Template created: $TemplatePath"
+    Write-Host "Shift_JIS VBA mirror: $VbaModuleShiftJisPath"
 } finally {
     if ($workbook) {
         try {
@@ -217,5 +220,3 @@ try {
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
 }
-
-

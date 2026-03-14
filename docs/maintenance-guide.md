@@ -2,6 +2,7 @@
 
 - 作成日: 2026-03-13 00:51 JST
 - 作成者: Codex (GPT-5)
+- 更新日: 2026-03-14
 
 ## 目的
 
@@ -9,14 +10,20 @@
 
 ## 対象ファイル
 
-- [run_pdf2excel.ps1](C:\Work_Codex\PDF2Excel\scripts\run_pdf2excel.ps1)
+- [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
   - 変換処理の中核
-- [build_excel_template.ps1](C:\Work_Codex\PDF2Excel\scripts\build_excel_template.ps1)
+- [pdf2excel.common.ps1](../scripts/pdf2excel.common.ps1)
+  - 共通関数
+- [build_excel_template.ps1](../scripts/build_excel_template.ps1)
   - `xlsm` テンプレートの再生成
-- [PDF2ExcelMacros.bas](C:\Work_Codex\PDF2Excel\template\vba\PDF2ExcelMacros.bas)
+- [PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas)
   - Excel マクロ
-- [run_integration_tests.ps1](C:\Work_Codex\PDF2Excel\tests\run_integration_tests.ps1)
+- [PDF2ExcelMacros.sjis.bas](../template/vba/PDF2ExcelMacros.sjis.bas)
+  - Excel マクロの Shift_JIS ミラー
+- [run_integration_tests.ps1](../tests/run_integration_tests.ps1)
   - 統合テスト
+- [run_unit_tests.ps1](../tests/run_unit_tests.ps1)
+  - ユニットテスト
 
 ## 保守の基本方針
 
@@ -31,10 +38,10 @@
 
 見るべき場所:
 
-- [run_pdf2excel.bat](C:\Work_Codex\PDF2Excel\run_pdf2excel.bat)
-- [run_pdf2excel.ps1](C:\Work_Codex\PDF2Excel\scripts\run_pdf2excel.ps1)
-- [README.md](C:\Work_Codex\PDF2Excel\README.md)
-- [user-manual.md](C:\Work_Codex\PDF2Excel\docs\user-manual.md)
+- [run_pdf2excel.bat](../run_pdf2excel.bat)
+- [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
+- [README.md](../README.md)
+- [user-manual.md](user-manual.md)
 
 注意:
 
@@ -45,15 +52,16 @@
 
 見るべき場所:
 
-- [build_excel_template.ps1](C:\Work_Codex\PDF2Excel\scripts\build_excel_template.ps1)
-- [PDF2ExcelMacros.bas](C:\Work_Codex\PDF2Excel\template\vba\PDF2ExcelMacros.bas)
+- [build_excel_template.ps1](../scripts/build_excel_template.ps1)
+- [PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas)
+- [PDF2ExcelMacros.sjis.bas](../template/vba/PDF2ExcelMacros.sjis.bas)
 
 手順:
 
 1. `build_excel_template.ps1` または VBA を修正する
 2. テンプレートを再生成する
-3. `template/PDF2Excel_Converter.xlsm` の更新を確認する
-4. 統合テストを実行する
+3. `template/PDF2Excel_Converter.xlsm` と `PDF2ExcelMacros.sjis.bas` の更新を確認する
+4. ユニットテストと統合テストを実行する
 
 テンプレート再生成:
 
@@ -65,7 +73,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_excel_templa
 
 見るべき場所:
 
-- [run_pdf2excel.ps1](C:\Work_Codex\PDF2Excel\scripts\run_pdf2excel.ps1)
+- [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
   - `Get-StagingQueryFormula`
   - `Get-ResultQueryFormula`
   - `Get-ErrorsQueryFormula`
@@ -83,11 +91,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_excel_templa
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_integration_tests.ps1
 ```
 
+ユニットテスト:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_unit_tests.ps1
+```
+
 確認すべき観点:
 
 - 正常な 2 PDF 変換
 - 1 PDF 変換
 - `-InputFiles` 指定
+- 日本語ファイル名
+- 50件一括変換
 - BAT 実行
 - `input` 自己参照
 - 同名PDF拒否
@@ -101,8 +117,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_integration_test
 コード変更後は、原則として次を確認します。
 
 1. テンプレート再生成が通る
-2. 統合テストが成功する
-3. `reports/test-report.md` が更新される
+2. ユニットテストと統合テストが成功する
+3. `reports/test-report.md` と `reports/unit-test-report.md` が更新される
 4. README と関連ドキュメントが更新されている
 5. `input`、`logs`、`tests/results` に不要な生成物が残っていない
 
@@ -129,7 +145,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_integration_test
 
 - 新規 `*.md` は作成日と作成者を入れる
 - 既存 `*.md` は更新日を更新する
-- UI/UX に関わる変更は [README.md](C:\Work_Codex\PDF2Excel\README.md) と [user-manual.md](C:\Work_Codex\PDF2Excel\docs\user-manual.md) に反映する
+- UI/UX に関わる変更は [README.md](../README.md) と [user-manual.md](user-manual.md) に反映する
 
 ## 迷ったときの優先順位
 

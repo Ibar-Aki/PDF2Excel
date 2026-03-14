@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$CaseName,
     [string]$SingleResultPath
 )
@@ -16,11 +16,14 @@ $duplicateRoot = Join-Path $fixturesRoot 'duplicate'
 $duplicateA = Join-Path $duplicateRoot 'a'
 $duplicateB = Join-Path $duplicateRoot 'b'
 $profileFixtureDir = Join-Path $fixturesRoot 'profile10'
+$japanesePdfDir = Join-Path $fixturesRoot 'japanese'
+$bulkPdfDir = Join-Path $fixturesRoot 'bulk50'
 $resultsRoot = Join-Path $testsRoot 'results'
 $reportsRoot = Join-Path $projectRoot 'reports'
 $runScript = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'
 $buildTemplateScript = Join-Path $projectRoot 'scripts\build_excel_template.ps1'
 $batScript = Join-Path $projectRoot 'run_pdf2excel.bat'
+$commonScript = Join-Path $projectRoot 'scripts\pdf2excel.common.ps1'
 $templatePath = Join-Path $projectRoot 'template\PDF2Excel_Converter.xlsm'
 $jsonReportPath = Join-Path $resultsRoot 'integration-test-results.json'
 $markdownReportPath = Join-Path $reportsRoot 'test-report.md'
@@ -28,25 +31,7 @@ $timeStarted = Get-Date
 $script:customProfilePath = Join-Path $workRoot 'profile10.json'
 $script:selfPath = $MyInvocation.MyCommand.Path
 
-function Ensure-Directory {
-    param([Parameter(Mandatory = $true)][string]$Path)
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        New-Item -ItemType Directory -Path $Path -Force | Out-Null
-    }
-}
-
-function Reset-Directory {
-    param([Parameter(Mandatory = $true)][string]$Path)
-
-    if (Test-Path -LiteralPath $Path) {
-        try {
-            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
-        } catch [System.IO.DirectoryNotFoundException] {
-        }
-    }
-    New-Item -ItemType Directory -Path $Path -Force | Out-Null
-}
+. $commonScript
 
 function Get-ExcelProcessIds {
     $processes = @(Get-Process EXCEL -ErrorAction SilentlyContinue)
@@ -177,7 +162,7 @@ function Get-WorkbookSnapshot {
         $errorsRows = [int]$errorsSheet.UsedRange.Rows.Count
         $errorsColumns = [int]$errorsSheet.UsedRange.Columns.Count
 
-        $sampleRange = $resultSheet.Range('A1:F6').Value2
+        $sampleRange = $resultSheet.Range('A1:F12').Value2
         $sample = @()
         if ($null -ne $sampleRange) {
             if ($sampleRange -is [System.Array]) {
@@ -357,6 +342,8 @@ function Initialize-TestFixtures {
     Ensure-Directory -Path $duplicateA
     Ensure-Directory -Path $duplicateB
     Ensure-Directory -Path $profileFixtureDir
+    Ensure-Directory -Path $japanesePdfDir
+    Ensure-Directory -Path $bulkPdfDir
     Ensure-Directory -Path $resultsRoot
     Ensure-Directory -Path $reportsRoot
 
@@ -367,6 +354,13 @@ function Initialize-TestFixtures {
     New-ExcelPdfFixture -OutputPath (Join-Path $duplicateA 'duplicate.pdf') -Prefix 'DUPA'
     New-ExcelPdfFixture -OutputPath (Join-Path $duplicateB 'duplicate.pdf') -Prefix 'DUPB'
     New-ExcelPdfFixture -OutputPath (Join-Path $profileFixtureDir 'profile10.pdf') -Prefix 'P10' -Columns 10
+    Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join-Path $japanesePdfDir '日本語_帳票A.pdf') -Force
+    Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_b.pdf') -Destination (Join-Path $japanesePdfDir '請求書_テストB.pdf') -Force
+    for ($index = 1; $index -le 50; $index += 1) {
+        $sourceName = if (($index % 2) -eq 0) { 'valid_b.pdf' } else { 'valid_a.pdf' }
+        $bulkName = 'bulk_{0:D2}.pdf' -f $index
+        Copy-Item -LiteralPath (Join-Path $validPdfDir $sourceName) -Destination (Join-Path $bulkPdfDir $bulkName) -Force
+    }
 
     $customProfileJson = @'
 {
@@ -426,6 +420,8 @@ function Get-TestCases {
         [pscustomobject]@{ Name = 'PowerShell conversion'; Scenario = 'Convert two valid PDFs via PowerShell and verify Result row count'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'Single PDF conversion'; Scenario = 'A folder that contains only one PDF should still convert successfully'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'InputFiles conversion'; Scenario = 'Documented -InputFiles usage should convert multiple PDFs correctly'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = 'Japanese filename conversion'; Scenario = 'Japanese PDF file names should remain intact in Result and Summary'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = 'Bulk 50 PDF performance'; Scenario = 'A 50-file batch should complete within the agreed timeout and preserve row counts'; TimeoutSeconds = 480 },
         [pscustomobject]@{ Name = 'KeepInput isolation'; Scenario = 'KeepInput keeps archived PDFs without re-importing them into the current run'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'Concurrent run lock'; Scenario = 'A second run should fail fast while another run is already in progress'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'BAT conversion'; Scenario = 'Convert the same valid PDFs through BAT'; TimeoutSeconds = 180 },
@@ -492,6 +488,29 @@ function Invoke-NamedScenario {
             Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "InputFiles conversion returned unexpected Result row count: $($snapshot.ResultRows)."
             Assert-True -Condition ($snapshot.ControlSourceCount -eq '2') -Message "Control sheet source count is unexpected: $($snapshot.ControlSourceCount)"
             return 'InputFiles conversion succeeded'
+        }
+        'Japanese filename conversion' {
+            $outputPath = Join-Path $resultsRoot 'japanese_success.xlsx'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $japanesePdfDir -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Japanese filename output workbook was not created.'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            Assert-True -Condition ($snapshot.ControlSourceCount -eq '2') -Message "Control sheet source count is unexpected: $($snapshot.ControlSourceCount)"
+            Assert-True -Condition ($sourceNames -contains '日本語_帳票A.pdf') -Message 'Japanese file name A was not preserved in Result.'
+            Assert-True -Condition ($sourceNames -contains '請求書_テストB.pdf') -Message 'Japanese file name B was not preserved in Result.'
+            return "SourceNames=$($sourceNames -join ',')"
+        }
+        'Bulk 50 PDF performance' {
+            $outputPath = Join-Path $resultsRoot 'bulk50_success.xlsx'
+            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $bulkPdfDir -OutputFile $outputPath -NoConfirm
+            $stopwatch.Stop()
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Bulk 50 PDF workbook was not created.'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            Assert-True -Condition ($snapshot.ControlSourceCount -eq '50') -Message "Expected 50 source PDFs but got $($snapshot.ControlSourceCount)."
+            Assert-True -Condition ($snapshot.ResultRows -eq 201) -Message "Expected 201 rows including header for 50 PDFs but got $($snapshot.ResultRows)."
+            Assert-True -Condition ($stopwatch.Elapsed.TotalSeconds -lt 300) -Message ("50 PDF batch took too long: {0:N1} seconds." -f $stopwatch.Elapsed.TotalSeconds)
+            return ("ElapsedSeconds={0:N1}, ResultRows={1}" -f $stopwatch.Elapsed.TotalSeconds, $snapshot.ResultRows)
         }
         'KeepInput isolation' {
             $inputStore = Join-Path $projectRoot 'input'

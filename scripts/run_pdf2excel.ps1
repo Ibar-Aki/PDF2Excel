@@ -11,6 +11,7 @@
     [switch]$SelectInputFolder,
     [switch]$PromptForOutputFile,
     [switch]$NoConfirm,
+    [switch]$SkipMain,
     [Alias('h')][switch]$Help
 )
 
@@ -18,6 +19,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName System.Windows.Forms
+. (Join-Path $PSScriptRoot 'pdf2excel.common.ps1')
 
 $script:runStartedAt = Get-Date
 $baseDir = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -121,24 +123,6 @@ function Show-RunSummary {
     Write-Host ('  出力ファイル     : {0}' -f $OutputPath)
     Write-Host ('  ログファイル     : {0}' -f $script:logPath)
     Write-Host ''
-}
-
-function Release-ComObject {
-    param([Parameter(ValueFromPipeline = $true)]$InputObject)
-
-    process {
-        if ($null -ne $InputObject -and [System.Runtime.InteropServices.Marshal]::IsComObject($InputObject)) {
-            [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($InputObject)
-        }
-    }
-}
-
-function Ensure-Directory {
-    param([Parameter(Mandatory = $true)][string]$Path)
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        New-Item -ItemType Directory -Path $Path -Force | Out-Null
-    }
 }
 
 function Remove-PathWithRetry {
@@ -441,16 +425,6 @@ function Get-ProfileConfiguration {
     }
 }
 
-function Get-ProfileOutputColumnNames {
-    param([Parameter(Mandatory = $true)]$Profile)
-
-    $names = @($Profile.SourceFileColumnName)
-    foreach ($index in 1..$Profile.ExpectedColumns) {
-        $names += '{0}{1}' -f $Profile.DataColumnPrefix, $index
-    }
-    return $names
-}
-
 function Stage-PdfFiles {
     param(
         [Parameter(Mandatory = $true)][string[]]$Files,
@@ -560,39 +534,6 @@ function Copy-TemplateToRuntime {
     $runtimePath = Join-Path $script:runRuntimeDir "PDF2Excel_runtime_$timestamp.xlsm"
     Copy-Item -LiteralPath $templatePath -Destination $runtimePath -Force
     return $runtimePath
-}
-
-function Escape-MString {
-    param([Parameter(Mandatory = $true)][string]$Value)
-
-    return $Value.Replace('"', '""')
-}
-
-function ConvertTo-MTextLiteral {
-    param([Parameter(Mandatory = $true)][string]$Value)
-
-    return '"' + (Escape-MString -Value $Value) + '"'
-}
-
-function ConvertTo-MTextListLiteral {
-    param([string[]]$Values)
-
-    if ($null -eq $Values -or $Values.Count -eq 0) {
-        return '{}'
-    }
-
-    $items = @($Values | ForEach-Object { ConvertTo-MTextLiteral -Value $_ })
-    return '{' + ($items -join ', ') + '}'
-}
-
-function ConvertTo-MLogicalLiteral {
-    param([bool]$Value)
-
-    if ($Value) {
-        return 'true'
-    }
-
-    return 'false'
 }
 
 function Get-StagingQueryFormula {
@@ -841,173 +782,13 @@ function Get-ResultQueryFormula {
         [Parameter(Mandatory = $true)]$Profile
     )
 
-    $escapedPath = Escape-MString -Value $InputPath
     $outputColumnsLiteral = ConvertTo-MTextListLiteral -Values (Get-ProfileOutputColumnNames -Profile $Profile)
-    $dataColumnsLiteral = ConvertTo-MTextListLiteral -Values @((1..$Profile.ExpectedColumns | ForEach-Object { '{0}{1}' -f $Profile.DataColumnPrefix, $_ }))
-    $preferredKindsLiteral = ConvertTo-MTextListLiteral -Values @($Profile.PreferredTableKinds | ForEach-Object { $_.ToUpperInvariant() })
-    $preferredNamesLiteral = ConvertTo-MTextListLiteral -Values @($Profile.PreferredTableNameContains | ForEach-Object { $_.ToUpperInvariant() })
-    $preferredIdsLiteral = ConvertTo-MTextListLiteral -Values @($Profile.PreferredTableIdContains | ForEach-Object { $_.ToUpperInvariant() })
-    $sourceFileColumnNameLiteral = Escape-MString -Value $Profile.SourceFileColumnName
-    $dataColumnPrefixLiteral = Escape-MString -Value $Profile.DataColumnPrefix
-    $allowMoreColumnsLiteral = ConvertTo-MLogicalLiteral -Value $Profile.AllowMoreColumns
 
 @"
 let
-    ExpectedColumns = $($Profile.ExpectedColumns),
-    HeaderRowsToSkip = $($Profile.HeaderRowsToSkip),
-    TargetRowCount = $($Profile.TargetRowCount),
-    AllowMoreColumns = $allowMoreColumnsLiteral,
-    SourceFileColumnName = "$sourceFileColumnNameLiteral",
-    DataColumnPrefix = "$dataColumnPrefixLiteral",
     OutputColumns = $outputColumnsLiteral,
-    DataColumns = $dataColumnsLiteral,
-    PreferredKinds = $preferredKindsLiteral,
-    PreferredNames = $preferredNamesLiteral,
-    PreferredIds = $preferredIdsLiteral,
-    Source = Folder.Files("$escapedPath"),
-    PdfFiles = Table.SelectRows(Source, each Text.Lower([Extension]) = ".pdf"),
-    KeepColumns = Table.SelectColumns(PdfFiles, {"Name", "Content"}),
-    WithProcessed =
-        Table.AddColumn(
-            KeepColumns,
-            "Processed",
-            each
-                let
-                    fileName = [Name],
-                    processingTry =
-                        try
-                            let
-                                pdfTry = try Pdf.Tables([Content]),
-                                pdfTables = if pdfTry[HasError] then null else pdfTry[Value],
-                                candidateRecords = if pdfTables = null then {} else Table.ToRecords(pdfTables),
-                                scoredCandidates =
-                                    List.Transform(
-                                        candidateRecords,
-                                        each
-                                            let
-                                                dataTry = try Record.Field(_, "Data"),
-                                                dataValue = if dataTry[HasError] then null else dataTry[Value],
-                                                columnCount = if dataValue = null then null else Table.ColumnCount(dataValue),
-                                                rowCount = if dataValue = null then null else Table.RowCount(dataValue),
-                                                tableId = try Text.From(Record.Field(_, "Id")) otherwise "",
-                                                tableKind = try Text.From(Record.Field(_, "Kind")) otherwise "",
-                                                tableName = try Text.From(Record.Field(_, "Name")) otherwise "",
-                                                normalizedKind = Text.Upper(tableKind),
-                                                normalizedName = Text.Upper(tableName),
-                                                normalizedId = Text.Upper(tableId),
-                                                kindBonus = if List.Contains(PreferredKinds, normalizedKind) then -250 else 0,
-                                                nameBonus =
-                                                    if List.Count(PreferredNames) = 0 then
-                                                        0
-                                                    else if List.AnyTrue(List.Transform(PreferredNames, each Text.Contains(normalizedName, _))) then
-                                                        -120
-                                                    else
-                                                        0,
-                                                idBonus =
-                                                    if List.Count(PreferredIds) = 0 then
-                                                        0
-                                                    else if List.AnyTrue(List.Transform(PreferredIds, each Text.Contains(normalizedId, _))) then
-                                                        -120
-                                                    else
-                                                        0,
-                                                score =
-                                                    if dataValue = null or rowCount = null or columnCount = null then
-                                                        999999
-                                                    else
-                                                        Number.Abs(columnCount - ExpectedColumns) * 1000 +
-                                                        Number.Abs(rowCount - TargetRowCount) * 10 +
-                                                        kindBonus + nameBonus + idBonus
-                                            in
-                                                [
-                                                    Data = dataValue,
-                                                    ColumnCount = columnCount,
-                                                    RowCount = rowCount,
-                                                    Score = score
-                                                ]
-                                    ),
-                                viableCandidates = List.Select(scoredCandidates, each [Data] <> null and [RowCount] <> null and [RowCount] > HeaderRowsToSkip),
-                                sortedCandidates =
-                                    List.Sort(
-                                        viableCandidates,
-                                        (left, right) =>
-                                            if left[Score] < right[Score] then
-                                                -1
-                                            else if left[Score] > right[Score] then
-                                                1
-                                            else
-                                                0
-                                    ),
-                                chosen = if List.Count(sortedCandidates) = 0 then null else List.First(sortedCandidates),
-                                chosenColumns = if chosen = null then null else chosen[ColumnCount],
-                                rawData =
-                                    if chosen = null then
-                                        null
-                                    else if AllowMoreColumns = false and chosenColumns <> null and chosenColumns > ExpectedColumns then
-                                        null
-                                    else
-                                        Table.Skip(chosen[Data], HeaderRowsToSkip),
-                                originalColumns = if rawData = null then {} else Table.ColumnNames(rawData),
-                                renamed =
-                                    if rawData = null then
-                                        null
-                                    else
-                                        Table.RenameColumns(
-                                            rawData,
-                                            List.Transform(List.Positions(originalColumns), each {originalColumns{_}, DataColumnPrefix & Text.From(_ + 1)}),
-                                            MissingField.Ignore
-                                        ),
-                                renamedCount = if renamed = null then 0 else Table.ColumnCount(renamed),
-                                missingColumns =
-                                    if renamed = null or renamedCount >= ExpectedColumns then
-                                        {}
-                                    else
-                                        List.Transform({renamedCount + 1 .. ExpectedColumns}, each DataColumnPrefix & Text.From(_)),
-                                padded =
-                                    if renamed = null then
-                                        null
-                                    else
-                                        List.Accumulate(
-                                            missingColumns,
-                                            renamed,
-                                            (state, columnName) => Table.AddColumn(state, columnName, each null, type text)
-                                        ),
-                                selected =
-                                    if padded = null then
-                                        null
-                                    else
-                                        Table.SelectColumns(padded, DataColumns, MissingField.UseNull),
-                                textified =
-                                    if selected = null then
-                                        null
-                                    else
-                                        Table.TransformColumns(
-                                            selected,
-                                            List.Transform(
-                                                Table.ColumnNames(selected),
-                                                each {_, (value) => if value = null then "" else Text.From(value), type text}
-                                            )
-                                        ),
-                                withFileName =
-                                    if textified = null then
-                                        null
-                                    else
-                                        Table.AddColumn(textified, SourceFileColumnName, each fileName, type text),
-                                reordered =
-                                    if withFileName = null then
-                                        null
-                                    else
-                                        Table.ReorderColumns(withFileName, OutputColumns, MissingField.UseNull)
-                            in
-                                [Data = reordered]
-                in
-                    if processingTry[HasError] then
-                        [Data = null]
-                    else
-                        processingTry[Value],
-            type record
-        ),
-    ExpandedProcessed = Table.ExpandRecordColumn(WithProcessed, "Processed", {"Data"}, {"Data"}),
-    SuccessRows = Table.SelectRows(ExpandedProcessed, each [Data] <> null),
+    Source = PDF2Excel_Staging,
+    SuccessRows = Table.SelectRows(Source, each [IsError] <> true and [Data] <> null),
     Expanded = if Table.RowCount(SuccessRows) = 0 then #table(OutputColumns, {}) else Table.ExpandTableColumn(SuccessRows, "Data", OutputColumns, OutputColumns),
     Reordered = Table.SelectColumns(Expanded, OutputColumns, MissingField.UseNull)
 in
@@ -1447,31 +1228,8 @@ function Confirm-Preflight {
     }
 }
 
-function Resolve-RunErrorInfo {
-    param([Parameter(Mandatory = $true)][string]$Message)
-
-    $normalizedMessage = $Message.ToLowerInvariant()
-
-    if ($normalizedMessage.Contains('実行前チェックでキャンセル')) {
-        return [pscustomobject]@{ ErrorCode = 'RUN_CANCELLED'; ErrorCategory = '実行キャンセル' }
-    }
-    if ($normalizedMessage.Contains('同名の pdf')) {
-        return [pscustomobject]@{ ErrorCode = 'DUPLICATE_FILE_NAME'; ErrorCategory = '入力エラー' }
-    }
-    if ($normalizedMessage.Contains('別の pdf2excel 実行が進行中')) {
-        return [pscustomobject]@{ ErrorCode = 'RUN_LOCKED'; ErrorCategory = '実行競合' }
-    }
-    if ($normalizedMessage.Contains('入力フォルダ') -or $normalizedMessage.Contains('入力ファイル')) {
-        return [pscustomobject]@{ ErrorCode = 'INPUT_RESOLUTION_ERROR'; ErrorCategory = '入力エラー' }
-    }
-    if ($normalizedMessage.Contains('テンプレート')) {
-        return [pscustomobject]@{ ErrorCode = 'TEMPLATE_ERROR'; ErrorCategory = 'テンプレートエラー' }
-    }
-    if ($normalizedMessage.Contains('excel')) {
-        return [pscustomobject]@{ ErrorCode = 'EXCEL_RUNTIME_ERROR'; ErrorCategory = 'Excel実行エラー' }
-    }
-
-    return [pscustomobject]@{ ErrorCode = 'UNEXPECTED_RUN_ERROR'; ErrorCategory = 'システムエラー' }
+if ($SkipMain) {
+    return
 }
 
 $excel = $null
