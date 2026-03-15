@@ -18,6 +18,24 @@
   "sourceFileColumnName": "元ファイル名",
   "dataColumnPrefix": "項目",
   "multiPageMergeMode": "sameHeader",
+  "normalizedTimeColumns": [
+    {
+      "sourceColumn": 6,
+      "displayName": "正規化入場1"
+    },
+    {
+      "sourceColumn": 7,
+      "displayName": "正規化退場1"
+    },
+    {
+      "sourceColumn": 9,
+      "displayName": "正規化入場2"
+    },
+    {
+      "sourceColumn": 10,
+      "displayName": "正規化退場2"
+    }
+  ],
   "reviewPersonColumn": 3,
   "reviewSiteColumn": 5,
   "reviewInTimeColumn": 6,

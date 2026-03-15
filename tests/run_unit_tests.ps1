@@ -213,7 +213,55 @@ $testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は建設現場�
     Assert-True -Condition ($profile.TargetRowCount -eq 5) -Message "targetRowCount が想定と異なります: $($profile.TargetRowCount)"
     Assert-True -Condition ($profile.DisplayName -eq '建設現場転記PoCプロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
     Assert-True -Condition ($profile.MultiPageMergeMode -eq 'sameHeader') -Message "multiPageMergeMode が想定と異なります: $($profile.MultiPageMergeMode)"
+    Assert-True -Condition ($profile.NormalizedTimeColumns.Count -eq 4) -Message "normalizedTimeColumns 数が想定と異なります: $($profile.NormalizedTimeColumns.Count)"
     return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Normalize-TimeText は全角コロンを半角時刻へ正規化する' -Body {
+    $actual = Normalize-TimeText -Value '08：00'
+    Assert-True -Condition ($actual.NormalizedText -eq '08:00') -Message "正規化時刻が想定と異なります: $($actual.NormalizedText)"
+    Assert-True -Condition ($actual.MinutesFromMidnight -eq 480) -Message "分換算が想定と異なります: $($actual.MinutesFromMidnight)"
+    Assert-True -Condition ($actual.Status -eq 'OK') -Message "状態が想定と異なります: $($actual.Status)"
+    return "$($actual.NormalizedText) / $($actual.MinutesFromMidnight)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Normalize-TimeText は時分表記と空白込みを正規化する' -Body {
+    $actual = Normalize-TimeText -Value '9時 15分'
+    Assert-True -Condition ($actual.NormalizedText -eq '09:15') -Message "正規化時刻が想定と異なります: $($actual.NormalizedText)"
+    Assert-True -Condition ($actual.MinutesFromMidnight -eq 555) -Message "分換算が想定と異なります: $($actual.MinutesFromMidnight)"
+    return "$($actual.NormalizedText) / $($actual.MinutesFromMidnight)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Normalize-TimeText は時のみ表記を 00 分補完する' -Body {
+    $actual = Normalize-TimeText -Value '18時'
+    Assert-True -Condition ($actual.NormalizedText -eq '18:00') -Message "正規化時刻が想定と異なります: $($actual.NormalizedText)"
+    Assert-True -Condition ($actual.MinutesFromMidnight -eq 1080) -Message "分換算が想定と異なります: $($actual.MinutesFromMidnight)"
+    return "$($actual.NormalizedText) / $($actual.MinutesFromMidnight)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Normalize-TimeText は Excel 時刻比率の文字列も正規化する' -Body {
+    $actual = Normalize-TimeText -Value '0.385416666666667'
+    Assert-True -Condition ($actual.NormalizedText -eq '09:15') -Message "正規化時刻が想定と異なります: $($actual.NormalizedText)"
+    Assert-True -Condition ($actual.MinutesFromMidnight -eq 555) -Message "分換算が想定と異なります: $($actual.MinutesFromMidnight)"
+    return "$($actual.NormalizedText) / $($actual.MinutesFromMidnight)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-ResultOutputColumnNames は V2 で正規化列を追加する' -Body {
+    $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
+    $actual = @(Get-ResultOutputColumnNames -Profile $profile -VersionMode v2)
+    Assert-True -Condition ($actual -contains '正規化入場1') -Message '正規化入場1 列が含まれていません。'
+    Assert-True -Condition ($actual -contains '正規化退場1_分') -Message '正規化退場1_分 列が含まれていません。'
+    Assert-True -Condition ($actual -contains '時刻正規化状態') -Message '時刻正規化状態 列が含まれていません。'
+    return ($actual[-5..-1] -join ',')
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-StagingQueryFormula は V2 で sameHeader とページ番号を考慮する' -Body {
+    $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
+    $formula = Get-StagingQueryFormula -InputPath 'C:\Temp\Input' -Profile $profile
+    Assert-True -Condition ($formula.Contains('GetHeaderSignature')) -Message 'ヘッダー署名ロジックが見つかりません。'
+    Assert-True -Condition ($formula.Contains('__PageNumber')) -Message 'ページ番号列の付与が見つかりません。'
+    Assert-True -Condition ($formula.Contains('同一 PDF 内にヘッダー不一致')) -Message 'ヘッダー不一致メモが見つかりません。'
+    return 'sameHeader / __PageNumber / review note'
 }
 
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel.bat は ASCII のみで構成される' -Body {

@@ -257,6 +257,60 @@ function Get-WorkbookSnapshot {
     $reviewSheet = $null
 
     try {
+        function Convert-SheetToTableSnapshot {
+            param(
+                [Parameter(Mandatory = $true)]$Worksheet,
+                [int]$MaxRows = 120
+            )
+
+            $usedRange = $Worksheet.UsedRange
+            $rowCount = [int]$usedRange.Rows.Count
+            $columnCount = [int]$usedRange.Columns.Count
+            $captureRows = [Math]::Min($rowCount, $MaxRows)
+            $range = $Worksheet.Range($Worksheet.Cells.Item(1, 1), $Worksheet.Cells.Item($captureRows, $columnCount)).Value2
+            $rows = @()
+
+            if ($null -ne $range) {
+                if ($range -is [System.Array]) {
+                    for ($row = 1; $row -le $range.GetLength(0); $row += 1) {
+                        $values = @()
+                        for ($column = 1; $column -le $range.GetLength(1); $column += 1) {
+                            $values += [string]$range[$row, $column]
+                        }
+                        $rows += ,$values
+                    }
+                } else {
+                    $rows += ,@([string]$range)
+                }
+            }
+
+            $headers = @()
+            if ($rows.Count -gt 0) {
+                $headers = @($rows[0])
+            }
+
+            $records = @()
+            for ($rowIndex = 1; $rowIndex -lt $rows.Count; $rowIndex += 1) {
+                $record = [ordered]@{}
+                for ($columnIndex = 0; $columnIndex -lt $headers.Count; $columnIndex += 1) {
+                    $header = $headers[$columnIndex]
+                    if (-not [string]::IsNullOrWhiteSpace($header)) {
+                        $record[$header] = if ($columnIndex -lt $rows[$rowIndex].Count) { $rows[$rowIndex][$columnIndex] } else { '' }
+                    }
+                }
+
+                if ($record.Count -gt 0) {
+                    $records += [pscustomobject]$record
+                }
+            }
+
+            return [pscustomobject]@{
+                Headers = $headers
+                Rows    = $rows
+                Records = $records
+            }
+        }
+
         $excel = New-Object -ComObject Excel.Application
         $excel.Visible = $false
         $excel.DisplayAlerts = $false
@@ -276,22 +330,8 @@ function Get-WorkbookSnapshot {
         $errorsRows = [int]$errorsSheet.UsedRange.Rows.Count
         $errorsColumns = [int]$errorsSheet.UsedRange.Columns.Count
         $reviewRows = if ($reviewSheet) { [int]$reviewSheet.UsedRange.Rows.Count } else { 0 }
-
-        $sampleRange = $resultSheet.Range('A1:H20').Value2
-        $sample = @()
-        if ($null -ne $sampleRange) {
-            if ($sampleRange -is [System.Array]) {
-                for ($row = 1; $row -le $sampleRange.GetLength(0); $row += 1) {
-                    $values = @()
-                    for ($column = 1; $column -le $sampleRange.GetLength(1); $column += 1) {
-                        $values += [string]$sampleRange[$row, $column]
-                    }
-                    $sample += ,$values
-                }
-            } else {
-                $sample += ,@([string]$sampleRange)
-            }
-        }
+        $resultSnapshot = Convert-SheetToTableSnapshot -Worksheet $resultSheet
+        $reviewSnapshot = if ($reviewSheet) { Convert-SheetToTableSnapshot -Worksheet $reviewSheet } else { [pscustomobject]@{ Headers = @(); Rows = @(); Records = @() } }
 
         return [pscustomobject]@{
             ResultRows          = $resultRows
@@ -312,7 +352,11 @@ function Get-WorkbookSnapshot {
             SummarySuccessCount = [string]$summarySheet.Range('B6').Value2
             SummaryFailedCount  = [string]$summarySheet.Range('B7').Value2
             ReviewRows          = $reviewRows
-            Sample              = $sample
+            Sample              = $resultSnapshot.Rows
+            ResultHeaders       = $resultSnapshot.Headers
+            ResultRecords       = $resultSnapshot.Records
+            ReviewHeaders       = $reviewSnapshot.Headers
+            ReviewRecords       = $reviewSnapshot.Records
         }
     } finally {
         if ($workbook) {
@@ -880,15 +924,24 @@ function Invoke-NamedScenario {
             $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $names = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[3] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $sites = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[5] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-            Assert-True -Condition ($snapshot.ResultColumns -eq 31) -Message "建設現場転記PoCの列数が想定と異なります: $($snapshot.ResultColumns)"
+            $normalizedInMinutes = @($snapshot.ResultRecords | ForEach-Object { $_.'正規化入場1_分' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $normalizedOutMinutes = @($snapshot.ResultRecords | ForEach-Object { $_.'正規化退場1_分' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $normalizationStatuses = @($snapshot.ResultRecords | ForEach-Object { $_.'時刻正規化状態' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "建設現場転記PoCの行数が想定と異なります: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "Control の版表示が想定と異なります: $($snapshot.ControlVersion)"
             Assert-True -Condition ($snapshot.ControlProfile -eq '建設現場転記PoCプロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
             Assert-True -Condition ($sourceNames -contains '2026年02月_作業員勤怠一覧_PoC.pdf') -Message 'PoC PDF 名が保持されていません。'
             Assert-True -Condition ($names -contains '佐藤 花子') -Message 'PoC 帳票の氏名が保持されていません。'
             Assert-True -Condition ((@($sites | Where-Object { $_ -like '*東京駅前再開発*' }).Count) -ge 1) -Message 'PoC 帳票の現場名が保持されていません。'
+            Assert-True -Condition ($snapshot.ResultHeaders -contains '正規化入場1') -Message 'Result に正規化入場1 列がありません。'
+            Assert-True -Condition ($snapshot.ResultHeaders -contains '正規化退場1_分') -Message 'Result に正規化退場1_分 列がありません。'
+            Assert-True -Condition ($snapshot.ResultHeaders -contains '時刻正規化状態') -Message 'Result に時刻正規化状態 列がありません。'
+            Assert-True -Condition ($snapshot.ReviewHeaders -contains '正規化入場') -Message 'Review に正規化入場 列がありません。'
+            Assert-True -Condition ($normalizedInMinutes -contains '555') -Message ('9時15分 の分換算結果が見つかりません: ' + ($normalizedInMinutes -join ','))
+            Assert-True -Condition ($normalizedOutMinutes -contains '1080') -Message ('18:00 の分換算結果が見つかりません: ' + ($normalizedOutMinutes -join ','))
+            Assert-True -Condition ($normalizationStatuses -contains 'OK') -Message ('時刻正規化状態に OK がありません: ' + ($normalizationStatuses -join ','))
             Assert-True -Condition ($snapshot.ReviewRows -ge 2) -Message "Review シートに確認要行が出ていません: $($snapshot.ReviewRows)"
-            return "PoCPDF=$($sourceNames -join ','), 氏名=$($names -join ','), 現場=$($sites -join ','), Review=$($snapshot.ReviewRows)"
+            return "PoCPDF=$($sourceNames -join ','), 氏名=$($names -join ','), 現場=$($sites -join ','), Review=$($snapshot.ReviewRows), 正規化退場分=$($normalizedOutMinutes -join ',')"
         }
         'V2 2ページ同一列の変換' {
             $twoPageDir = Join-Path $fixturesRoot 'construction_2page_v2'
@@ -947,7 +1000,7 @@ function Invoke-IsolatedTestCase {
     } -ArgumentList $script:selfPath, $Definition.Name, $resultPath
 
     if (-not ($job | Wait-Job -Timeout $Definition.TimeoutSeconds -ErrorAction SilentlyContinue)) {
-        Stop-Job -Job $job -Force -ErrorAction SilentlyContinue
+        Stop-Job -Job $job -ErrorAction SilentlyContinue
         return [pscustomobject]@{
             Name         = $Definition.Name
             Scenario     = $Definition.Scenario

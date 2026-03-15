@@ -83,6 +83,232 @@ function Get-ProfileOutputColumnNames {
     return $names
 }
 
+function Convert-MinutesToTimeText {
+    param([Parameter(Mandatory = $true)][int]$MinutesFromMidnight)
+
+    $hours = [int][Math]::Floor($MinutesFromMidnight / 60)
+    $minutes = [int]($MinutesFromMidnight % 60)
+    return ('{0:D2}:{1:D2}' -f $hours, $minutes)
+}
+
+function Normalize-TimeText {
+    param([AllowNull()]$Value)
+
+    if ($null -eq $Value) {
+        return [pscustomobject]@{
+            RawText              = ''
+            CandidateText        = ''
+            NormalizedText       = ''
+            MinutesFromMidnight  = $null
+            ExcelTimeValue       = $null
+            Status               = 'EMPTY'
+            Note                 = ''
+        }
+    }
+
+    if ($Value -isnot [string] -and $Value -is [System.IConvertible]) {
+        try {
+            $numericValue = [double]$Value
+            if ($numericValue -ge 0 -and $numericValue -lt 1) {
+                $minutesFromMidnight = [int][Math]::Round($numericValue * 1440, 0, [MidpointRounding]::AwayFromZero)
+                if ($minutesFromMidnight -ge 0 -and $minutesFromMidnight -lt 1440) {
+                    return [pscustomobject]@{
+                        RawText              = [string]$Value
+                        CandidateText        = [string]$Value
+                        NormalizedText       = Convert-MinutesToTimeText -MinutesFromMidnight $minutesFromMidnight
+                        MinutesFromMidnight  = $minutesFromMidnight
+                        ExcelTimeValue       = $minutesFromMidnight / 1440.0
+                        Status               = 'OK'
+                        Note                 = ''
+                    }
+                }
+            }
+        } catch {
+        }
+    }
+
+    $rawText = [string]$Value
+    $candidate = $rawText.Trim()
+    if ([string]::IsNullOrWhiteSpace($candidate)) {
+        return [pscustomobject]@{
+            RawText              = $rawText
+            CandidateText        = ''
+            NormalizedText       = ''
+            MinutesFromMidnight  = $null
+            ExcelTimeValue       = $null
+            Status               = 'EMPTY'
+            Note                 = ''
+        }
+    }
+
+    $widthMap = @{
+        '０' = '0'; '１' = '1'; '２' = '2'; '３' = '3'; '４' = '4'
+        '５' = '5'; '６' = '6'; '７' = '7'; '８' = '8'; '９' = '9'
+    }
+    foreach ($entry in $widthMap.GetEnumerator()) {
+        $candidate = $candidate.Replace($entry.Key, $entry.Value)
+    }
+
+    $candidate = $candidate.Replace('：', ':')
+
+    $fractionValue = 0.0
+    if ([double]::TryParse($candidate, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$fractionValue)) {
+        if ($fractionValue -ge 0 -and $fractionValue -lt 1) {
+            $minutesFromMidnight = [int][Math]::Round($fractionValue * 1440, 0, [MidpointRounding]::AwayFromZero)
+            return [pscustomobject]@{
+                RawText              = $rawText
+                CandidateText        = $candidate
+                NormalizedText       = Convert-MinutesToTimeText -MinutesFromMidnight $minutesFromMidnight
+                MinutesFromMidnight  = $minutesFromMidnight
+                ExcelTimeValue       = $minutesFromMidnight / 1440.0
+                Status               = 'OK'
+                Note                 = ''
+            }
+        }
+    }
+
+    $candidate = $candidate.Replace('時', ':')
+    $candidate = $candidate.Replace('分', '')
+    $candidate = $candidate.Replace('頃', '')
+    $candidate = $candidate.Replace('.', ':')
+    $candidate = $candidate.Replace('　', '')
+    $candidate = $candidate -replace '\s+', ''
+
+    if ([string]::IsNullOrWhiteSpace($candidate)) {
+        return [pscustomobject]@{
+            RawText              = $rawText
+            CandidateText        = ''
+            NormalizedText       = ''
+            MinutesFromMidnight  = $null
+            ExcelTimeValue       = $null
+            Status               = 'EMPTY'
+            Note                 = ''
+        }
+    }
+
+    if ($candidate -match '^\d{1,2}:$') {
+        $candidate = $candidate + '00'
+    } elseif ($candidate -match '^\d{1,2}$') {
+        $candidate = $candidate + ':00'
+    } elseif ($candidate -match '^\d{3,4}$') {
+        $candidate = $candidate.Insert($candidate.Length - 2, ':')
+    }
+
+    if ($candidate -notmatch '^\d{1,2}:\d{1,2}$') {
+        return [pscustomobject]@{
+            RawText              = $rawText
+            CandidateText        = $candidate
+            NormalizedText       = ''
+            MinutesFromMidnight  = $null
+            ExcelTimeValue       = $null
+            Status               = 'INVALID'
+            Note                 = '時刻として解釈できません。'
+        }
+    }
+
+    $parts = $candidate.Split(':')
+    $hours = 0
+    $minutes = 0
+    if (-not [int]::TryParse($parts[0], [ref]$hours) -or -not [int]::TryParse($parts[1], [ref]$minutes)) {
+        return [pscustomobject]@{
+            RawText              = $rawText
+            CandidateText        = $candidate
+            NormalizedText       = ''
+            MinutesFromMidnight  = $null
+            ExcelTimeValue       = $null
+            Status               = 'INVALID'
+            Note                 = '時刻として解釈できません。'
+        }
+    }
+
+    if ($hours -lt 0 -or $hours -gt 23 -or $minutes -lt 0 -or $minutes -gt 59) {
+        return [pscustomobject]@{
+            RawText              = $rawText
+            CandidateText        = $candidate
+            NormalizedText       = ''
+            MinutesFromMidnight  = $null
+            ExcelTimeValue       = $null
+            Status               = 'INVALID'
+            Note                 = '時刻の範囲外です。'
+        }
+    }
+
+    $minutesFromMidnight = ($hours * 60) + $minutes
+    return [pscustomobject]@{
+        RawText              = $rawText
+        CandidateText        = $candidate
+        NormalizedText       = ('{0:D2}:{1:D2}' -f $hours, $minutes)
+        MinutesFromMidnight  = $minutesFromMidnight
+        ExcelTimeValue       = $minutesFromMidnight / 1440.0
+        Status               = 'OK'
+        Note                 = ''
+    }
+}
+
+function Get-NormalizedTimeColumnDefinitions {
+    param(
+        [Parameter(Mandatory = $true)]$Profile,
+        [ValidateSet('v1', 'v2')]
+        [string]$VersionMode = 'v1'
+    )
+
+    if ($VersionMode -ne 'v2') {
+        return @()
+    }
+
+    $definitions = @()
+    $profileDefinitions = $Profile.PSObject.Properties['NormalizedTimeColumns']
+    if ($null -ne $profileDefinitions -and $null -ne $profileDefinitions.Value) {
+        foreach ($entry in @($profileDefinitions.Value)) {
+            if ($null -eq $entry) {
+                continue
+            }
+
+            $sourceColumn = [int]$entry.SourceColumn
+            $displayName = [string]$entry.DisplayName
+            if ($sourceColumn -lt 1 -or [string]::IsNullOrWhiteSpace($displayName)) {
+                continue
+            }
+
+            $minutesColumnName = if ([string]::IsNullOrWhiteSpace([string]$entry.MinutesColumnName)) {
+                '{0}_分' -f $displayName
+            } else {
+                [string]$entry.MinutesColumnName
+            }
+
+            $definitions += [pscustomobject]@{
+                SourceColumn      = $sourceColumn
+                SourceColumnName  = '{0}{1}' -f $Profile.DataColumnPrefix, $sourceColumn
+                DisplayName       = $displayName
+                MinutesColumnName = $minutesColumnName
+            }
+        }
+    }
+
+    return $definitions
+}
+
+function Get-ResultOutputColumnNames {
+    param(
+        [Parameter(Mandatory = $true)]$Profile,
+        [ValidateSet('v1', 'v2')]
+        [string]$VersionMode = 'v1'
+    )
+
+    $names = @(Get-ProfileOutputColumnNames -Profile $Profile)
+    foreach ($definition in @(Get-NormalizedTimeColumnDefinitions -Profile $Profile -VersionMode $VersionMode)) {
+        $names += $definition.DisplayName
+        $names += $definition.MinutesColumnName
+    }
+
+    if ($VersionMode -eq 'v2' -and @($names).Count -gt $Profile.ExpectedColumns + 1) {
+        $names += '時刻正規化状態'
+        $names += '時刻確認メモ'
+    }
+
+    return $names
+}
+
 function Get-ControlSheetStaticCells {
     param(
         [ValidateSet('v1', 'v2')]

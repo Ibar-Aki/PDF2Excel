@@ -29,6 +29,8 @@
   - 動作フロー、技術スタック、アーキテクチャ、主要モジュールを整理した技術説明書です。
 - [construction-site-transfer-proposal.md](construction-site-transfer-proposal.md)
   - 建設現場ごとの延べ作業時間算出に向けた raw 転記方式と PoC 方針を整理した提案書です。
+- [v2-tdd-implementation-report.md](v2-tdd-implementation-report.md)
+  - V2 の多ページ結合、時刻正規化、TDD 実施内容、代表検証結果をまとめた実装報告です。
 - [review-remediation-report.md](review-remediation-report.md)
   - レビュー指摘に対して何を直したか、不要判断の有無も含めて整理した記録です。
 - [codex-development-improvements.md](codex-development-improvements.md)

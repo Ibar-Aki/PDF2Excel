@@ -507,6 +507,33 @@ function Get-ProfileConfiguration {
         OutTimeColumn = Get-OptionalIntValue -Value (Get-OptionalProfileValue -ProfileObject $rawProfile -PropertyName 'reviewOutTimeColumn')
     }
 
+    $normalizedTimeColumns = @()
+    $rawNormalizedTimeColumns = Get-OptionalProfileValue -ProfileObject $rawProfile -PropertyName 'normalizedTimeColumns'
+    if ($null -ne $rawNormalizedTimeColumns) {
+        foreach ($entry in @($rawNormalizedTimeColumns)) {
+            if ($null -eq $entry) {
+                continue
+            }
+
+            $sourceColumn = Get-OptionalIntValue -Value (Get-OptionalProfileValue -ProfileObject $entry -PropertyName 'sourceColumn')
+            $displayName = [string](Get-OptionalProfileValue -ProfileObject $entry -PropertyName 'displayName')
+            if ($null -eq $sourceColumn -or [string]::IsNullOrWhiteSpace($displayName)) {
+                continue
+            }
+
+            $minutesColumnName = [string](Get-OptionalProfileValue -ProfileObject $entry -PropertyName 'minutesColumnName')
+            if ([string]::IsNullOrWhiteSpace($minutesColumnName)) {
+                $minutesColumnName = '{0}_分' -f $displayName
+            }
+
+            $normalizedTimeColumns += [pscustomobject]@{
+                SourceColumn      = $sourceColumn
+                DisplayName       = $displayName
+                MinutesColumnName = $minutesColumnName
+            }
+        }
+    }
+
     return [pscustomobject]@{
         Name                       = if ([string]::IsNullOrWhiteSpace($rawProfile.name)) { [System.IO.Path]::GetFileNameWithoutExtension($resolvedProfilePath) } else { [string]$rawProfile.name }
         DisplayName                = if ([string]::IsNullOrWhiteSpace($rawProfile.displayName)) { [System.IO.Path]::GetFileNameWithoutExtension($resolvedProfilePath) } else { [string]$rawProfile.displayName }
@@ -521,6 +548,7 @@ function Get-ProfileConfiguration {
         SourceFileColumnName       = $sourceFileColumnName
         DataColumnPrefix           = $dataColumnPrefix
         ReviewMappings             = $reviewMappings
+        NormalizedTimeColumns      = @($normalizedTimeColumns)
         MultiPageMergeMode         = if ([string]::IsNullOrWhiteSpace([string](Get-OptionalProfileValue -ProfileObject $rawProfile -PropertyName 'multiPageMergeMode'))) { 'single' } else { [string](Get-OptionalProfileValue -ProfileObject $rawProfile -PropertyName 'multiPageMergeMode') }
         ProfilePath                = $resolvedProfilePath
     }
@@ -1114,19 +1142,46 @@ let
             tokens = List.Select(Text.Split(normalized, " "), each _ <> ""),
             count = List.Count(List.Select(tokens, each Text.Contains(_, ":") or Text.Contains(_, "：") or Text.Contains(_, "時")))
         in count,
-    BuildResultTable = (tableValue as nullable table) as nullable table =>
+    GetHeaderSignature = (tableValue as table) as text =>
+        let
+            headerTable = Table.FirstN(tableValue, HeaderRowsToSkip),
+            rows = Table.ToRows(headerTable),
+            flattened = List.Combine(List.Transform(rows, each List.Transform(_, each NormalizeText(_)))),
+            signature = Text.Combine(flattened, "|")
+        in signature,
+    GetPageNumber = (tableId as nullable text, tableName as nullable text) as nullable number =>
+        let
+            combined = Text.Upper(Text.Combine(List.RemoveNulls({tableId, tableName}), " ")),
+            tokens = List.Select(Text.SplitAny(combined, " _-:/\[]()"), each _ <> ""),
+            pageTokens = List.Select(tokens, each Text.StartsWith(_, "PAGE") and Text.Length(Text.Select(_, {"0".."9"})) > 0),
+            firstPageToken = if List.Count(pageTokens) > 0 then List.First(pageTokens) else null,
+            numericTokens = List.Select(tokens, each Text.Length(_) > 0 and Text.Length(Text.Select(_, {"0".."9"})) = Text.Length(_)),
+            fallbackToken = if List.Count(numericTokens) > 0 then List.First(numericTokens) else null,
+            digits = if firstPageToken <> null then Text.Select(firstPageToken, {"0".."9"}) else if fallbackToken <> null then fallbackToken else ""
+        in
+            if digits = "" then null else Number.FromText(digits),
+    BuildResultTable = (tableValue as nullable table, pageNumber as nullable number, columnStartNumber as number, padToExpected as logical) as nullable table =>
         if tableValue = null then null else
         let
             dataOnly = Table.Skip(tableValue, HeaderRowsToSkip),
             originalColumns = Table.ColumnNames(dataOnly),
-            renamed = Table.RenameColumns(dataOnly, List.Transform(List.Positions(originalColumns), each {originalColumns{_}, DataColumnPrefix & Text.From(_ + 1)}), MissingField.Ignore),
+            renamed = Table.RenameColumns(dataOnly, List.Transform(List.Positions(originalColumns), each {originalColumns{_}, DataColumnPrefix & Text.From(columnStartNumber + _)}), MissingField.Ignore),
             renamedCount = Table.ColumnCount(renamed),
-            missingColumns = if renamedCount >= ExpectedColumns then {} else List.Transform({renamedCount + 1 .. ExpectedColumns}, each DataColumnPrefix & Text.From(_)),
-            padded = List.Accumulate(missingColumns, renamed, (state, columnName) => Table.AddColumn(state, columnName, each null, type text)),
-            selected = Table.SelectColumns(padded, DataColumns, MissingField.UseNull),
-            normalized = Table.TransformColumns(selected, List.Transform(Table.ColumnNames(selected), each {_, NormalizeText, type text}))
-        in normalized,
-    BuildReviewTable = (dataTable as nullable table, fileName as text) as table =>
+            currentColumns = Table.ColumnNames(renamed),
+            padded =
+                if padToExpected then
+                    let
+                        missingColumns = if renamedCount >= ExpectedColumns then {} else List.Transform({renamedCount + 1 .. ExpectedColumns}, each DataColumnPrefix & Text.From(_)),
+                        paddedTable = List.Accumulate(missingColumns, renamed, (state, columnName) => Table.AddColumn(state, columnName, each null, type text))
+                    in
+                        paddedTable
+                else
+                    renamed,
+            selected = if padToExpected then Table.SelectColumns(padded, DataColumns, MissingField.UseNull) else Table.SelectColumns(padded, currentColumns, MissingField.UseNull),
+            normalized = Table.TransformColumns(selected, List.Transform(Table.ColumnNames(selected), each {_, NormalizeText, type text})),
+            withPage = if padToExpected then Table.AddColumn(normalized, "__PageNumber", each pageNumber, type nullable number) else normalized
+        in withPage,
+    BuildReviewTable = (dataTable as nullable table, fileName as text, noteText as nullable text) as table =>
         let
             empty = #table({"FileName", "Page", "PersonRaw", "SiteRaw", "InRaw", "OutRaw", "Reason"}, {}),
             personColumnName = if ReviewPersonColumn = null then null else DataColumnPrefix & Text.From(ReviewPersonColumn),
@@ -1146,10 +1201,41 @@ let
                             if CountTimeLikeTokens(inRaw) > 1 or CountTimeLikeTokens(outRaw) > 1 then "同一セルに複数の時刻らしき文字列があります" else null
                         }),
                         reason = Text.Combine(reasonParts, " / ")
-                    in if Text.Length(reason) = 0 then null else [FileName = fileName, Page = null, PersonRaw = personRaw, SiteRaw = siteRaw, InRaw = inRaw, OutRaw = outRaw, Reason = reason]
-                ))
-        in if List.Count(reviewRecords) = 0 then empty else Table.FromRecords(reviewRecords, type table [FileName = text, Page = nullable number, PersonRaw = text, SiteRaw = text, InRaw = text, OutRaw = text, Reason = text]),
-    ScoreCandidates = (tableValue as nullable table, preferMoreRows as logical) as list =>
+                    in if Text.Length(reason) = 0 then null else [FileName = fileName, Page = Record.FieldOrDefault(_, "__PageNumber", null), PersonRaw = personRaw, SiteRaw = siteRaw, InRaw = inRaw, OutRaw = outRaw, Reason = reason]
+                )),
+            rowReviews = if List.Count(reviewRecords) = 0 then empty else Table.FromRecords(reviewRecords, type table [FileName = text, Page = nullable number, PersonRaw = text, SiteRaw = text, InRaw = text, OutRaw = text, Reason = text]),
+            pageNote = if noteText = null or Text.Length(noteText) = 0 then empty else #table({"FileName", "Page", "PersonRaw", "SiteRaw", "InRaw", "OutRaw", "Reason"}, {{fileName, null, "", "", "", "", noteText}})
+        in if Table.RowCount(rowReviews) = 0 then pageNote else if Table.RowCount(pageNote) = 0 then rowReviews else Table.Combine({rowReviews, pageNote}),
+    CombineHorizontalTables = (candidateGroup as list) as nullable table =>
+        let
+            prepared =
+                List.Transform(
+                    List.Positions(candidateGroup),
+                    each
+                        let
+                            priorColumns = if _ = 0 then 0 else List.Sum(List.Transform(List.FirstN(candidateGroup, _), each [ColumnCount])),
+                            segment = BuildResultTable(candidateGroup{_}[Data], null, priorColumns + 1, false)
+                        in
+                            if segment = null then null else Table.AddIndexColumn(segment, "__JoinIndex", 0, 1, Int64.Type)
+                ),
+            validPrepared = List.RemoveNulls(prepared),
+            rowCounts = List.Transform(validPrepared, each Table.RowCount(_)),
+            canMerge = List.Count(validPrepared) > 1 and List.Count(List.Distinct(rowCounts)) = 1,
+            merged =
+                if canMerge then
+                    List.Accumulate(
+                        List.Skip(validPrepared, 1),
+                        List.First(validPrepared),
+                        (state, current) => Table.Join(state, "__JoinIndex", current, "__JoinIndex", JoinKind.Inner)
+                    )
+                else
+                    null,
+            withoutJoin = if merged = null then null else Table.RemoveColumns(merged, {"__JoinIndex"}, MissingField.Ignore),
+            selected = if withoutJoin = null then null else Table.SelectColumns(withoutJoin, DataColumns, MissingField.UseNull),
+            withPage = if selected = null then null else Table.AddColumn(selected, "__PageNumber", each null, type nullable number)
+        in
+            withPage,
+    ScoreCandidates = (tableValue as nullable table, preferMoreRows as logical, allowPartialColumns as logical) as list =>
         let
             records = if tableValue = null then {} else Table.ToRecords(tableValue),
             scored = List.Transform(records, each
@@ -1164,14 +1250,31 @@ let
                     normalizedKind = Text.Upper(tableKind),
                     normalizedName = Text.Upper(tableName),
                     normalizedId = Text.Upper(tableId),
+                    headerSignature = if dataValue = null or rowCount = null or rowCount <= HeaderRowsToSkip then "" else GetHeaderSignature(dataValue),
+                    pageNumber = GetPageNumber(tableId, tableName),
                     dataRowCount = if rowCount = null then 0 else rowCount - HeaderRowsToSkip,
                     kindBonus = if List.Contains(PreferredKinds, normalizedKind) then -250 else 0,
                     nameBonus = if List.Count(PreferredNames) = 0 then 0 else if List.AnyTrue(List.Transform(PreferredNames, each Text.Contains(normalizedName, _))) then -120 else 0,
                     idBonus = if List.Count(PreferredIds) = 0 then 0 else if List.AnyTrue(List.Transform(PreferredIds, each Text.Contains(normalizedId, _))) then -120 else 0,
                     score = if dataValue = null or rowCount = null or columnCount = null then 999999 else if preferMoreRows then Number.Abs(columnCount - ExpectedColumns) * 100000 - dataRowCount * 10 + kindBonus + nameBonus + idBonus else Number.Abs(columnCount - ExpectedColumns) * 1000 + Number.Abs(dataRowCount - TargetRowCount) * 10 + kindBonus + nameBonus + idBonus
-                in [Data = dataValue, ColumnCount = columnCount, RowCount = rowCount, DataRowCount = dataRowCount, Score = score, TableId = tableId, TableKind = tableKind, TableName = tableName]
+                in [Data = dataValue, ColumnCount = columnCount, RowCount = rowCount, DataRowCount = dataRowCount, Score = score, TableId = tableId, TableKind = tableKind, TableName = tableName, HeaderSignature = headerSignature, PageNumber = pageNumber]
             )
-        in List.Select(scored, each [Data] <> null and [RowCount] <> null and [RowCount] > HeaderRowsToSkip and ((AllowMoreColumns = true and [ColumnCount] >= ExpectedColumns) or (AllowMoreColumns = false and [ColumnCount] = ExpectedColumns))),
+        in
+            List.Select(
+                scored,
+                each
+                    [Data] <> null and
+                    [RowCount] <> null and
+                    [RowCount] > HeaderRowsToSkip and
+                    (
+                        if allowPartialColumns then
+                            [ColumnCount] > 0 and [ColumnCount] <= ExpectedColumns
+                        else if AllowMoreColumns = true then
+                            [ColumnCount] >= ExpectedColumns
+                        else
+                            [ColumnCount] = ExpectedColumns
+                    )
+            ),
     Source = Folder.Files("$escapedPath"),
     PdfFiles = Table.SelectRows(Source, each Text.Lower([Extension]) = ".pdf"),
     KeepColumns = Table.SelectColumns(PdfFiles, {"Name", "Extension", "Folder Path", "Content"}),
@@ -1182,25 +1285,78 @@ let
                 let
                     mergedTry = try Pdf.Tables([Content], [Implementation = "1.3", MultiPageTables = true]),
                     pageTry = try Pdf.Tables([Content], [Implementation = "1.3", MultiPageTables = false]),
-                    mergedCandidates = ScoreCandidates(if mergedTry[HasError] then null else mergedTry[Value], true),
-                    pageCandidates = ScoreCandidates(if pageTry[HasError] then null else pageTry[Value], false),
-                    sortedPageCandidates = if List.Count(pageCandidates) = 0 then {} else List.Sort(pageCandidates, (left, right) => if left[Score] < right[Score] then -1 else if left[Score] > right[Score] then 1 else 0),
-                    bestPageCandidate = if List.Count(sortedPageCandidates) = 0 then null else List.First(sortedPageCandidates),
-                    groupedPageCandidates =
-                        if bestPageCandidate = null then
+                    mergedCandidates = ScoreCandidates(if mergedTry[HasError] then null else mergedTry[Value], true, false),
+                    pageCandidates = ScoreCandidates(if pageTry[HasError] then null else pageTry[Value], false, true),
+                    sortedPageCandidates =
+                        if List.Count(pageCandidates) = 0 then
+                            {}
+                        else
+                            List.Sort(
+                                pageCandidates,
+                                (left, right) =>
+                                    if left[PageNumber] = null and right[PageNumber] = null then
+                                        if left[Score] < right[Score] then -1 else if left[Score] > right[Score] then 1 else 0
+                                    else if left[PageNumber] = null then
+                                        1
+                                    else if right[PageNumber] = null then
+                                        -1
+                                    else if left[PageNumber] < right[PageNumber] then
+                                        -1
+                                    else if left[PageNumber] > right[PageNumber] then
+                                        1
+                                    else if left[Score] < right[Score] then
+                                        -1
+                                    else if left[Score] > right[Score] then
+                                        1
+                                    else
+                                        0
+                            ),
+                    exactPageCandidates = List.Select(sortedPageCandidates, each [ColumnCount] = ExpectedColumns),
+                    bestExactPageCandidate = if List.Count(exactPageCandidates) = 0 then null else List.First(exactPageCandidates),
+                    groupedVerticalCandidates =
+                        if bestExactPageCandidate = null then
                             {}
                         else
                             List.Select(
-                                sortedPageCandidates,
-                                each [ColumnCount] = bestPageCandidate[ColumnCount] and [DataRowCount] = bestPageCandidate[DataRowCount] and [TableKind] = bestPageCandidate[TableKind]
+                                exactPageCandidates,
+                                each [ColumnCount] = bestExactPageCandidate[ColumnCount] and [DataRowCount] = bestExactPageCandidate[DataRowCount] and [TableKind] = bestExactPageCandidate[TableKind]
                             ),
+                    partialPageCandidates = List.Select(sortedPageCandidates, each [ColumnCount] < ExpectedColumns),
+                    horizontalCandidateSeed = if List.Count(partialPageCandidates) = 0 then null else List.First(partialPageCandidates),
+                    groupedHorizontalCandidates =
+                        if horizontalCandidateSeed = null then
+                            {}
+                        else
+                            List.Select(
+                                partialPageCandidates,
+                                each [DataRowCount] = horizontalCandidateSeed[DataRowCount] and [TableKind] = horizontalCandidateSeed[TableKind]
+                            ),
+                    horizontalAccumulator =
+                        List.Accumulate(
+                            groupedHorizontalCandidates,
+                            [Items = {}, TotalColumns = 0],
+                            (state, current) =>
+                                if state[TotalColumns] >= ExpectedColumns then
+                                    state
+                                else
+                                    [Items = state[Items] & {current}, TotalColumns = state[TotalColumns] + current[ColumnCount]]
+                        ),
+                    horizontalMergeCandidates =
+                        if horizontalAccumulator[TotalColumns] = ExpectedColumns and List.Count(horizontalAccumulator[Items]) > 1 then
+                            horizontalAccumulator[Items]
+                        else
+                            {},
                     chosen = if List.Count(mergedCandidates) = 0 then null else List.First(List.Sort(mergedCandidates, (left, right) => if left[Score] < right[Score] then -1 else if left[Score] > right[Score] then 1 else 0)),
-                    failureRecord = if mergedTry[HasError] then [ErrorCode = "PDF_READ_FAILURE", ErrorCategory = "PDF読込エラー", UserMessage = "PDF を読み取れませんでした。壊れているか、Excel の PDF 解析で扱えない可能性があります。", TechnicalDetail = try Error.Message(mergedTry[Error]) otherwise "Pdf.Tables の読み取りに失敗しました。"] else if chosen = null then [ErrorCode = "TABLE_NOT_FOUND", ErrorCategory = "表検出エラー", UserMessage = "想定に近い表を検出できませんでした。", TechnicalDetail = "Pdf.Tables で抽出候補が見つからないか、ヘッダー行のみでした。"] else null,
-                    mergedFromPages = if failureRecord <> null or List.Count(groupedPageCandidates) <= 1 then null else Table.Combine(List.Transform(groupedPageCandidates, each BuildResultTable([Data]))),
-                    resultData = if failureRecord <> null then null else if mergedFromPages <> null then mergedFromPages else BuildResultTable(chosen[Data]),
+                    verticalMergedData = if List.Count(groupedVerticalCandidates) <= 1 then null else Table.Combine(List.Transform(groupedVerticalCandidates, each BuildResultTable([Data], [PageNumber], 1, true))),
+                    horizontalMergedData = if List.Count(horizontalMergeCandidates) <= 1 then null else CombineHorizontalTables(horizontalMergeCandidates),
+                    chosenSinglePage = if chosen <> null then BuildResultTable(chosen[Data], null, 1, true) else if bestExactPageCandidate <> null then BuildResultTable(bestExactPageCandidate[Data], bestExactPageCandidate[PageNumber], 1, true) else null,
+                    failureRecord = if mergedTry[HasError] then [ErrorCode = "PDF_READ_FAILURE", ErrorCategory = "PDF読込エラー", UserMessage = "PDF を読み取れませんでした。壊れているか、Excel の PDF 解析で扱えない可能性があります。", TechnicalDetail = try Error.Message(mergedTry[Error]) otherwise "Pdf.Tables の読み取りに失敗しました。"] else if chosen = null and horizontalMergedData = null and verticalMergedData = null and List.Count(exactPageCandidates) = 0 then [ErrorCode = "TABLE_NOT_FOUND", ErrorCategory = "表検出エラー", UserMessage = "想定に近い表を検出できませんでした。", TechnicalDetail = "Pdf.Tables で抽出候補が見つからないか、ヘッダー行のみでした。"] else null,
+                    hasVerticalHeaderVariance = List.Count(List.Distinct(List.Transform(groupedVerticalCandidates, each [HeaderSignature]))) > 1,
+                    pageMergeNote = if hasVerticalHeaderVariance or (List.Count(pageCandidates) > 0 and List.Count(groupedVerticalCandidates) + List.Count(horizontalMergeCandidates) < List.Count(pageCandidates)) then "同一 PDF 内にヘッダー不一致または列ずれの候補表がありました。" else null,
+                    resultData = if failureRecord <> null then null else if horizontalMergedData <> null then horizontalMergedData else if verticalMergedData <> null then verticalMergedData else chosenSinglePage,
                     withFileName = if resultData = null then null else Table.AddColumn(resultData, SourceFileColumnName, each fileName, type text),
-                    reordered = if withFileName = null then null else Table.ReorderColumns(withFileName, OutputColumns, MissingField.UseNull),
-                    reviewData = BuildReviewTable(resultData, fileName)
+                    reordered = if withFileName = null then null else Table.ReorderColumns(Table.RemoveColumns(withFileName, {"__PageNumber"}, MissingField.Ignore), OutputColumns, MissingField.UseNull),
+                    reviewData = BuildReviewTable(resultData, fileName, pageMergeNote)
                 in [
                     IsError = failureRecord <> null,
                     ErrorCode = if failureRecord = null then null else failureRecord[ErrorCode],
@@ -1211,7 +1367,7 @@ let
                     CandidateRows = if chosen = null then null else chosen[DataRowCount],
                     OutputRowCount = if reordered = null then 0 else Table.RowCount(reordered),
                     ReviewCount = if reviewData = null then 0 else Table.RowCount(reviewData),
-                    PageCount = if List.Count(groupedPageCandidates) = 0 then if chosen = null then 0 else 1 else List.Count(groupedPageCandidates),
+                    PageCount = if horizontalMergedData <> null then List.Count(horizontalMergeCandidates) else if List.Count(groupedVerticalCandidates) = 0 then if chosen = null then 0 else 1 else List.Count(groupedVerticalCandidates),
                     SelectedTableId = if chosen = null then null else chosen[TableId],
                     SelectedTableKind = if chosen = null then null else chosen[TableKind],
                     SelectedTableName = if chosen = null then null else chosen[TableName],
@@ -2090,6 +2246,189 @@ function Load-WorkbookOutputSheets {
     Load-WorkbookQueryToWorksheet -Workbook $Workbook -WorksheetName 'Summary' -QueryName 'PDF2Excel_ErrorSummary' -TableName 'tblErrorSummary' -DestinationAddress $(if ($VersionMode -eq 'v2') { 'S14' } else { 'M14' }) -ClearSheet:$false
 }
 
+function Add-V2ResultNormalizedColumns {
+    param(
+        [Parameter(Mandatory = $true)]$Worksheet,
+        [Parameter(Mandatory = $true)]$Profile
+    )
+
+    $definitions = @(Get-NormalizedTimeColumnDefinitions -Profile $Profile -VersionMode 'v2')
+    if ($definitions.Count -eq 0) {
+        return
+    }
+
+    $usedRange = $Worksheet.UsedRange
+    $rowCount = [int]$usedRange.Rows.Count
+    $columnCount = [int]$usedRange.Columns.Count
+    $headerMap = @{}
+
+    for ($column = 1; $column -le $columnCount; $column += 1) {
+        $header = [string]$Worksheet.Cells.Item(1, $column).Value2
+        if (-not [string]::IsNullOrWhiteSpace($header)) {
+            $headerMap[$header] = $column
+        }
+    }
+
+    foreach ($definition in $definitions) {
+        foreach ($headerName in @($definition.DisplayName, $definition.MinutesColumnName)) {
+            if (-not $headerMap.ContainsKey($headerName)) {
+                $columnCount += 1
+                $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
+                $headerMap[$headerName] = $columnCount
+            }
+        }
+    }
+
+    foreach ($headerName in @('時刻正規化状態', '時刻確認メモ')) {
+        if (-not $headerMap.ContainsKey($headerName)) {
+            $columnCount += 1
+            $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
+            $headerMap[$headerName] = $columnCount
+        }
+    }
+
+    for ($row = 2; $row -le $rowCount; $row += 1) {
+        $issues = @()
+        $hasTimeValue = $false
+
+        foreach ($definition in $definitions) {
+            try {
+                if (-not $headerMap.ContainsKey($definition.SourceColumnName)) {
+                    continue
+                }
+
+                $rawValue = [string]$Worksheet.Cells.Item($row, $headerMap[$definition.SourceColumnName]).Text
+                $normalized = Normalize-TimeText -Value $rawValue
+                if (-not [string]::IsNullOrWhiteSpace($rawValue)) {
+                    $hasTimeValue = $true
+                }
+
+                $Worksheet.Cells.Item($row, $headerMap[$definition.DisplayName]).Value2 = $normalized.NormalizedText
+                $Worksheet.Cells.Item($row, $headerMap[$definition.MinutesColumnName]).Value2 = if ($null -eq $normalized.MinutesFromMidnight) { '' } else { [string]$normalized.MinutesFromMidnight }
+
+                if ($normalized.Status -eq 'INVALID') {
+                    $issues += ('{0}: {1}' -f $definition.DisplayName, $normalized.Note)
+                }
+            } catch {
+                throw "Result 正規化列 '$($definition.DisplayName)' の書き込みに失敗しました (row=$row): $($_.Exception.Message)"
+            }
+        }
+
+        if ($issues.Count -gt 0) {
+            $Worksheet.Cells.Item($row, $headerMap['時刻正規化状態']).Value2 = '要確認'
+            $Worksheet.Cells.Item($row, $headerMap['時刻確認メモ']).Value2 = ($issues -join ' / ')
+        } elseif ($hasTimeValue) {
+            $Worksheet.Cells.Item($row, $headerMap['時刻正規化状態']).Value2 = 'OK'
+            $Worksheet.Cells.Item($row, $headerMap['時刻確認メモ']).Value2 = ''
+        } else {
+            $Worksheet.Cells.Item($row, $headerMap['時刻正規化状態']).Value2 = ''
+            $Worksheet.Cells.Item($row, $headerMap['時刻確認メモ']).Value2 = ''
+        }
+    }
+
+    foreach ($definition in $definitions) {
+        try {
+            $Worksheet.Cells.Item(1, $headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
+        } catch {
+            throw "Result 正規化列 '$($definition.DisplayName)' の表示形式設定に失敗しました: $($_.Exception.Message)"
+        }
+    }
+    $Worksheet.Range('A1').EntireRow.Font.Bold = $true
+    $Worksheet.Columns.AutoFit() | Out-Null
+}
+
+function Add-V2ReviewNormalizedColumns {
+    param([Parameter(Mandatory = $true)]$Worksheet)
+
+    $usedRange = $Worksheet.UsedRange
+    $rowCount = [int]$usedRange.Rows.Count
+    $columnCount = [int]$usedRange.Columns.Count
+    $headerMap = @{}
+
+    for ($column = 1; $column -le $columnCount; $column += 1) {
+        $header = [string]$Worksheet.Cells.Item(1, $column).Value2
+        if (-not [string]::IsNullOrWhiteSpace($header)) {
+            $headerMap[$header] = $column
+        }
+    }
+
+    $reviewColumns = @('正規化入場', '正規化退場', '正規化入場_分', '正規化退場_分', '時刻正規化状態', '時刻確認メモ')
+    foreach ($headerName in $reviewColumns) {
+        if (-not $headerMap.ContainsKey($headerName)) {
+            $columnCount += 1
+            $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
+            $headerMap[$headerName] = $columnCount
+        }
+    }
+
+    for ($row = 2; $row -le $rowCount; $row += 1) {
+        $normalizedIn = Normalize-TimeText -Value ([string]$Worksheet.Cells.Item($row, $headerMap['InRaw']).Text)
+        $normalizedOut = Normalize-TimeText -Value ([string]$Worksheet.Cells.Item($row, $headerMap['OutRaw']).Text)
+        $issues = @()
+
+        try {
+            $Worksheet.Cells.Item($row, $headerMap['正規化入場']).Value2 = $normalizedIn.NormalizedText
+            $Worksheet.Cells.Item($row, $headerMap['正規化退場']).Value2 = $normalizedOut.NormalizedText
+            $Worksheet.Cells.Item($row, $headerMap['正規化入場_分']).Value2 = if ($null -eq $normalizedIn.MinutesFromMidnight) { '' } else { [string]$normalizedIn.MinutesFromMidnight }
+            $Worksheet.Cells.Item($row, $headerMap['正規化退場_分']).Value2 = if ($null -eq $normalizedOut.MinutesFromMidnight) { '' } else { [string]$normalizedOut.MinutesFromMidnight }
+        } catch {
+            throw "Review 正規化列の書き込みに失敗しました (row=$row): $($_.Exception.Message)"
+        }
+
+        foreach ($pair in @(
+            @{ Label = '正規化入場'; Result = $normalizedIn },
+            @{ Label = '正規化退場'; Result = $normalizedOut }
+        )) {
+            if ($pair.Result.Status -eq 'INVALID') {
+                $issues += ('{0}: {1}' -f $pair.Label, $pair.Result.Note)
+            }
+        }
+
+        if ($issues.Count -gt 0) {
+            $Worksheet.Cells.Item($row, $headerMap['時刻正規化状態']).Value2 = '要確認'
+            $Worksheet.Cells.Item($row, $headerMap['時刻確認メモ']).Value2 = ($issues -join ' / ')
+        } elseif ($normalizedIn.Status -eq 'OK' -or $normalizedOut.Status -eq 'OK') {
+            $Worksheet.Cells.Item($row, $headerMap['時刻正規化状態']).Value2 = 'OK'
+            $Worksheet.Cells.Item($row, $headerMap['時刻確認メモ']).Value2 = ''
+        } else {
+            $Worksheet.Cells.Item($row, $headerMap['時刻正規化状態']).Value2 = ''
+            $Worksheet.Cells.Item($row, $headerMap['時刻確認メモ']).Value2 = ''
+        }
+    }
+
+    foreach ($headerName in @('正規化入場', '正規化退場')) {
+        try {
+            $Worksheet.Cells.Item(1, $headerMap[$headerName]).EntireColumn.NumberFormat = '@'
+        } catch {
+            throw "Review 正規化列 '$headerName' の表示形式設定に失敗しました: $($_.Exception.Message)"
+        }
+    }
+    $Worksheet.Columns.AutoFit() | Out-Null
+}
+
+function Apply-VersionSpecificWorkbookEnrichments {
+    param(
+        [Parameter(Mandatory = $true)]$Workbook,
+        [Parameter(Mandatory = $true)]$Profile
+    )
+
+    if ($VersionMode -ne 'v2') {
+        return
+    }
+
+    $resultSheet = $null
+    $reviewSheet = $null
+    try {
+        $resultSheet = $Workbook.Worksheets.Item('Result')
+        Add-V2ResultNormalizedColumns -Worksheet $resultSheet -Profile $Profile
+        $reviewSheet = $Workbook.Worksheets.Item('Review')
+        Add-V2ReviewNormalizedColumns -Worksheet $reviewSheet
+    } finally {
+        $reviewSheet | Release-ComObject
+        $resultSheet | Release-ComObject
+    }
+}
+
 function Measure-WorkbookOutcome {
     param(
         [Parameter(Mandatory = $true)]$Workbook,
@@ -2230,6 +2569,7 @@ try {
     $runtimeContext = Open-ExcelRuntimeContext -RuntimeWorkbookPath $runtimeWorkbookPath -OutputPath $runPlan.OutputPath -Profile $runPlan.Profile
     Configure-WorkbookQueries -Workbook $runtimeContext.Workbook -Profile $runPlan.Profile
     Load-WorkbookOutputSheets -Workbook $runtimeContext.Workbook
+    Apply-VersionSpecificWorkbookEnrichments -Workbook $runtimeContext.Workbook -Profile $runPlan.Profile
     $runtimeContext.SummarySheet = $runtimeContext.Workbook.Worksheets.Item('Summary')
 
     $outcome = Measure-WorkbookOutcome -Workbook $runtimeContext.Workbook -SourcePdfCount $runPlan.SourceFiles.Count
