@@ -18,18 +18,23 @@ $duplicateB = Join-Path $duplicateRoot 'b'
 $profileFixtureDir = Join-Path $fixturesRoot 'profile10'
 $japanesePdfDir = Join-Path $fixturesRoot 'japanese'
 $bulkPdfDir = Join-Path $fixturesRoot 'bulk50'
+$attendancePdfDir = Join-Path $fixturesRoot 'attendance_jp'
+$sampleAttendancePdfDir = Join-Path $projectRoot 'samples\pdf\attendance_jp'
+$sampleSalesPdfDir = Join-Path $projectRoot 'samples\pdf\sales_daily_jp'
+$sampleInventoryPdfDir = Join-Path $projectRoot 'samples\pdf\inventory_jp'
+$sampleInquiryPdfDir = Join-Path $projectRoot 'samples\pdf\inquiry_jp'
+$sampleConstructionPocPdfDir = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc'
 $resultsRoot = Join-Path $testsRoot 'results'
 $reportsRoot = Join-Path $projectRoot 'reports'
 $runScript = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'
 $buildTemplateScript = Join-Path $projectRoot 'scripts\build_excel_template.ps1'
+$buildSamplesScript = Join-Path $projectRoot 'scripts\build_sample_pdfs.ps1'
 $batScript = Join-Path $projectRoot 'run_pdf2excel.bat'
 $commonScript = Join-Path $projectRoot 'scripts\pdf2excel.common.ps1'
 $templatePath = Join-Path $projectRoot 'template\PDF2Excel_Converter.xlsm'
 $jsonReportPath = Join-Path $resultsRoot 'integration-test-results.json'
 $markdownReportPath = Join-Path $reportsRoot 'test-report.md'
 $timeStarted = Get-Date
-$script:customProfilePath = Join-Path $workRoot 'profile10.json'
-$script:selfPath = $MyInvocation.MyCommand.Path
 
 . $commonScript
 
@@ -60,6 +65,15 @@ function Wait-For-ExcelBaseline {
     $finalCurrent = @(Get-ExcelProcessIds)
     return @($finalCurrent | Where-Object { $BaselineIds -notcontains $_ })
 }
+
+$suiteBaselineExcel = @(Get-ExcelProcessIds)
+$script:customProfilePath = Join-Path $workRoot 'profile10.json'
+$script:attendanceProfilePath = Join-Path $projectRoot 'config\profiles\attendance_monthly_jp.json'
+$script:salesProfilePath = Join-Path $projectRoot 'config\profiles\sales_daily_jp.json'
+$script:inventoryProfilePath = Join-Path $projectRoot 'config\profiles\inventory_list_jp.json'
+$script:inquiryProfilePath = Join-Path $projectRoot 'config\profiles\inquiry_weekly_jp.json'
+$script:constructionPocProfilePath = Join-Path $projectRoot 'config\profiles\construction_transfer_poc.json'
+$script:selfPath = $MyInvocation.MyCommand.Path
 
 function Assert-True {
     param(
@@ -137,6 +151,95 @@ function New-ExcelPdfFixture {
     }
 }
 
+function New-JapaneseAttendancePdfFixture {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputPath,
+        [Parameter(Mandatory = $true)][string]$MonthLabel
+    )
+
+    $excel = $null
+    $workbook = $null
+    $worksheet = $null
+
+    $memberRows = @(
+        @('A001', '佐藤花子', '営業部', '通常'),
+        @('A002', '鈴木一郎', '営業部', '在宅'),
+        @('A003', '田中美咲', '管理部', '通常'),
+        @('A004', '高橋健太', '管理部', '通常'),
+        @('A005', '伊藤直子', '開発部', '在宅'),
+        @('A006', '渡辺大輔', '開発部', '通常')
+    )
+    $statusCycle = @('出勤', '在宅', '休暇', '半休', '遅刻', '出勤', '出勤', '在宅')
+
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+
+        $workbook = $excel.Workbooks.Add()
+        $worksheet = $workbook.Worksheets.Item(1)
+        $worksheet.Name = '勤怠表'
+
+        $headers = @('社員番号', '氏名', '所属', '勤務区分')
+        $headers += @(1..30 | ForEach-Object { '{0}日' -f $_ })
+        $headers += @('備考')
+
+        for ($column = 1; $column -le $headers.Count; $column += 1) {
+            $worksheet.Cells.Item(1, $column).Value2 = $headers[$column - 1]
+        }
+
+        for ($rowIndex = 0; $rowIndex -lt $memberRows.Count; $rowIndex += 1) {
+            $excelRow = $rowIndex + 2
+            $member = $memberRows[$rowIndex]
+            for ($column = 1; $column -le 4; $column += 1) {
+                $worksheet.Cells.Item($excelRow, $column).Value2 = $member[$column - 1]
+            }
+
+            for ($day = 1; $day -le 30; $day += 1) {
+                $status = $statusCycle[($day + $rowIndex) % $statusCycle.Count]
+                if ((($day + $rowIndex) % 5) -ne 0) {
+                    $worksheet.Cells.Item($excelRow, $day + 4).Value2 = $status
+                }
+            }
+
+            $worksheet.Cells.Item($excelRow, 35).Value2 = "$MonthLabel 月次確認済み"
+        }
+
+        $worksheet.Range('A1:AI1').Font.Bold = $true
+        $worksheet.Columns.AutoFit() | Out-Null
+        $worksheet.PageSetup.Orientation = 2
+        $worksheet.PageSetup.Zoom = $false
+        $worksheet.PageSetup.FitToPagesWide = 1
+        $worksheet.PageSetup.FitToPagesTall = 1
+        $workbook.ExportAsFixedFormat(0, $OutputPath)
+    } finally {
+        if ($workbook) {
+            try {
+                $workbook.Close($false)
+            } catch {
+            }
+        }
+        if ($excel) {
+            try {
+                $excel.Quit()
+            } catch {
+            }
+        }
+
+        foreach ($comObject in @($worksheet, $workbook, $excel)) {
+            try {
+                if ($null -ne $comObject -and [System.Runtime.InteropServices.Marshal]::IsComObject($comObject)) {
+                    [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($comObject)
+                }
+            } catch {
+            }
+        }
+
+        [GC]::Collect()
+        [GC]::WaitForPendingFinalizers()
+    }
+}
+
 function Get-WorkbookSnapshot {
     param([Parameter(Mandatory = $true)][string]$WorkbookPath)
 
@@ -162,7 +265,7 @@ function Get-WorkbookSnapshot {
         $errorsRows = [int]$errorsSheet.UsedRange.Rows.Count
         $errorsColumns = [int]$errorsSheet.UsedRange.Columns.Count
 
-        $sampleRange = $resultSheet.Range('A1:F12').Value2
+        $sampleRange = $resultSheet.Range('A1:H20').Value2
         $sample = @()
         if ($null -ne $sampleRange) {
             if ($sampleRange -is [System.Array]) {
@@ -300,7 +403,8 @@ function New-ReportMarkdown {
     $index = 1
     foreach ($result in $TestResults) {
         $detailText = if ($result.ErrorMessage) { $result.ErrorMessage } elseif ($result.Details) { $result.Details } else { '' }
-        $lines += "| $index | $($result.Name) | $($result.Status) | $($result.DurationMs) ms | $detailText |"
+        $statusLabel = if ($result.Status -eq 'PASS') { '成功' } else { '失敗' }
+        $lines += "| $index | $($result.Name) | $statusLabel | $($result.DurationMs) ms | $detailText |"
         $index += 1
     }
 
@@ -344,8 +448,11 @@ function Initialize-TestFixtures {
     Ensure-Directory -Path $profileFixtureDir
     Ensure-Directory -Path $japanesePdfDir
     Ensure-Directory -Path $bulkPdfDir
+    Ensure-Directory -Path $attendancePdfDir
     Ensure-Directory -Path $resultsRoot
     Ensure-Directory -Path $reportsRoot
+
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $buildSamplesScript
 
     New-ExcelPdfFixture -OutputPath (Join-Path $validPdfDir 'valid_a.pdf') -Prefix 'VALIDA'
     New-ExcelPdfFixture -OutputPath (Join-Path $validPdfDir 'valid_b.pdf') -Prefix 'VALIDB'
@@ -356,6 +463,8 @@ function Initialize-TestFixtures {
     New-ExcelPdfFixture -OutputPath (Join-Path $profileFixtureDir 'profile10.pdf') -Prefix 'P10' -Columns 10
     Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join-Path $japanesePdfDir '日本語_帳票A.pdf') -Force
     Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_b.pdf') -Destination (Join-Path $japanesePdfDir '請求書_テストB.pdf') -Force
+    New-JapaneseAttendancePdfFixture -OutputPath (Join-Path $attendancePdfDir '2026年03月_勤怠管理表.pdf') -MonthLabel '2026年03月'
+    New-JapaneseAttendancePdfFixture -OutputPath (Join-Path $attendancePdfDir '2026年04月_勤怠管理表.pdf') -MonthLabel '2026年04月'
     for ($index = 1; $index -le 50; $index += 1) {
         $sourceName = if (($index % 2) -eq 0) { 'valid_b.pdf' } else { 'valid_a.pdf' }
         $bulkName = 'bulk_{0:D2}.pdf' -f $index
@@ -365,8 +474,8 @@ function Initialize-TestFixtures {
     $customProfileJson = @'
 {
   "name": "profile10",
-  "displayName": "Profile10 Test",
-  "description": "Integration test profile for 10 columns.",
+  "displayName": "10列テストプロファイル",
+  "description": "10 列帳票の統合テスト用プロファイルです。",
   "expectedColumns": 10,
   "headerRowsToSkip": 1,
   "targetRowCount": 4,
@@ -416,23 +525,28 @@ function Invoke-TestProcess {
 
 function Get-TestCases {
     return @(
-        [pscustomobject]@{ Name = 'Template build'; Scenario = 'Template rebuild succeeds and updates the xlsm file'; TimeoutSeconds = 120 },
-        [pscustomobject]@{ Name = 'PowerShell conversion'; Scenario = 'Convert two valid PDFs via PowerShell and verify Result row count'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'Single PDF conversion'; Scenario = 'A folder that contains only one PDF should still convert successfully'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'InputFiles conversion'; Scenario = 'Documented -InputFiles usage should convert multiple PDFs correctly'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'Japanese filename conversion'; Scenario = 'Japanese PDF file names should remain intact in Result and Summary'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'Bulk 50 PDF performance'; Scenario = 'A 50-file batch should complete within the agreed timeout and preserve row counts'; TimeoutSeconds = 480 },
-        [pscustomobject]@{ Name = 'KeepInput isolation'; Scenario = 'KeepInput keeps archived PDFs without re-importing them into the current run'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'Concurrent run lock'; Scenario = 'A second run should fail fast while another run is already in progress'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'BAT conversion'; Scenario = 'Convert the same valid PDFs through BAT'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'BAT direct no-pause'; Scenario = 'BAT direct execution with arguments should exit without waiting for key input'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'Input self-reference'; Scenario = 'Using input/ itself as InputFolder should succeed without self-deleting files'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'Duplicate filename rejection'; Scenario = 'Different folders with the same PDF file name should be rejected explicitly'; TimeoutSeconds = 120 },
-        [pscustomobject]@{ Name = 'Broken PDF handling'; Scenario = 'A broken PDF should not crash the run and should be reported in Errors'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'Nested output path'; Scenario = 'Workbook can be saved into a new nested output directory'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'Profile-based conversion'; Scenario = 'A custom profile should change the expected output columns and summary metadata'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = 'Runtime cleanup'; Scenario = 'No temporary run workspace remains in output/runtime/runs after execution'; TimeoutSeconds = 60 },
-        [pscustomobject]@{ Name = 'No Excel leak'; Scenario = 'No EXCEL.exe process remains after the full suite'; TimeoutSeconds = 60 }
+        [pscustomobject]@{ Name = 'テンプレート再生成'; Scenario = 'テンプレート再生成が成功し、xlsm の更新日時が進むこと'; TimeoutSeconds = 120 },
+        [pscustomobject]@{ Name = 'PowerShell 経由の正常変換'; Scenario = '有効な PDF 2 件を PowerShell から変換し、Result 行数を確認すること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = '単票 PDF の変換'; Scenario = '1 件だけの PDF フォルダでも正常に変換できること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = 'InputFiles 指定の変換'; Scenario = '公開インターフェースの -InputFiles で複数 PDF を正しく処理できること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = '日本語ファイル名の変換'; Scenario = '日本語ファイル名が Result と Summary にそのまま残ること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = '50件一括変換性能'; Scenario = '50 件の PDF を許容時間内に変換し、行数が崩れないこと'; TimeoutSeconds = 480 },
+        [pscustomobject]@{ Name = 'KeepInput の隔離動作'; Scenario = 'KeepInput を使っても今回分だけが専用 staging で処理されること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = '同時実行ロック'; Scenario = '別実行中は 2 本目が即時失敗すること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = 'BAT 経由の変換'; Scenario = '同じ PDF 群を BAT から正常に変換できること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = 'BAT 直実行で待機しない'; Scenario = '引数付き BAT 実行で pause せず終了すること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = 'input 自己参照'; Scenario = 'input 自体を入力フォルダにしても自己削除せず処理できること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = '同名ファイル拒否'; Scenario = '別フォルダの同名 PDF を明示的に拒否すること'; TimeoutSeconds = 120 },
+        [pscustomobject]@{ Name = '壊れた PDF の処理'; Scenario = '壊れた PDF が全体を止めず Errors に出ること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = '深い出力先パス'; Scenario = '深いフォルダ階層の保存先でも Excel を出力できること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = 'プロファイル切替変換'; Scenario = 'カスタムプロファイルで列数と Summary が切り替わること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = '日本語勤怠管理表の変換'; Scenario = '6 人分の月次勤怠管理表を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
+        [pscustomobject]@{ Name = '日本語売上日報の変換'; Scenario = '店舗別の売上日報を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
+        [pscustomobject]@{ Name = '日本語在庫一覧の変換'; Scenario = '倉庫別の在庫一覧を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
+        [pscustomobject]@{ Name = '日本語問い合わせ管理表の変換'; Scenario = '週次の問い合わせ管理表を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
+        [pscustomobject]@{ Name = '建設現場転記PoCの変換'; Scenario = '改行セルや時刻ゆれを含む建設現場向けPoC帳票を raw 転記できること'; TimeoutSeconds = 240 },
+        [pscustomobject]@{ Name = '一時領域の後片付け'; Scenario = '実行後に output/runtime/runs 配下へ残骸が残らないこと'; TimeoutSeconds = 60 },
+        [pscustomobject]@{ Name = 'Excel プロセス残留なし'; Scenario = 'スイート完了後に余分な EXCEL.exe が残らないこと'; TimeoutSeconds = 60 }
     )
 }
 
@@ -440,79 +554,79 @@ function Invoke-NamedScenario {
     param([Parameter(Mandatory = $true)][string]$Name)
 
     switch ($Name) {
-        'Template build' {
+        'テンプレート再生成' {
             $templateTimestampBefore = if (Test-Path -LiteralPath $templatePath) { (Get-Item -LiteralPath $templatePath).LastWriteTimeUtc } else { $null }
             & powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript
-            Assert-True -Condition (Test-Path -LiteralPath $templatePath) -Message 'Template file was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $templatePath) -Message 'テンプレートファイルが作成されていません。'
             $newTimestamp = (Get-Item -LiteralPath $templatePath).LastWriteTimeUtc
-            Assert-True -Condition ($null -eq $templateTimestampBefore -or $newTimestamp -ge $templateTimestampBefore) -Message 'Template timestamp was not updated.'
-            return "Template updated at $newTimestamp"
+            Assert-True -Condition ($null -eq $templateTimestampBefore -or $newTimestamp -ge $templateTimestampBefore) -Message 'テンプレートの更新日時が進んでいません。'
+            return "テンプレート更新日時=$newTimestamp"
         }
-        'PowerShell conversion' {
+        'PowerShell 経由の正常変換' {
             $outputPath = Join-Path $resultsRoot 'powershell_success.xlsx'
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'PowerShell output workbook was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'PowerShell 実行の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
-            Assert-True -Condition ($snapshot.ResultColumns -eq 31) -Message "Expected 31 columns but got $($snapshot.ResultColumns)."
-            Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "Expected 9 rows including header but got $($snapshot.ResultRows)."
-            Assert-True -Condition ($snapshot.ErrorsRows -eq 1) -Message "Expected only Errors header row but got $($snapshot.ErrorsRows)."
-            Assert-True -Condition ($snapshot.Sample[1][0] -eq 'valid_a.pdf') -Message 'SourceFile column did not contain the expected file name.'
-            Assert-True -Condition ($snapshot.ControlSourceCount -eq '2') -Message "Control sheet source count is unexpected: $($snapshot.ControlSourceCount)"
-            Assert-True -Condition ($snapshot.ControlResultCount -eq '8') -Message "Control sheet result count is unexpected: $($snapshot.ControlResultCount)"
-            Assert-True -Condition ($snapshot.ControlErrorCount -eq '0') -Message "Control sheet error count is unexpected: $($snapshot.ControlErrorCount)"
-            Assert-True -Condition ($snapshot.ControlSuccessCount -eq '2') -Message "Control sheet success count is unexpected: $($snapshot.ControlSuccessCount)"
-            Assert-True -Condition ($snapshot.ControlFailedCount -eq '0') -Message "Control sheet failed count is unexpected: $($snapshot.ControlFailedCount)"
-            Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($snapshot.ControlProfile)) -Message 'Control sheet profile is unexpectedly blank.'
-            Assert-True -Condition ($snapshot.SummaryTitle -eq 'Summary') -Message 'Summary sheet title is missing.'
-            Assert-True -Condition ($snapshot.SummaryFileCount -eq '2') -Message "Summary file count is unexpected: $($snapshot.SummaryFileCount)"
-            return "ResultRows=$($snapshot.ResultRows), ErrorsRows=$($snapshot.ErrorsRows)"
+            Assert-True -Condition ($snapshot.ResultColumns -eq 31) -Message "列数が想定と異なります: $($snapshot.ResultColumns)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ErrorsRows -eq 1) -Message "Errors 行数が想定と異なります: $($snapshot.ErrorsRows)"
+            Assert-True -Condition ($snapshot.Sample[1][0] -eq 'valid_a.pdf') -Message 'A列の元ファイル名が想定と異なります。'
+            Assert-True -Condition ($snapshot.ControlSourceCount -eq '2') -Message "Control の対象 PDF 数が想定と異なります: $($snapshot.ControlSourceCount)"
+            Assert-True -Condition ($snapshot.ControlResultCount -eq '8') -Message "Control の取込データ行数が想定と異なります: $($snapshot.ControlResultCount)"
+            Assert-True -Condition ($snapshot.ControlErrorCount -eq '0') -Message "Control のエラー件数が想定と異なります: $($snapshot.ControlErrorCount)"
+            Assert-True -Condition ($snapshot.ControlSuccessCount -eq '2') -Message "Control の成功 PDF 数が想定と異なります: $($snapshot.ControlSuccessCount)"
+            Assert-True -Condition ($snapshot.ControlFailedCount -eq '0') -Message "Control の失敗 PDF 数が想定と異なります: $($snapshot.ControlFailedCount)"
+            Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($snapshot.ControlProfile)) -Message 'Control のプロファイル表示が空です。'
+            Assert-True -Condition ($snapshot.SummaryTitle -eq 'Summary') -Message 'Summary シートのタイトルが不足しています。'
+            Assert-True -Condition ($snapshot.SummaryFileCount -eq '2') -Message "Summary の対象 PDF 数が想定と異なります: $($snapshot.SummaryFileCount)"
+            return "Result 行数=$($snapshot.ResultRows), Errors 行数=$($snapshot.ErrorsRows)"
         }
-        'Single PDF conversion' {
+        '単票 PDF の変換' {
             $singlePdfDir = Join-Path $fixturesRoot 'single'
             Reset-Directory -Path $singlePdfDir
             Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join-Path $singlePdfDir 'valid_a.pdf') -Force
             $outputPath = Join-Path $resultsRoot 'single_pdf_success.xlsx'
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $singlePdfDir -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Single PDF output workbook was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '単票 PDF の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
-            Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "Expected 5 rows including header for one PDF but got $($snapshot.ResultRows)."
-            Assert-True -Condition ($snapshot.ControlSourceCount -eq '1') -Message "Control sheet source count is unexpected: $($snapshot.ControlSourceCount)"
-            return 'Single PDF conversion succeeded'
+            Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "単票 PDF の Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlSourceCount -eq '1') -Message "Control の対象 PDF 数が想定と異なります: $($snapshot.ControlSourceCount)"
+            return '単票 PDF の変換に成功'
         }
-        'InputFiles conversion' {
+        'InputFiles 指定の変換' {
             $outputPath = Join-Path $resultsRoot 'inputfiles_success.xlsx'
             $inputFilesArg = @((Join-Path $validPdfDir 'valid_a.pdf'), (Join-Path $validPdfDir 'valid_b.pdf')) -join ','
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFiles $inputFilesArg -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'InputFiles output workbook was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'InputFiles の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
-            Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "InputFiles conversion returned unexpected Result row count: $($snapshot.ResultRows)."
-            Assert-True -Condition ($snapshot.ControlSourceCount -eq '2') -Message "Control sheet source count is unexpected: $($snapshot.ControlSourceCount)"
-            return 'InputFiles conversion succeeded'
+            Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "InputFiles 指定の Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlSourceCount -eq '2') -Message "Control の対象 PDF 数が想定と異なります: $($snapshot.ControlSourceCount)"
+            return 'InputFiles 指定の変換に成功'
         }
-        'Japanese filename conversion' {
+        '日本語ファイル名の変換' {
             $outputPath = Join-Path $resultsRoot 'japanese_success.xlsx'
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $japanesePdfDir -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Japanese filename output workbook was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '日本語ファイル名テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-            Assert-True -Condition ($snapshot.ControlSourceCount -eq '2') -Message "Control sheet source count is unexpected: $($snapshot.ControlSourceCount)"
-            Assert-True -Condition ($sourceNames -contains '日本語_帳票A.pdf') -Message 'Japanese file name A was not preserved in Result.'
-            Assert-True -Condition ($sourceNames -contains '請求書_テストB.pdf') -Message 'Japanese file name B was not preserved in Result.'
-            return "SourceNames=$($sourceNames -join ',')"
+            Assert-True -Condition ($snapshot.ControlSourceCount -eq '2') -Message "Control の対象 PDF 数が想定と異なります: $($snapshot.ControlSourceCount)"
+            Assert-True -Condition ($sourceNames -contains '日本語_帳票A.pdf') -Message '日本語ファイル名 A が Result に保持されていません。'
+            Assert-True -Condition ($sourceNames -contains '請求書_テストB.pdf') -Message '日本語ファイル名 B が Result に保持されていません。'
+            return "元ファイル名=$($sourceNames -join ',')"
         }
-        'Bulk 50 PDF performance' {
+        '50件一括変換性能' {
             $outputPath = Join-Path $resultsRoot 'bulk50_success.xlsx'
             $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $bulkPdfDir -OutputFile $outputPath -NoConfirm
             $stopwatch.Stop()
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Bulk 50 PDF workbook was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '50件一括変換の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
-            Assert-True -Condition ($snapshot.ControlSourceCount -eq '50') -Message "Expected 50 source PDFs but got $($snapshot.ControlSourceCount)."
-            Assert-True -Condition ($snapshot.ResultRows -eq 201) -Message "Expected 201 rows including header for 50 PDFs but got $($snapshot.ResultRows)."
-            Assert-True -Condition ($stopwatch.Elapsed.TotalSeconds -lt 300) -Message ("50 PDF batch took too long: {0:N1} seconds." -f $stopwatch.Elapsed.TotalSeconds)
-            return ("ElapsedSeconds={0:N1}, ResultRows={1}" -f $stopwatch.Elapsed.TotalSeconds, $snapshot.ResultRows)
+            Assert-True -Condition ($snapshot.ControlSourceCount -eq '50') -Message "対象 PDF 数が 50 件になっていません: $($snapshot.ControlSourceCount)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 201) -Message "50 件一括変換の Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($stopwatch.Elapsed.TotalSeconds -lt 300) -Message ("50 件一括変換の処理時間が長すぎます: {0:N1} 秒" -f $stopwatch.Elapsed.TotalSeconds)
+            return ("処理秒数={0:N1}, Result 行数={1}" -f $stopwatch.Elapsed.TotalSeconds, $snapshot.ResultRows)
         }
-        'KeepInput isolation' {
+        'KeepInput の隔離動作' {
             $inputStore = Join-Path $projectRoot 'input'
             Get-ChildItem -LiteralPath $inputStore -Filter '*.pdf' -File -ErrorAction SilentlyContinue | Remove-Item -Force
             Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_b.pdf') -Destination (Join-Path $inputStore 'archived_valid_b.pdf') -Force
@@ -523,16 +637,16 @@ function Invoke-NamedScenario {
 
             $outputPath = Join-Path $resultsRoot 'keepinput_isolation.xlsx'
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $singleKeepDir -OutputFile $outputPath -KeepInput -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'KeepInput output workbook was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'KeepInput テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
-            Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "KeepInput should import only the selected PDF, but ResultRows=$($snapshot.ResultRows)."
+            Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "KeepInput 実行で今回対象外の PDF が混ざっています: $($snapshot.ResultRows)"
 
             $storedNames = @(Get-ChildItem -LiteralPath $inputStore -Filter '*.pdf' -File | Select-Object -ExpandProperty Name)
-            Assert-True -Condition ($storedNames -contains 'archived_valid_b.pdf') -Message 'KeepInput did not preserve the archived PDF.'
-            Assert-True -Condition ($storedNames -contains 'valid_a.pdf') -Message 'KeepInput did not store the selected PDF.'
-            return "StoredInputFiles=$($storedNames -join ',')"
+            Assert-True -Condition ($storedNames -contains 'archived_valid_b.pdf') -Message 'KeepInput で保管 PDF を保持できていません。'
+            Assert-True -Condition ($storedNames -contains 'valid_a.pdf') -Message 'KeepInput で今回対象 PDF を input に保管できていません。'
+            return "保管中ファイル=$($storedNames -join ',')"
         }
-        'Concurrent run lock' {
+        '同時実行ロック' {
             $secondOutput = Join-Path $resultsRoot 'lock_second.xlsx'
             $runtimeRoot = Join-Path $projectRoot 'output\runtime'
             $lockPath = Join-Path $runtimeRoot 'run.lock'
@@ -545,7 +659,7 @@ function Invoke-NamedScenario {
                 $createdNew = $false
                 $mutex = New-Object System.Threading.Mutex($false, 'Global\PDF2Excel_RunMutex', [ref]$createdNew)
                 $lockAcquired = $mutex.WaitOne(0, $false)
-                Assert-True -Condition $lockAcquired -Message 'Test mutex could not be acquired.'
+                Assert-True -Condition $lockAcquired -Message 'テスト用 mutex を取得できませんでした。'
 
                 $lockPayload = [ordered]@{
                     runInstanceId = 'test-lock'
@@ -568,9 +682,9 @@ function Invoke-NamedScenario {
                     $secondFailed = $true
                 }
 
-                Assert-True -Condition $secondFailed -Message 'Second run unexpectedly succeeded while the mutex was held.'
-                Assert-True -Condition (-not (Test-Path -LiteralPath $secondOutput)) -Message 'Second run created an output workbook unexpectedly.'
-                return 'Concurrent lock rejected the second run'
+                Assert-True -Condition $secondFailed -Message 'ロック中なのに 2 本目の実行が成功してしまいました。'
+                Assert-True -Condition (-not (Test-Path -LiteralPath $secondOutput)) -Message 'ロック中なのに 2 本目の出力ブックが作成されました。'
+                return '同時実行ロックにより 2 本目を拒否'
             } finally {
                 if ($lockAcquired -and $mutex) {
                     try {
@@ -589,33 +703,33 @@ function Invoke-NamedScenario {
                 }
             }
         }
-        'BAT conversion' {
+        'BAT 経由の変換' {
             $outputPath = Join-Path $resultsRoot 'bat_success.xlsx'
             & cmd /c $batScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT output workbook was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT 実行の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
-            Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "BAT conversion returned unexpected Result row count: $($snapshot.ResultRows)."
-            return "ResultRows=$($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "BAT 実行の Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            return "Result 行数=$($snapshot.ResultRows)"
         }
-        'BAT direct no-pause' {
+        'BAT 直実行で待機しない' {
             $outputPath = Join-Path $resultsRoot 'bat_direct_no_pause.xlsx'
             & cmd /c $batScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT direct output workbook was not created.'
-            return 'BAT direct execution finished without pause'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT 直実行の出力ブックが作成されていません。'
+            return 'BAT 直実行が待機せず終了'
         }
-        'Input self-reference' {
+        'input 自己参照' {
             Get-ChildItem -LiteralPath (Join-Path $projectRoot 'input') -Filter '*.pdf' -File -ErrorAction SilentlyContinue | Remove-Item -Force
             Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join-Path $projectRoot 'input\valid_a.pdf') -Force
             Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_b.pdf') -Destination (Join-Path $projectRoot 'input\valid_b.pdf') -Force
             $outputPath = Join-Path $resultsRoot 'input_self_reference.xlsx'
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder (Join-Path $projectRoot 'input') -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Self-reference output workbook was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'input 自己参照の出力ブックが作成されていません。'
             $remainingNames = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'input') -Filter '*.pdf' -File | Select-Object -ExpandProperty Name)
-            Assert-True -Condition ($remainingNames -contains 'valid_a.pdf') -Message 'Input self-reference run removed valid_a.pdf unexpectedly.'
-            Assert-True -Condition ($remainingNames -contains 'valid_b.pdf') -Message 'Input self-reference run removed valid_b.pdf unexpectedly.'
-            return "RemainingInputFiles=$($remainingNames -join ',')"
+            Assert-True -Condition ($remainingNames -contains 'valid_a.pdf') -Message 'input 自己参照の実行で valid_a.pdf が消えました。'
+            Assert-True -Condition ($remainingNames -contains 'valid_b.pdf') -Message 'input 自己参照の実行で valid_b.pdf が消えました。'
+            return "残存入力ファイル=$($remainingNames -join ',')"
         }
-        'Duplicate filename rejection' {
+        '同名ファイル拒否' {
             $outputPath = Join-Path $resultsRoot 'duplicate_should_fail.xlsx'
             if (Test-Path -LiteralPath $outputPath) {
                 Remove-Item -LiteralPath $outputPath -Force
@@ -635,54 +749,134 @@ function Invoke-NamedScenario {
                 $duplicateFailed = $true
             }
 
-            Assert-True -Condition $duplicateFailed -Message 'Duplicate filename run unexpectedly succeeded.'
-            Assert-True -Condition (-not (Test-Path -LiteralPath $outputPath)) -Message 'Duplicate filename run should not create an output workbook.'
-            return 'Duplicate PDF names are rejected'
+            Assert-True -Condition $duplicateFailed -Message '同名ファイルの実行が成功してしまいました。'
+            Assert-True -Condition (-not (Test-Path -LiteralPath $outputPath)) -Message '同名ファイル実行で出力ブックが作成されてはいけません。'
+            return '同名 PDF を拒否できた'
         }
-        'Broken PDF handling' {
+        '壊れた PDF の処理' {
             $outputPath = Join-Path $resultsRoot 'mixed_broken.xlsx'
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $mixedPdfDir -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Mixed output workbook was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '壊れた PDF 混在テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
-            Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "Expected 5 Result rows for one valid PDF but got $($snapshot.ResultRows)."
-            Assert-True -Condition ($snapshot.ErrorsRows -ge 2) -Message 'Broken PDF was not reported in Errors sheet.'
-            Assert-True -Condition ($snapshot.ControlErrorCount -eq '1') -Message "Control sheet error count is unexpected: $($snapshot.ControlErrorCount)"
-            Assert-True -Condition ($snapshot.ControlFailedCount -eq '1') -Message "Control sheet failed count is unexpected: $($snapshot.ControlFailedCount)"
-            return "ResultRows=$($snapshot.ResultRows), ErrorsRows=$($snapshot.ErrorsRows)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "壊れた PDF 混在時の Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ErrorsRows -ge 2) -Message '壊れた PDF が Errors シートに出ていません。'
+            Assert-True -Condition ($snapshot.ControlErrorCount -eq '1') -Message "Control のエラー件数が想定と異なります: $($snapshot.ControlErrorCount)"
+            Assert-True -Condition ($snapshot.ControlFailedCount -eq '1') -Message "Control の失敗 PDF 数が想定と異なります: $($snapshot.ControlFailedCount)"
+            return "Result 行数=$($snapshot.ResultRows), Errors 行数=$($snapshot.ErrorsRows)"
         }
-        'Nested output path' {
+        '深い出力先パス' {
             $nestedDir = Join-Path $resultsRoot 'nested\child\output'
             $outputPath = Join-Path $nestedDir 'nested_output.xlsx'
             if (Test-Path -LiteralPath $nestedDir) {
                 Remove-Item -LiteralPath $nestedDir -Recurse -Force
             }
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Nested output workbook was not created.'
-            return 'Nested output created'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '深い保存先の出力ブックが作成されていません。'
+            return '深い保存先への出力に成功'
         }
-        'Profile-based conversion' {
+        'プロファイル切替変換' {
             $outputPath = Join-Path $resultsRoot 'profile10_success.xlsx'
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $profileFixtureDir -ProfilePath $script:customProfilePath -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'Profile-based output workbook was not created.'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'プロファイル切替の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
-            Assert-True -Condition ($snapshot.ResultColumns -eq 11) -Message "Expected 11 columns for the 10-column profile but got $($snapshot.ResultColumns)."
-            Assert-True -Condition ($snapshot.ControlProfile -eq 'Profile10 Test') -Message "Profile name was not written to Control: $($snapshot.ControlProfile)"
-            Assert-True -Condition ($snapshot.SummarySuccessCount -eq '1') -Message "Summary success count is unexpected: $($snapshot.SummarySuccessCount)"
-            return 'Custom profile conversion succeeded'
+            Assert-True -Condition ($snapshot.ResultColumns -eq 11) -Message "10 列プロファイルの列数が想定と異なります: $($snapshot.ResultColumns)"
+            Assert-True -Condition ($snapshot.ControlProfile -eq '10列テストプロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
+            Assert-True -Condition ($snapshot.SummarySuccessCount -eq '1') -Message "Summary の成功 PDF 数が想定と異なります: $($snapshot.SummarySuccessCount)"
+            return 'カスタムプロファイルでの変換に成功'
         }
-        'Runtime cleanup' {
+        '日本語勤怠管理表の変換' {
+            $outputPath = Join-Path $resultsRoot 'attendance_monthly_jp.xlsx'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $sampleAttendancePdfDir -ProfilePath $script:attendanceProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '日本語勤怠管理表テストの出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $memberNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[2] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            Assert-True -Condition ($snapshot.ResultColumns -eq 36) -Message "日本語勤怠管理表の列数が想定と異なります: $($snapshot.ResultColumns)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 13) -Message "日本語勤怠管理表の行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlProfile -eq '日本語勤怠管理表プロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
+            Assert-True -Condition ($sourceNames -contains '2026年03月_勤怠管理表.pdf') -Message '3 月の勤怠 PDF 名が保持されていません。'
+            Assert-True -Condition ($sourceNames -contains '2026年04月_勤怠管理表.pdf') -Message '4 月の勤怠 PDF 名が保持されていません。'
+            Assert-True -Condition ($memberNames -contains '佐藤花子') -Message '勤怠管理表の氏名が保持されていません。'
+            Assert-True -Condition ($memberNames -contains '渡辺大輔') -Message '勤怠管理表の氏名が十分に読み込めていません。'
+            return "勤怠PDF=$($sourceNames -join ','), 氏名=$($memberNames -join ',')"
+        }
+        '日本語売上日報の変換' {
+            $outputPath = Join-Path $resultsRoot 'sales_daily_jp.xlsx'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $sampleSalesPdfDir -ProfilePath $script:salesProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '日本語売上日報テストの出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $storeNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[2] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            Assert-True -Condition ($snapshot.ResultColumns -eq 13) -Message "日本語売上日報の列数が想定と異なります: $($snapshot.ResultColumns)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 11) -Message "日本語売上日報の行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlProfile -eq '日本語売上日報プロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
+            Assert-True -Condition ($sourceNames -contains '2026-03-15_売上日報_東京店.pdf') -Message '東京店の売上日報 PDF 名が保持されていません。'
+            Assert-True -Condition ($sourceNames -contains '2026-03-16_売上日報_横浜店.pdf') -Message '横浜店の売上日報 PDF 名が保持されていません。'
+            Assert-True -Condition ($storeNames -contains '東京店') -Message '売上日報の店舗名が保持されていません。'
+            Assert-True -Condition ($storeNames -contains '横浜店') -Message '売上日報の複数店舗が十分に読み込めていません。'
+            return "売上PDF=$($sourceNames -join ','), 店舗=$($storeNames -join ',')"
+        }
+        '日本語在庫一覧の変換' {
+            $outputPath = Join-Path $resultsRoot 'inventory_list_jp.xlsx'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $sampleInventoryPdfDir -ProfilePath $script:inventoryProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '日本語在庫一覧テストの出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $warehouseNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[4] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            Assert-True -Condition ($snapshot.ResultColumns -eq 11) -Message "日本語在庫一覧の列数が想定と異なります: $($snapshot.ResultColumns)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 13) -Message "日本語在庫一覧の行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlProfile -eq '日本語在庫一覧プロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
+            Assert-True -Condition ($sourceNames -contains '春季_在庫一覧_倉庫A.pdf') -Message '倉庫Aの在庫一覧 PDF 名が保持されていません。'
+            Assert-True -Condition ($sourceNames -contains '春季_在庫一覧_倉庫B.pdf') -Message '倉庫Bの在庫一覧 PDF 名が保持されていません。'
+            Assert-True -Condition ($warehouseNames -contains '倉庫A') -Message '在庫一覧の倉庫名が保持されていません。'
+            Assert-True -Condition ($warehouseNames -contains '倉庫B') -Message '在庫一覧の複数倉庫が十分に読み込めていません。'
+            return "在庫PDF=$($sourceNames -join ','), 倉庫=$($warehouseNames -join ',')"
+        }
+        '日本語問い合わせ管理表の変換' {
+            $outputPath = Join-Path $resultsRoot 'inquiry_weekly_jp.xlsx'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $sampleInquiryPdfDir -ProfilePath $script:inquiryProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '日本語問い合わせ管理表テストの出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $customerNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[3] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            Assert-True -Condition ($snapshot.ResultColumns -eq 10) -Message "日本語問い合わせ管理表の列数が想定と異なります: $($snapshot.ResultColumns)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 11) -Message "日本語問い合わせ管理表の行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlProfile -eq '日本語問い合わせ管理表プロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
+            Assert-True -Condition ($sourceNames -contains '2026年03月_問い合わせ管理表_第1週.pdf') -Message '第1週の問い合わせ管理表 PDF 名が保持されていません。'
+            Assert-True -Condition ($sourceNames -contains '2026年03月_問い合わせ管理表_第2週.pdf') -Message '第2週の問い合わせ管理表 PDF 名が保持されていません。'
+            Assert-True -Condition ($customerNames -contains '株式会社青葉') -Message '問い合わせ管理表の顧客名が保持されていません。'
+            Assert-True -Condition ($customerNames -contains '北辰物流') -Message '問い合わせ管理表の複数顧客が十分に読み込めていません。'
+            return "問い合わせPDF=$($sourceNames -join ','), 顧客=$($customerNames -join ',')"
+        }
+        '建設現場転記PoCの変換' {
+            $outputPath = Join-Path $resultsRoot 'construction_transfer_poc.xlsx'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $sampleConstructionPocPdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '建設現場転記PoCテストの出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $names = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[3] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $sites = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[5] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            Assert-True -Condition ($snapshot.ResultColumns -eq 31) -Message "建設現場転記PoCの列数が想定と異なります: $($snapshot.ResultColumns)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "建設現場転記PoCの行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlProfile -eq '建設現場転記PoCプロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
+            Assert-True -Condition ($sourceNames -contains '2026年02月_作業員勤怠一覧_PoC.pdf') -Message 'PoC PDF 名が保持されていません。'
+            Assert-True -Condition ($names -contains '佐藤 花子') -Message 'PoC 帳票の氏名が保持されていません。'
+            Assert-True -Condition ((@($sites | Where-Object { $_ -like '*東京駅前再開発*' }).Count) -ge 1) -Message 'PoC 帳票の現場名が保持されていません。'
+            return "PoCPDF=$($sourceNames -join ','), 氏名=$($names -join ','), 現場=$($sites -join ',')"
+        }
+        '一時領域の後片付け' {
             $runtimeRuns = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'output\runtime\runs') -Directory -ErrorAction SilentlyContinue)
             $runtimeFileNames = @($runtimeRuns | Select-Object -ExpandProperty Name)
-            Assert-True -Condition ($runtimeRuns.Count -eq 0) -Message ('Runtime run workspaces remained: ' + ($runtimeFileNames -join ', '))
-            return 'Runtime directory is clean'
+            Assert-True -Condition ($runtimeRuns.Count -eq 0) -Message ('一時ワークスペースが残っています: ' + ($runtimeFileNames -join ', '))
+            return '一時領域は空'
         }
-        'No Excel leak' {
-            $excelIds = @(Wait-For-ExcelBaseline -BaselineIds @() -TimeoutSeconds 10)
-            Assert-True -Condition ($excelIds.Count -eq 0) -Message ('Excel processes still running: ' + ($excelIds -join ', '))
-            return 'No Excel process remains'
+        'Excel プロセス残留なし' {
+            $excelIds = @(Wait-For-ExcelBaseline -BaselineIds $suiteBaselineExcel -TimeoutSeconds 10)
+            Assert-True -Condition ($excelIds.Count -eq 0) -Message ('Excel プロセスが残っています: ' + ($excelIds -join ', '))
+            return 'Excel プロセス残留なし'
         }
         default {
-            throw "Unknown test case: $Name"
+            throw "未知のテストケースです: $Name"
         }
     }
 }
@@ -708,7 +902,7 @@ function Invoke-IsolatedTestCase {
             Status       = 'FAIL'
             DurationMs   = $Definition.TimeoutSeconds * 1000
             Details      = $null
-            ErrorMessage = "Timed out after $($Definition.TimeoutSeconds) seconds."
+            ErrorMessage = "$($Definition.TimeoutSeconds) 秒でタイムアウトしました。"
         }
     }
 
@@ -719,7 +913,7 @@ function Invoke-IsolatedTestCase {
             Status       = 'FAIL'
             DurationMs   = 0
             Details      = $null
-            ErrorMessage = "Test result file was not created."
+            ErrorMessage = "テスト結果ファイルが作成されませんでした。"
         }
     }
 
@@ -730,7 +924,7 @@ if (-not [string]::IsNullOrWhiteSpace($CaseName)) {
     Initialize-TestFixtures
     $definition = Get-TestCases | Where-Object Name -eq $CaseName | Select-Object -First 1
     if ($null -eq $definition) {
-        throw "Unknown test case: $CaseName"
+        throw "未知のテストケースです: $CaseName"
     }
 
     $result = Invoke-TestCase -Name $definition.Name -Scenario $definition.Scenario -Body { Invoke-NamedScenario -Name $CaseName }
@@ -765,7 +959,7 @@ $reportMarkdown | Set-Content -LiteralPath $markdownReportPath -Encoding UTF8
 
 $failed = @($testResults | Where-Object Status -eq 'FAIL')
 if ($failed.Count -gt 0) {
-    Write-Error ("Integration tests failed: " + ($failed.Name -join ', '))
+    Write-Error ("統合テストに失敗しました: " + ($failed.Name -join ', '))
 }
 
 Write-Host "統合テスト成功: $(@($testResults | Where-Object Status -eq 'PASS').Count) / $($testResults.Count)"

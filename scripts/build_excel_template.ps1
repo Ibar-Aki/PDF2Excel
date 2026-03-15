@@ -18,7 +18,7 @@ function Sync-VbaModuleEncodingMirror {
     )
 
     if (-not (Test-Path -LiteralPath $Utf8Path)) {
-        throw "VBA module file was not found: $Utf8Path"
+        throw "VBA モジュールファイルが見つかりません: $Utf8Path"
     }
 
     $moduleText = Get-Content -LiteralPath $Utf8Path -Raw -Encoding UTF8
@@ -109,7 +109,7 @@ function Import-VbaModule {
     )
 
     if (-not (Test-Path -LiteralPath $ModulePath)) {
-        Write-Warning "VBA module file was not found: $ModulePath"
+        Write-Warning "VBA モジュールファイルが見つかりません: $ModulePath"
         return
     }
 
@@ -135,7 +135,7 @@ function Import-VbaModule {
         $moduleComponent | Release-ComObject
         $components | Release-ComObject
     } catch {
-        Write-Warning "VBA module import failed: $($_.Exception.Message)"
+        Write-Warning "VBA モジュールの取込に失敗しました: $($_.Exception.Message)"
     }
 }
 
@@ -174,9 +174,9 @@ try {
     Import-VbaModule -Workbook $workbook -ModulePath $VbaModulePath
     $workbook.Save()
 
-    Write-Host "Template created: $TemplatePath"
-    Write-Host "Shift_JIS VBA mirror: $VbaModuleShiftJisPath"
-    Write-Host "Shift_JIS bootstrap VBA mirror: $TemplateBuilderModuleShiftJisPath"
+    Write-Host "テンプレートを作成しました: $TemplatePath"
+    Write-Host "Shift_JIS VBA ミラー: $VbaModuleShiftJisPath"
+    Write-Host "Shift_JIS ブートストラップ VBA ミラー: $TemplateBuilderModuleShiftJisPath"
 } finally {
     if ($workbook) {
         try {

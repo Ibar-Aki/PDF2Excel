@@ -92,7 +92,8 @@ function New-UnitReportMarkdown {
     $index = 1
     foreach ($result in $TestResults) {
         $note = if ($result.ErrorMessage) { $result.ErrorMessage } else { $result.Details }
-        $lines += "| $index | $($result.Name) | $($result.Status) | $($result.DurationMs) ms | $note |"
+        $statusLabel = if ($result.Status -eq 'PASS') { '成功' } else { '失敗' }
+        $lines += "| $index | $($result.Name) | $statusLabel | $($result.DurationMs) ms | $note |"
         $index += 1
     }
 
@@ -110,68 +111,124 @@ function New-UnitReportMarkdown {
 
 $testResults = @()
 
-$testResults += Invoke-UnitTest -Name 'Escape-MString escapes quotes' -Body {
+$testResults += Invoke-UnitTest -Name 'Escape-MString は二重引用符をエスケープする' -Body {
     $actual = Escape-MString -Value 'A"B'
-    Assert-True -Condition ($actual -eq 'A""B') -Message "Unexpected escaped text: $actual"
+    Assert-True -Condition ($actual -eq 'A""B') -Message "エスケープ結果が想定と異なります: $actual"
     return $actual
 }
 
-$testResults += Invoke-UnitTest -Name 'ConvertTo-MTextListLiteral handles empty list' -Body {
+$testResults += Invoke-UnitTest -Name 'ConvertTo-MTextListLiteral は空配列を処理できる' -Body {
     $actual = ConvertTo-MTextListLiteral -Values @()
-    Assert-True -Condition ($actual -eq '{}') -Message "Unexpected literal: $actual"
+    Assert-True -Condition ($actual -eq '{}') -Message "リテラル結果が想定と異なります: $actual"
     return $actual
 }
 
-$testResults += Invoke-UnitTest -Name 'ConvertTo-MLogicalLiteral returns lowercase literal' -Body {
+$testResults += Invoke-UnitTest -Name 'ConvertTo-MLogicalLiteral は小文字の真偽値を返す' -Body {
     $trueValue = ConvertTo-MLogicalLiteral -Value $true
     $falseValue = ConvertTo-MLogicalLiteral -Value $false
-    Assert-True -Condition ($trueValue -eq 'true') -Message "True literal mismatch: $trueValue"
-    Assert-True -Condition ($falseValue -eq 'false') -Message "False literal mismatch: $falseValue"
+    Assert-True -Condition ($trueValue -eq 'true') -Message "true の結果が想定と異なります: $trueValue"
+    Assert-True -Condition ($falseValue -eq 'false') -Message "false の結果が想定と異なります: $falseValue"
     return "$trueValue / $falseValue"
 }
 
-$testResults += Invoke-UnitTest -Name 'Get-ProfileOutputColumnNames uses prefix and source file' -Body {
+$testResults += Invoke-UnitTest -Name 'Get-ProfileOutputColumnNames は接頭辞と元ファイル列を並べる' -Body {
     $profile = [pscustomobject]@{
         SourceFileColumnName = 'SourceFile'
         ExpectedColumns      = 3
         DataColumnPrefix     = 'Column'
     }
     $actual = @(Get-ProfileOutputColumnNames -Profile $profile)
-    Assert-True -Condition ($actual.Count -eq 4) -Message "Unexpected column count: $($actual.Count)"
-    Assert-True -Condition ($actual[0] -eq 'SourceFile') -Message "Unexpected first column: $($actual[0])"
-    Assert-True -Condition ($actual[3] -eq 'Column3') -Message "Unexpected last column: $($actual[3])"
+    Assert-True -Condition ($actual.Count -eq 4) -Message "列数が想定と異なります: $($actual.Count)"
+    Assert-True -Condition ($actual[0] -eq 'SourceFile') -Message "先頭列名が想定と異なります: $($actual[0])"
+    Assert-True -Condition ($actual[3] -eq 'Column3') -Message "末尾列名が想定と異なります: $($actual[3])"
     return ($actual -join ',')
 }
 
-$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration loads default profile' -Body {
+$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は既定プロファイルを読み込む' -Body {
     $profile = Get-ProfileConfiguration -RequestedProfileName 'default'
-    Assert-True -Condition ($profile.ExpectedColumns -eq 30) -Message "ExpectedColumns mismatch: $($profile.ExpectedColumns)"
-    Assert-True -Condition ($profile.SourceFileColumnName -eq 'SourceFile') -Message "SourceFile column mismatch: $($profile.SourceFileColumnName)"
+    Assert-True -Condition ($profile.ExpectedColumns -eq 30) -Message "expectedColumns が想定と異なります: $($profile.ExpectedColumns)"
+    Assert-True -Condition ($profile.SourceFileColumnName -eq 'SourceFile') -Message "sourceFileColumnName が想定と異なります: $($profile.SourceFileColumnName)"
     return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
 }
 
-$testResults += Invoke-UnitTest -Name 'Get-StagingQueryFormula embeds folder path and staging source' -Body {
+$testResults += Invoke-UnitTest -Name 'Get-StagingQueryFormula は入力フォルダと判定ロジックを埋め込む' -Body {
     $profile = Get-ProfileConfiguration -RequestedProfileName 'default'
     $formula = Get-StagingQueryFormula -InputPath 'C:\Temp\Input' -Profile $profile
-    Assert-True -Condition ($formula.Contains('Folder.Files("C:\Temp\Input")')) -Message 'Folder.Files path was not embedded.'
-    Assert-True -Condition ($formula.Contains('COLUMN_OVERFLOW')) -Message 'Expected error code block was not found.'
-    return 'Folder.Files + COLUMN_OVERFLOW confirmed'
+    Assert-True -Condition ($formula.Contains('Folder.Files("C:\Temp\Input")')) -Message 'Folder.Files の入力パスが埋め込まれていません。'
+    Assert-True -Condition ($formula.Contains('COLUMN_OVERFLOW')) -Message 'COLUMN_OVERFLOW の判定ブロックが見つかりません。'
+    return 'Folder.Files と COLUMN_OVERFLOW を確認'
 }
 
-$testResults += Invoke-UnitTest -Name 'Get-ResultQueryFormula references staging query' -Body {
+$testResults += Invoke-UnitTest -Name 'Get-ResultQueryFormula は staging クエリを参照する' -Body {
     $profile = Get-ProfileConfiguration -RequestedProfileName 'default'
     $formula = Get-ResultQueryFormula -InputPath 'C:\Temp\Input' -Profile $profile
-    Assert-True -Condition ($formula.Contains('Source = PDF2Excel_Staging')) -Message 'Result query does not reference staging query.'
-    Assert-True -Condition (-not $formula.Contains('Folder.Files(')) -Message 'Result query still contains duplicated Folder.Files logic.'
-    return 'Staging reference confirmed'
+    Assert-True -Condition ($formula.Contains('Source = PDF2Excel_Staging')) -Message 'Result クエリが staging クエリを参照していません。'
+    Assert-True -Condition (-not $formula.Contains('Folder.Files(')) -Message 'Result クエリに Folder.Files の重複ロジックが残っています。'
+    return 'Staging 参照を確認'
 }
 
-$testResults += Invoke-UnitTest -Name 'Resolve-RunErrorInfo maps lock and cancel states' -Body {
+$testResults += Invoke-UnitTest -Name 'Resolve-RunErrorInfo はロックとキャンセルを分類する' -Body {
     $locked = Resolve-RunErrorInfo -Message '別の PDF2Excel 実行が進行中です。'
     $cancelled = Resolve-RunErrorInfo -Message '実行前チェックでキャンセルしました。'
-    Assert-True -Condition ($locked.ErrorCode -eq 'RUN_LOCKED') -Message "Unexpected lock code: $($locked.ErrorCode)"
-    Assert-True -Condition ($cancelled.ErrorCode -eq 'RUN_CANCELLED') -Message "Unexpected cancel code: $($cancelled.ErrorCode)"
+    Assert-True -Condition ($locked.ErrorCode -eq 'RUN_LOCKED') -Message "ロック時のコードが想定と異なります: $($locked.ErrorCode)"
+    Assert-True -Condition ($cancelled.ErrorCode -eq 'RUN_CANCELLED') -Message "キャンセル時のコードが想定と異なります: $($cancelled.ErrorCode)"
     return "$($locked.ErrorCode) / $($cancelled.ErrorCode)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は日本語勤怠プロファイルを読み込む' -Body {
+    $profile = Get-ProfileConfiguration -RequestedProfileName 'attendance_monthly_jp'
+    Assert-True -Condition ($profile.ExpectedColumns -eq 35) -Message "expectedColumns が想定と異なります: $($profile.ExpectedColumns)"
+    Assert-True -Condition ($profile.TargetRowCount -eq 6) -Message "targetRowCount が想定と異なります: $($profile.TargetRowCount)"
+    Assert-True -Condition ($profile.SourceFileColumnName -eq '元ファイル名') -Message "sourceFileColumnName が想定と異なります: $($profile.SourceFileColumnName)"
+    return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は日本語売上日報プロファイルを読み込む' -Body {
+    $profile = Get-ProfileConfiguration -RequestedProfileName 'sales_daily_jp'
+    Assert-True -Condition ($profile.ExpectedColumns -eq 12) -Message "expectedColumns が想定と異なります: $($profile.ExpectedColumns)"
+    Assert-True -Condition ($profile.TargetRowCount -eq 5) -Message "targetRowCount が想定と異なります: $($profile.TargetRowCount)"
+    Assert-True -Condition ($profile.DisplayName -eq '日本語売上日報プロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
+    return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は日本語在庫一覧プロファイルを読み込む' -Body {
+    $profile = Get-ProfileConfiguration -RequestedProfileName 'inventory_list_jp'
+    Assert-True -Condition ($profile.ExpectedColumns -eq 10) -Message "expectedColumns が想定と異なります: $($profile.ExpectedColumns)"
+    Assert-True -Condition ($profile.TargetRowCount -eq 6) -Message "targetRowCount が想定と異なります: $($profile.TargetRowCount)"
+    Assert-True -Condition ($profile.DisplayName -eq '日本語在庫一覧プロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
+    return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は日本語問い合わせ管理表プロファイルを読み込む' -Body {
+    $profile = Get-ProfileConfiguration -RequestedProfileName 'inquiry_weekly_jp'
+    Assert-True -Condition ($profile.ExpectedColumns -eq 9) -Message "expectedColumns が想定と異なります: $($profile.ExpectedColumns)"
+    Assert-True -Condition ($profile.TargetRowCount -eq 5) -Message "targetRowCount が想定と異なります: $($profile.TargetRowCount)"
+    Assert-True -Condition ($profile.DisplayName -eq '日本語問い合わせ管理表プロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
+    return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は建設現場転記PoCプロファイルを読み込む' -Body {
+    $profile = Get-ProfileConfiguration -RequestedProfileName 'construction_transfer_poc'
+    Assert-True -Condition ($profile.ExpectedColumns -eq 30) -Message "expectedColumns が想定と異なります: $($profile.ExpectedColumns)"
+    Assert-True -Condition ($profile.TargetRowCount -eq 5) -Message "targetRowCount が想定と異なります: $($profile.TargetRowCount)"
+    Assert-True -Condition ($profile.DisplayName -eq '建設現場転記PoCプロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
+    return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
+}
+
+$testResults += Invoke-UnitTest -Name 'run_pdf2excel.bat は ASCII のみで構成される' -Body {
+    $batPath = Join-Path $projectRoot 'run_pdf2excel.bat'
+    $bytes = [System.IO.File]::ReadAllBytes($batPath)
+    $nonAscii = @($bytes | Where-Object { $_ -gt 127 })
+    Assert-True -Condition ($nonAscii.Count -eq 0) -Message 'run_pdf2excel.bat に非 ASCII バイトが含まれています。'
+    return 'ASCII のみを確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'run_pdf2excel_menu.ps1 は UTF-8 BOM で保存される' -Body {
+    $menuPath = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
+    $bytes = [System.IO.File]::ReadAllBytes($menuPath)
+    Assert-True -Condition ($bytes.Length -ge 3) -Message 'run_pdf2excel_menu.ps1 が空です。'
+    Assert-True -Condition ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) -Message 'run_pdf2excel_menu.ps1 が UTF-8 BOM ではありません。'
+    return 'UTF-8 BOM を確認'
 }
 
 $timeFinished = Get-Date
@@ -187,9 +244,9 @@ $reportMarkdown | Set-Content -LiteralPath $markdownReportPath -Encoding UTF8
 
 $failed = @($testResults | Where-Object Status -eq 'FAIL')
 if ($failed.Count -gt 0) {
-    Write-Error ('Unit tests failed: ' + ($failed.Name -join ', '))
+    Write-Error ('ユニットテストに失敗しました: ' + ($failed.Name -join ', '))
 }
 
-Write-Host "Unit tests passed: $(@($testResults | Where-Object Status -eq 'PASS').Count) / $($testResults.Count)"
-Write-Host "Markdown report: $markdownReportPath"
-Write-Host "JSON report: $jsonReportPath"
+Write-Host "ユニットテスト成功: $(@($testResults | Where-Object Status -eq 'PASS').Count) / $($testResults.Count)"
+Write-Host "Markdown レポート: $markdownReportPath"
+Write-Host "JSON レポート: $jsonReportPath"

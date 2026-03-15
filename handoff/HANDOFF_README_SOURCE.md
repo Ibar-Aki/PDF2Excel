@@ -1,7 +1,8 @@
-# PDF2Excel Minimal Package
+# PDF2Excel 最小配布パッケージ
 
 - 作成日: 2026-03-14 00:05 JST
 - 作成者: Codex (GPT-5)
+- 更新日: 2026-03-15
 
 ## これは何か
 
@@ -18,6 +19,8 @@
   - 実行に使う Excel テンプレートです。
 - `config/profiles/default.json`
   - 既定の帳票プロファイルです。
+- `config/profiles/attendance_monthly_jp.json`
+  - 日本語の月次勤怠管理表向けプロファイルです。
 - `input`
   - 一時的な PDF の配置先です。
 - `output`
@@ -73,6 +76,7 @@
 - 画像 PDF やスキャン PDF は対象外です。
 - レイアウトが大きく違う PDF を混ぜると `Errors` が増えます。
 - 既定では `config/profiles/default.json` を使います。
+- 日本語の勤怠管理表を扱う場合は `config/profiles/attendance_monthly_jp.json` も試してください。
 
 ## 配布時のおすすめ
 

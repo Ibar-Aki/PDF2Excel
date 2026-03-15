@@ -228,7 +228,7 @@ function Compact-RuntimeArtifacts {
     Get-ChildItem -LiteralPath $runtimeRunsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
         $deleted = Remove-PathWithRetry -Path $_.FullName
         if (-not $deleted) {
-            Write-Log "Runtime artifact could not be removed: $($_.FullName)" 'WARN'
+            Write-Log "実行時の一時ファイルを削除できませんでした: $($_.FullName)" 'WARN'
         }
     }
 
@@ -237,7 +237,7 @@ function Compact-RuntimeArtifacts {
     } | ForEach-Object {
         $deleted = Remove-PathWithRetry -Path $_.FullName
         if (-not $deleted) {
-            Write-Log "Runtime artifact could not be removed: $($_.FullName)" 'WARN'
+            Write-Log "実行時の一時ファイルを削除できませんでした: $($_.FullName)" 'WARN'
         }
     }
 }
@@ -573,7 +573,7 @@ function Ensure-Template {
     param([switch]$ForceRebuild)
 
     if ($ForceRebuild -or -not (Test-Path -LiteralPath $templatePath)) {
-        Write-Log "Creating Excel template: $templatePath"
+        Write-Log "Excel テンプレートを生成しています: $templatePath"
         & powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript -TemplatePath $templatePath
         if ($LASTEXITCODE -ne 0) {
             throw "テンプレート生成スクリプトが失敗しました。終了コード: $LASTEXITCODE"
@@ -892,7 +892,7 @@ let
             {"Name", "IsError", "OutputRowCount", "ErrorCategory", "ErrorCode", "UserMessage", "CandidateColumns", "CandidateRows", "SelectedTableKind", "SelectedTableName"},
             MissingField.UseNull
         ),
-    WithStatus = Table.AddColumn(Selected, "Status", each if [IsError] = true then "Failed" else "Success", type text),
+    WithStatus = Table.AddColumn(Selected, "Status", each if [IsError] = true then "失敗" else "成功", type text),
     Reordered =
         Table.ReorderColumns(
             WithStatus,
@@ -1017,14 +1017,14 @@ function Load-WorkbookQueryToWorksheet {
         try {
             $listObject = $worksheet.ListObjects.Add(0, $source, $null, 1, $worksheet.Range($DestinationAddress))
         } catch {
-            throw "ListObjects.Add failed: $($_.Exception.Message)"
+            throw "ワークシートへのテーブル追加に失敗しました: $($_.Exception.Message)"
         }
 
         try {
             $listObject.Name = $TableName
             $queryTable = $listObject.QueryTable
         } catch {
-            throw "QueryTable acquisition failed: $($_.Exception.Message)"
+            throw "QueryTable の取得に失敗しました: $($_.Exception.Message)"
         }
 
         try {
@@ -1032,17 +1032,17 @@ function Load-WorkbookQueryToWorksheet {
             $queryTable.CommandText = @("SELECT * FROM [$QueryName]")
             $queryTable.BackgroundQuery = $false
         } catch {
-            throw "QueryTable configuration failed: $($_.Exception.Message)"
+            throw "QueryTable の設定に失敗しました: $($_.Exception.Message)"
         }
 
         try {
             $queryTable.Refresh($false) | Out-Null
             $worksheet.Columns.AutoFit() | Out-Null
         } catch {
-            throw "QueryTable refresh failed: $($_.Exception.Message)"
+            throw "QueryTable の更新に失敗しました: $($_.Exception.Message)"
         }
     } catch {
-        throw "Query load failed for $QueryName on sheet ${WorksheetName}: $($_.Exception.Message)"
+        throw "シート ${WorksheetName} へのクエリ $QueryName 読み込みに失敗しました: $($_.Exception.Message)"
     } finally {
         $queryTable | Release-ComObject
         $listObject | Release-ComObject
@@ -1472,7 +1472,7 @@ function Finalize-RunWorkspace {
     if (Test-Path -LiteralPath $script:runWorkspaceDir) {
         $deleted = Remove-PathWithRetry -Path $script:runWorkspaceDir
         if (-not $deleted) {
-            Write-Log "Run workspace could not be removed: $script:runWorkspaceDir" 'WARN'
+            Write-Log "実行ワークスペースを削除できませんでした: $script:runWorkspaceDir" 'WARN'
         }
     }
 }

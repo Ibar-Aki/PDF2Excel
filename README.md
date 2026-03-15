@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-12 23:14 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-14
+- 更新日: 2026-03-15
 
 Excel(M365) の Power Query を使って、複数のテキストPDFをまとめて Excel に変換するローカルツールです。  
 追加インストールなしで、`BAT + PowerShell + Excel` のみで動く構成にしています。
@@ -19,6 +19,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - Copilot 実装委任: [copilot-implementation-report.md](docs/copilot-implementation-report.md)
 - 要件定義書: [requirements-specification.md](docs/requirements-specification.md)
 - 技術説明書: [technical-description.md](docs/technical-description.md)
+- 建設現場転記案: [construction-site-transfer-proposal.md](docs/construction-site-transfer-proposal.md)
 
 詳しい使い方は [ユーザーマニュアル](docs/user-manual.md) を参照してください。
 フォルダ構成は [project-layout.md](docs/project-layout.md) を参照してください。
@@ -33,7 +34,8 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `3`: 使い方マニュアルを開く
 - `4`: 出力フォルダを開く
 - `5`: プロファイルフォルダを開く
-- `6`: 終了
+- `6`: ログフォルダを開く
+- `7`: 終了
 
 保存先を指定しない場合は、`output` フォルダに `PDF2Excel_yyyyMMdd_HHmmss.xlsx` が作成されます。
 変換前には、対象件数、保存先、使用プロファイル、想定列数を確認する「実行前チェック」が表示されます。
@@ -41,11 +43,15 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 ## 構成
 
 - `run_pdf2excel.bat`
-  - 利用者向けの起動入口です。対話メニュー付きです。
+  - 利用者向けの起動入口です。ASCII の起動ラッパーで、対話メニュー本体は PowerShell 側で表示します。
+- `scripts/run_pdf2excel_menu.ps1`
+  - 日本語の対話メニューを表示し、`run_pdf2excel.ps1` を呼び出します。
 - `docs/`
   - 利用マニュアルとフォルダ構成ガイドを置いています。
 - `samples/pdf/`
   - 動作確認用のサンプル PDF です。
+  - 日本語勤怠管理表サンプルは `samples/pdf/attendance_jp/` に置いています。
+  - 日本語売上日報、在庫一覧、問い合わせ管理表のサンプルも同梱しています。
 - `scripts/run_pdf2excel.ps1`
   - PDF の staging、Excel 起動、Power Query 更新、xlsx 出力を行います。
 - `scripts/build_excel_template.ps1`
@@ -55,7 +61,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `template/vba/PDF2ExcelTemplateBuilder.bas`
   - 空の Excel ブックに取り込んで実行すると、テンプレート相当のシート構成と基本マクロを生成するブートストラップ用 VBA モジュールです。
 - `config/profiles/`
-  - 帳票プロファイルを置きます。既定は `default.json` です。
+  - 帳票プロファイルを置きます。既定は `default.json` で、日本語の `勤怠管理表`、`売上日報`、`在庫一覧`、`問い合わせ管理表` 向けプロファイルも用意しています。
 - `input/`
   - 処理対象PDFの保管先です。実行時の抽出は `output/runtime/runs/.../staging` で分離して行います。
 - `output/`
@@ -149,6 +155,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
 - 同名PDFを別フォルダから同時投入する運用は非対応です。ファイル名が衝突した場合はエラーで止めます。
 - `-KeepInput` は `input` フォルダの保管内容を残すためのオプションです。今回の変換対象は毎回専用 staging に切り出して処理するため、過去PDFが混ざることはありません。
 - ツールは同時に 1 実行だけ許可します。別実行が動作中の場合は `RUN_LOCKED` として即時停止します。
+- BAT メニューと利用者向けの説明文は日本語化しています。
+- 日本語の月次勤怠管理表を試す場合は `config/profiles/attendance_monthly_jp.json` を利用してください。
+- 日本語の売上日報を試す場合は `config/profiles/sales_daily_jp.json` を利用してください。
+- 日本語の在庫一覧を試す場合は `config/profiles/inventory_list_jp.json` を利用してください。
+- 日本語の問い合わせ管理表を試す場合は `config/profiles/inquiry_weekly_jp.json` を利用してください。
+- 建設現場向けの raw 転記 PoC を試す場合は `config/profiles/construction_transfer_poc.json` を利用してください。
+- 日本語サンプル PDF を再生成したい場合は `scripts/build_sample_pdfs.ps1` を実行してください。
 
 ## テスト
 

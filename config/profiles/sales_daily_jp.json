@@ -1,0 +1,19 @@
+﻿{
+  "name": "sales_daily_jp",
+  "displayName": "日本語売上日報プロファイル",
+  "description": "店舗別の日本語売上日報を想定した 12 列プロファイルです。",
+  "expectedColumns": 12,
+  "headerRowsToSkip": 1,
+  "targetRowCount": 5,
+  "allowMoreColumns": false,
+  "preferredTableKinds": [
+    "Table"
+  ],
+  "preferredTableNameContains": [
+    "売上",
+    "日報"
+  ],
+  "preferredTableIdContains": [],
+  "sourceFileColumnName": "元ファイル名",
+  "dataColumnPrefix": "項目"
+}

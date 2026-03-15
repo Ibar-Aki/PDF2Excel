@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-13 00:05 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-14
+- 更新日: 2026-03-15
 
 補助資料:
 
@@ -10,6 +10,7 @@
 - 構成ガイド: [project-layout.md](project-layout.md)
 - 障害対応: [troubleshooting.md](troubleshooting.md)
 - サンプルPDF: `samples/pdf`
+- サンプル一覧: [../samples/README.md](../samples/README.md)
 
 ## 1. このツールの概要
 
@@ -84,8 +85,15 @@
 
 - `config\profiles` フォルダを開きます。
 - 帳票プロファイルを確認、複製、編集したいときに使います。
+- 日本語の月次勤怠管理表を試す場合は `attendance_monthly_jp.json` を確認してください。
+- 日本語の売上日報、在庫一覧、問い合わせ管理表も、それぞれ専用プロファイルを同梱しています。
 
-### [6] 終了
+### [6] ログフォルダを開く
+
+- `logs` フォルダを開きます。
+- 直近の実行ログを確認したいときに使います。
+
+### [7] 終了
 
 - 何もせず終了します。
 
@@ -202,7 +210,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
 ## 6. 帳票プロファイルの使い方
 
 帳票プロファイルは、帳票ごとの抽出条件をまとめた JSON です。  
-既定では `config/profiles/default.json` を使います。
+既定では `config/profiles/default.json` を使います。  
+日本語サンプル向けには `attendance_monthly_jp.json`、`sales_daily_jp.json`、`inventory_list_jp.json`、`inquiry_weekly_jp.json` も用意しています。  
 
 プロファイルで主に調整する項目:
 
@@ -227,6 +236,31 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
 2. `expectedColumns` と `headerRowsToSkip` だけ先に調整します。
 3. 少数の PDF で試します。
 4. `Summary` と `Errors` を見て、調整が効いているか確認します。
+
+日本語勤怠管理表を試す場合:
+
+1. `attendance_monthly_jp.json` をそのまま使って試します。
+2. 列数が 35 列前後、氏名や日別勤怠が横に並ぶ帳票に向いています。
+3. 6 人前後の月次勤怠表でまず少数テストしてから本番投入してください。
+4. すぐ試す場合は `samples/pdf/attendance_jp` のサンプル PDF を使えます。
+
+日本語売上日報を試す場合:
+
+1. `sales_daily_jp.json` を使います。
+2. `samples/pdf/sales_daily_jp` のサンプル PDF を使えます。
+3. 店舗名、商品名、売上金額が `Result` に入るか確認します。
+
+日本語在庫一覧を試す場合:
+
+1. `inventory_list_jp.json` を使います。
+2. `samples/pdf/inventory_jp` のサンプル PDF を使えます。
+3. 品番、品名、倉庫、在庫数が `Result` に入るか確認します。
+
+日本語問い合わせ管理表を試す場合:
+
+1. `inquiry_weekly_jp.json` を使います。
+2. `samples/pdf/inquiry_jp` のサンプル PDF を使えます。
+3. 顧客名、件名、状態が `Result` に入るか確認します。
 
 ## 7. 実行中に表示される内容の見方
 

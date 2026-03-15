@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-13 00:51 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-14
+- 更新日: 2026-03-15
 
 ## はじめに
 
@@ -27,8 +27,12 @@
   - 現行システムの要件、対象範囲、機能要件、非機能要件を整理した要件定義書です。
 - [technical-description.md](technical-description.md)
   - 動作フロー、技術スタック、アーキテクチャ、主要モジュールを整理した技術説明書です。
+- [construction-site-transfer-proposal.md](construction-site-transfer-proposal.md)
+  - 建設現場ごとの延べ作業時間算出に向けた raw 転記方式と PoC 方針を整理した提案書です。
 - [review-remediation-report.md](review-remediation-report.md)
   - レビュー指摘に対して何を直したか、不要判断の有無も含めて整理した記録です。
+- [codex-development-improvements.md](codex-development-improvements.md)
+  - Codex 利用時の改善点、AGENTS ルール、公式 skill の扱いを整理したメモです。
 
 ## 障害対応向け
 

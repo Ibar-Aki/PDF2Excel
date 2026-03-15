@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-13 00:49 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-14
+- 更新日: 2026-03-15
 
 ## 目的
 
@@ -17,6 +17,7 @@ PDF2Excel
 ├─ docs/                    マニュアルと構成説明
 ├─ config/profiles/         帳票プロファイル
 ├─ samples/pdf/             動作確認用のサンプル PDF
+├─ samples/source/          サンプル PDF の元 Excel
 ├─ scripts/                 PowerShell 本体と共通関数
 ├─ template/                Excel テンプレートと VBA
 ├─ tests/                   統合テストとユニットテスト
@@ -37,9 +38,11 @@ PDF2Excel
 - [user-manual.md](user-manual.md)
   - 詳しい使い方です。
 - `config/profiles`
-  - 帳票プロファイルです。
+  - 帳票プロファイルです。`default.json` と、日本語の `attendance_monthly_jp.json`、`sales_daily_jp.json`、`inventory_list_jp.json`、`inquiry_weekly_jp.json` を同梱しています。
 - `samples/pdf`
-  - サンプル PDF です。
+  - サンプル PDF です。`attendance_jp`、`sales_daily_jp`、`inventory_jp`、`inquiry_jp` に日本語サンプルがあります。
+- `samples/source`
+  - サンプル PDF の元 Excel です。
 - `output`
   - 変換後の Excel が出ます。
 - `logs`
@@ -49,10 +52,14 @@ PDF2Excel
 
 - [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
   - 変換本体です。
+- [run_pdf2excel_menu.ps1](../scripts/run_pdf2excel_menu.ps1)
+  - 日本語の対話メニューを表示する起動補助です。
 - [pdf2excel.common.ps1](../scripts/pdf2excel.common.ps1)
   - 共通関数です。
 - [build_excel_template.ps1](../scripts/build_excel_template.ps1)
   - `xlsm` テンプレートを再生成します。
+- [build_sample_pdfs.ps1](../scripts/build_sample_pdfs.ps1)
+  - 日本語勤怠管理表のサンプル Excel / PDF を再生成します。
 - [PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas)
   - Excel 側のマクロです。
 - [PDF2ExcelMacros.sjis.bas](../template/vba/PDF2ExcelMacros.sjis.bas)

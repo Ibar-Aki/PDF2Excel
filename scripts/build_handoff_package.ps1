@@ -29,15 +29,19 @@ foreach ($relativeDir in $directories) {
 
 $filesToCopy = @(
     @{ Source = Join-Path $projectRoot 'run_pdf2excel.bat'; Destination = Join-Path $OutputRoot 'run_pdf2excel.bat' },
+    @{ Source = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'; Destination = Join-Path $OutputRoot 'scripts\run_pdf2excel_menu.ps1' },
     @{ Source = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'; Destination = Join-Path $OutputRoot 'scripts\run_pdf2excel.ps1' },
     @{ Source = Join-Path $projectRoot 'scripts\pdf2excel.common.ps1'; Destination = Join-Path $OutputRoot 'scripts\pdf2excel.common.ps1' },
     @{ Source = Join-Path $projectRoot 'template\PDF2Excel_Converter.xlsm'; Destination = Join-Path $OutputRoot 'template\PDF2Excel_Converter.xlsm' },
-    @{ Source = Join-Path $projectRoot 'config\profiles\default.json'; Destination = Join-Path $OutputRoot 'config\profiles\default.json' },
     @{ Source = Join-Path $projectRoot 'handoff\HANDOFF_README_SOURCE.md'; Destination = Join-Path $OutputRoot 'HANDOFF_README.md' }
 )
 
 foreach ($file in $filesToCopy) {
     Copy-Item -LiteralPath $file.Source -Destination $file.Destination -Force
+}
+
+Get-ChildItem -LiteralPath (Join-Path $projectRoot 'config\profiles') -Filter '*.json' -File | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $OutputRoot ('config\profiles\' + $_.Name)) -Force
 }
 
 foreach ($gitkeepPath in @(
@@ -55,5 +59,5 @@ if (Test-Path -LiteralPath $ZipPath) {
 
 Compress-Archive -Path (Join-Path $OutputRoot '*') -DestinationPath $ZipPath
 
-Write-Host "Handoff folder: $OutputRoot"
-Write-Host "Handoff zip: $ZipPath"
+Write-Host "配布フォルダ: $OutputRoot"
+Write-Host "配布ZIP: $ZipPath"
