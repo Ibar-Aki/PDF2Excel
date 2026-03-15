@@ -675,18 +675,19 @@ function Get-ReviewQueryFormulaV2 {
     $reviewColumns = @('FileName', 'Page', 'PersonRaw', 'SiteRaw')
     $reviewColumns += @(Get-NormalizedTimeColumnDefinitions -Profile $Profile -VersionMode 'v2' | ForEach-Object { $_.ReviewRawColumnName })
     $reviewColumns += 'Reason'
+    $reviewColumns += 'ReasonCategory'
     $reviewColumnsLiteral = ConvertTo-MTextListLiteral -Values $reviewColumns
 
 @"
 let
     ReviewColumns = $reviewColumnsLiteral,
     Source = PDF2Excel_Staging,
-    SuccessRows = Table.SelectRows(Source, each [IsError] <> true and [Review] <> null),
+    ReviewRows = Table.SelectRows(Source, each [Review] <> null),
     Expanded =
-        if Table.RowCount(SuccessRows) = 0 then
+        if Table.RowCount(ReviewRows) = 0 then
             #table(ReviewColumns, {})
         else
-            Table.ExpandTableColumn(SuccessRows, "Review", ReviewColumns, ReviewColumns)
+            Table.ExpandTableColumn(ReviewRows, "Review", ReviewColumns, ReviewColumns)
 in
     Expanded
 "@
@@ -823,7 +824,7 @@ let
             count = List.Count(List.Select(tokens, each Text.Contains(_, ":") or Text.Contains(_, "：") or Text.Contains(_, "時")))
         in
             count,
-    BuildReviewTable = (dataTable as nullable table, fileName as text, noteText as nullable text) as table =>
+    BuildReviewTable = (dataTable as nullable table, fileName as text, noteText as nullable text, noteCategory as nullable text) as table =>
         let
             empty = #table({"FileName", "Page", "PersonRaw", "SiteRaw", "InRaw", "OutRaw", "Reason"}, {}),
             personColumnName = if ReviewPersonColumn = null then null else DataColumnPrefix & Text.From(ReviewPersonColumn),
@@ -1137,6 +1138,7 @@ function Get-StagingQueryFormulaV2Simple {
         'SiteRaw'
         @((Get-NormalizedTimeColumnDefinitions -Profile $Profile -VersionMode 'v2' | ForEach-Object { $_.ReviewRawColumnName }))
         'Reason'
+        'ReasonCategory'
     )
 
 @"
@@ -1241,7 +1243,7 @@ let
             normalized = Table.TransformColumns(selected, List.Transform(Table.ColumnNames(selected), each {_, NormalizeText, type text})),
             withPage = if padToExpected then Table.AddColumn(normalized, "__PageNumber", each pageNumber, type nullable number) else normalized
         in withPage,
-    BuildReviewRecord = (rowRecord as record, fileName as text, reasonText as nullable text) as record =>
+    BuildReviewRecord = (rowRecord as record, fileName as text, reasonText as nullable text, reasonCategories as nullable list) as record =>
         let
             personColumnName = if ReviewPersonColumn = null then null else DataColumnPrefix & Text.From(ReviewPersonColumn),
             siteColumnName = if ReviewSiteColumn = null then null else DataColumnPrefix & Text.From(ReviewSiteColumn),
@@ -1250,7 +1252,8 @@ let
                 Page = Record.FieldOrDefault(rowRecord, "__PageNumber", null),
                 PersonRaw = if personColumnName = null then "" else Record.FieldOrDefault(rowRecord, personColumnName, ""),
                 SiteRaw = if siteColumnName = null then "" else Record.FieldOrDefault(rowRecord, siteColumnName, ""),
-                Reason = if reasonText = null then "" else reasonText
+                Reason = if reasonText = null then "" else reasonText,
+                ReasonCategory = if reasonCategories = null then "" else Text.Combine(List.Distinct(List.RemoveNulls(reasonCategories)), ",")
             ],
             withTimeFields =
                 List.Accumulate(
@@ -1260,7 +1263,7 @@ let
                 )
         in
             withTimeFields,
-    BuildReviewTable = (dataTable as nullable table, fileName as text, noteText as nullable text) as table =>
+    BuildReviewTable = (dataTable as nullable table, fileName as text, noteText as nullable text, noteCategory as nullable text) as table =>
         let
             empty = #table(ReviewColumns, {}),
             rowRecords =
@@ -1271,7 +1274,7 @@ let
                         Table.ToRecords(dataTable),
                         each
                             let
-                                timeReasons =
+                                timeReasonRecords =
                                     List.RemoveNulls(
                                         List.Transform(
                                             NormalizedTimeDefinitions,
@@ -1279,10 +1282,10 @@ let
                                                 let
                                                     rawText = Text.From(Record.FieldOrDefault(_, definition[SourceColumnName], ""))
                                                 in
-                                                    if CountTimeLikeTokens(rawText) > 1 then definition[DisplayName] & ": 同一セルに複数の時刻らしき文字列があります" else null
+                                                    if CountTimeLikeTokens(rawText) > 1 then [Text = definition[DisplayName] & ": 同一セルに複数の時刻らしき文字列があります", Category = "TIME_MULTI"] else null
                                         )
                                     ),
-                                pairReasons =
+                                pairReasonRecords =
                                     List.RemoveNulls(
                                         List.Transform(
                                             {0..Number.IntegerDivide(List.Count(NormalizedTimeDefinitions) - 1, 2)},
@@ -1297,12 +1300,14 @@ let
                                                     leftHasValue = Text.Length(leftRaw) > 0,
                                                     rightHasValue = Text.Length(rightRaw) > 0
                                                 in
-                                                    if leftDefinition = null or rightDefinition = null then null else if leftHasValue <> rightHasValue then leftDefinition[DisplayName] & "/" & rightDefinition[DisplayName] & ": 片側の時刻だけ埋まっています。" else null
+                                                    if leftDefinition = null or rightDefinition = null then null else if leftHasValue <> rightHasValue then [Text = leftDefinition[DisplayName] & "/" & rightDefinition[DisplayName] & ": 片側の時刻だけ埋まっています。", Category = "TIME_MISSING"] else null
                                         )
                                     ),
-                                reasonText = Text.Combine(List.Combine({timeReasons, pairReasons}), " / ")
+                                reasonRecords = List.Combine({timeReasonRecords, pairReasonRecords}),
+                                reasonText = Text.Combine(List.Transform(reasonRecords, each _[Text]), " / "),
+                                reasonCategories = List.Transform(reasonRecords, each _[Category])
                             in
-                                BuildReviewRecord(_, fileName, reasonText)
+                                BuildReviewRecord(_, fileName, reasonText, reasonCategories)
                     ),
             rowReviews = if List.Count(rowRecords) = 0 then empty else Table.SelectColumns(Table.FromRecords(rowRecords), ReviewColumns, MissingField.UseNull),
             pageNoteRecord =
@@ -1311,7 +1316,7 @@ let
                 else
                     List.Accumulate(
                         NormalizedTimeDefinitions,
-                        [FileName = fileName, Page = null, PersonRaw = "", SiteRaw = "", Reason = noteText],
+                        [FileName = fileName, Page = null, PersonRaw = "", SiteRaw = "", Reason = noteText, ReasonCategory = if noteCategory = null then "" else noteCategory],
                         (state, current) => Record.AddField(state, current[ReviewRawColumnName], "")
                     ),
             pageNote = if pageNoteRecord = null then empty else Table.SelectColumns(Table.FromRecords({pageNoteRecord}), ReviewColumns, MissingField.UseNull)
@@ -1391,18 +1396,52 @@ let
                     List.AllTrue(List.Transform({1..List.Count(nonNullPageNumbers) - 1}, each nonNullPageNumbers{_} = nonNullPageNumbers{_ - 1} + 1))
         in
             pageContinuous,
-    FindHorizontalMergeSequencesInGroup = (candidateGroup as list, startIndex as number, currentItems as list, totalColumns as number) as list =>
-        if totalColumns = ExpectedColumns then
-            if List.Count(currentItems) > 1 then { currentItems } else {}
-        else if totalColumns > ExpectedColumns or startIndex >= List.Count(candidateGroup) then
-            {}
-        else
-            let
-                currentCandidate = candidateGroup{startIndex},
-                includeResults = @FindHorizontalMergeSequencesInGroup(candidateGroup, startIndex + 1, currentItems & {currentCandidate}, totalColumns + currentCandidate[ColumnCount]),
-                excludeResults = @FindHorizontalMergeSequencesInGroup(candidateGroup, startIndex + 1, currentItems, totalColumns)
-            in
-                includeResults & excludeResults,
+    FindHorizontalMergeSequencesInGroup = (candidateGroup as list) as list =>
+        let
+            sortedGroup = SortCandidatesByPageAndIndex(candidateGroup),
+            candidateCount = List.Count(sortedGroup),
+            startPositions = if candidateCount = 0 then {} else {0..candidateCount - 1},
+            sequences =
+                List.RemoveNulls(
+                    List.Transform(
+                        startPositions,
+                        (startIndex) =>
+                            let
+                                tail = List.Skip(sortedGroup, startIndex),
+                                accumulator =
+                                    List.Accumulate(
+                                        tail,
+                                        [Items = {}, TotalColumns = 0, Signatures = {}, Valid = true],
+                                        (state, current) =>
+                                            if state[Valid] = false or state[TotalColumns] >= ExpectedColumns then
+                                                state
+                                            else
+                                                let
+                                                    currentSignature = current[CanonicalHeaderSignature],
+                                                    nextTotalColumns = state[TotalColumns] + current[ColumnCount],
+                                                    isCompatible =
+                                                        currentSignature <> "" and
+                                                        not List.Contains(state[Signatures], currentSignature) and
+                                                        nextTotalColumns <= ExpectedColumns,
+                                                    nextState =
+                                                        if isCompatible then
+                                                            [
+                                                                Items = state[Items] & {current},
+                                                                TotalColumns = nextTotalColumns,
+                                                                Signatures = state[Signatures] & {currentSignature},
+                                                                Valid = true
+                                                            ]
+                                                        else
+                                                            [Items = state[Items], TotalColumns = state[TotalColumns], Signatures = state[Signatures], Valid = false]
+                                                in
+                                                    nextState
+                                    )
+                            in
+                                if accumulator[TotalColumns] = ExpectedColumns and List.Count(accumulator[Items]) > 1 then accumulator[Items] else null
+                    )
+                )
+        in
+            sequences,
     GetHorizontalGroupKey = (candidate as record) as text =>
         Text.Upper(candidate[TableKind]) & "|" & Text.From(candidate[DataRowCount]),
     FindHorizontalMergeSequences = (candidates as list) as list =>
@@ -1424,7 +1463,7 @@ let
                     List.Combine(
                         List.Transform(
                             Table.ToRecords(groupedCandidates),
-                            each FindHorizontalMergeSequencesInGroup(SortCandidatesByPageAndIndex([Candidates]), 0, {}, 0)
+                            each FindHorizontalMergeSequencesInGroup([Candidates])
                         )
                     )
         in
@@ -1526,7 +1565,13 @@ let
                     resultData = if failureRecord <> null then null else if horizontalMergedData <> null then horizontalMergedData else if verticalMergedData <> null then verticalMergedData else chosenSinglePage,
                     withFileName = if resultData = null then null else Table.AddColumn(resultData, SourceFileColumnName, each fileName, type text),
                     reordered = if withFileName = null then null else Table.ReorderColumns(Table.RemoveColumns(withFileName, {"__PageNumber"}, MissingField.Ignore), OutputColumns, MissingField.UseNull),
-                    reviewData = BuildReviewTable(resultData, fileName, if failureRecord = null then null else failureRecord[UserMessage])
+                    reviewData =
+                        BuildReviewTable(
+                            resultData,
+                            fileName,
+                            if failureRecord = null then null else failureRecord[UserMessage],
+                            if failureRecord = null then null else if List.Contains({"TABLE_GROUP_AMBIGUOUS", "PARTIAL_TABLE_AMBIGUOUS"}, failureRecord[ErrorCode]) then "HEADER_MISMATCH" else null
+                        )
                 in [
                     IsError = failureRecord <> null,
                     ErrorCode = if failureRecord = null then null else failureRecord[ErrorCode],
@@ -2451,7 +2496,7 @@ function Add-V2ResultNormalizedColumns {
         }
     }
 
-    foreach ($headerName in @('時刻正規化状態', '時刻確認メモ')) {
+    foreach ($headerName in @('ReasonCategory', '時刻正規化状態', '時刻確認メモ')) {
         if (-not $headerMap.ContainsKey($headerName)) {
             $columnCount += 1
             $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
@@ -2567,7 +2612,9 @@ function Add-V2ReviewNormalizedColumns {
         }
 
         $existingReason = if ($headerMap.ContainsKey('Reason')) { [string]$Worksheet.Cells.Item($row, $headerMap['Reason']).Text } else { '' }
+        $existingReasonCategory = if ($headerMap.ContainsKey('ReasonCategory')) { [string]$Worksheet.Cells.Item($row, $headerMap['ReasonCategory']).Text } else { '' }
         $audit = Get-TimeNormalizationAudit -Definitions $definitions -RawValuesByDisplayName $rawValuesByDisplayName -ExistingReason $existingReason
+        $reasonCategory = Get-ReviewReasonCategories -Definitions $definitions -RawValuesByDisplayName $rawValuesByDisplayName -ExistingReason $existingReason -ExistingCategoryCsv $existingReasonCategory -Audit $audit
 
         try {
             foreach ($definition in $definitions) {
@@ -2586,6 +2633,7 @@ function Add-V2ReviewNormalizedColumns {
             throw "Review 正規化列の書き込みに失敗しました (row=$row): $($_.Exception.Message)"
         }
 
+        $Worksheet.Cells.Item($row, $headerMap['ReasonCategory']).Value2 = $reasonCategory
         $Worksheet.Cells.Item($row, $headerMap['時刻正規化状態']).Value2 = $audit.Status
         $Worksheet.Cells.Item($row, $headerMap['時刻確認メモ']).Value2 = $audit.Note
     }
