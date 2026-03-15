@@ -200,7 +200,7 @@ function Normalize-TimeText {
     $candidate = $candidate.Replace('：', ':')
 
     $fractionValue = 0.0
-    if ([double]::TryParse($candidate, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$fractionValue)) {
+    if ($candidate.Contains('.') -and [double]::TryParse($candidate, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$fractionValue)) {
         if ($fractionValue -ge 0 -and $fractionValue -le 1) {
             $minutesFromMidnight = [int][Math]::Round($fractionValue * 1440, 0, [MidpointRounding]::AwayFromZero)
             return [pscustomobject]@{

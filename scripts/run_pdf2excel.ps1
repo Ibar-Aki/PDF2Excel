@@ -681,12 +681,12 @@ function Get-ReviewQueryFormulaV2 {
 let
     ReviewColumns = $reviewColumnsLiteral,
     Source = PDF2Excel_Staging,
-    SuccessRows = Table.SelectRows(Source, each [IsError] <> true and [Review] <> null),
+    ReviewRows = Table.SelectRows(Source, each [Review] <> null),
     Expanded =
-        if Table.RowCount(SuccessRows) = 0 then
+        if Table.RowCount(ReviewRows) = 0 then
             #table(ReviewColumns, {})
         else
-            Table.ExpandTableColumn(SuccessRows, "Review", ReviewColumns, ReviewColumns)
+            Table.ExpandTableColumn(ReviewRows, "Review", ReviewColumns, ReviewColumns)
 in
     Expanded
 "@
@@ -1391,18 +1391,52 @@ let
                     List.AllTrue(List.Transform({1..List.Count(nonNullPageNumbers) - 1}, each nonNullPageNumbers{_} = nonNullPageNumbers{_ - 1} + 1))
         in
             pageContinuous,
-    FindHorizontalMergeSequencesInGroup = (candidateGroup as list, startIndex as number, currentItems as list, totalColumns as number) as list =>
-        if totalColumns = ExpectedColumns then
-            if List.Count(currentItems) > 1 then { currentItems } else {}
-        else if totalColumns > ExpectedColumns or startIndex >= List.Count(candidateGroup) then
-            {}
-        else
-            let
-                currentCandidate = candidateGroup{startIndex},
-                includeResults = @FindHorizontalMergeSequencesInGroup(candidateGroup, startIndex + 1, currentItems & {currentCandidate}, totalColumns + currentCandidate[ColumnCount]),
-                excludeResults = @FindHorizontalMergeSequencesInGroup(candidateGroup, startIndex + 1, currentItems, totalColumns)
-            in
-                includeResults & excludeResults,
+    FindHorizontalMergeSequencesInGroup = (candidateGroup as list) as list =>
+        let
+            sortedGroup = SortCandidatesByPageAndIndex(candidateGroup),
+            candidateCount = List.Count(sortedGroup),
+            startPositions = if candidateCount = 0 then {} else {0..candidateCount - 1},
+            sequences =
+                List.RemoveNulls(
+                    List.Transform(
+                        startPositions,
+                        (startIndex) =>
+                            let
+                                tail = List.Skip(sortedGroup, startIndex),
+                                accumulator =
+                                    List.Accumulate(
+                                        tail,
+                                        [Items = {}, TotalColumns = 0, Signatures = {}, Valid = true],
+                                        (state, current) =>
+                                            if state[Valid] = false or state[TotalColumns] >= ExpectedColumns then
+                                                state
+                                            else
+                                                let
+                                                    currentSignature = current[CanonicalHeaderSignature],
+                                                    nextTotalColumns = state[TotalColumns] + current[ColumnCount],
+                                                    isCompatible =
+                                                        currentSignature <> "" and
+                                                        not List.Contains(state[Signatures], currentSignature) and
+                                                        nextTotalColumns <= ExpectedColumns,
+                                                    nextState =
+                                                        if isCompatible then
+                                                            [
+                                                                Items = state[Items] & {current},
+                                                                TotalColumns = nextTotalColumns,
+                                                                Signatures = state[Signatures] & {currentSignature},
+                                                                Valid = true
+                                                            ]
+                                                        else
+                                                            [Items = state[Items], TotalColumns = state[TotalColumns], Signatures = state[Signatures], Valid = false]
+                                                in
+                                                    nextState
+                                    )
+                            in
+                                if accumulator[TotalColumns] = ExpectedColumns and List.Count(accumulator[Items]) > 1 then accumulator[Items] else null
+                    )
+                )
+        in
+            sequences,
     GetHorizontalGroupKey = (candidate as record) as text =>
         Text.Upper(candidate[TableKind]) & "|" & Text.From(candidate[DataRowCount]),
     FindHorizontalMergeSequences = (candidates as list) as list =>
@@ -1424,7 +1458,7 @@ let
                     List.Combine(
                         List.Transform(
                             Table.ToRecords(groupedCandidates),
-                            each FindHorizontalMergeSequencesInGroup(SortCandidatesByPageAndIndex([Candidates]), 0, {}, 0)
+                            each FindHorizontalMergeSequencesInGroup([Candidates])
                         )
                     )
         in

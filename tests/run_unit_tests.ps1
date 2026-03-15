@@ -261,6 +261,14 @@ $testResults += Invoke-UnitTest -Name 'Normalize-TimeText は 24:30 を範囲外
     return "$($actual.Status) / $($actual.Note)"
 }
 
+$testResults += Invoke-UnitTest -Name 'Normalize-TimeText は 整数文字列 1 を 01:00 として扱う' -Body {
+    $actual = Normalize-TimeText -Value '1'
+    Assert-True -Condition ($actual.NormalizedText -eq '01:00') -Message "正規化時刻が想定と異なります: $($actual.NormalizedText)"
+    Assert-True -Condition ($actual.MinutesFromMidnight -eq 60) -Message "分換算が想定と異なります: $($actual.MinutesFromMidnight)"
+    Assert-True -Condition ($actual.Status -eq 'OK') -Message "状態が想定と異なります: $($actual.Status)"
+    return "$($actual.NormalizedText) / $($actual.MinutesFromMidnight)"
+}
+
 $testResults += Invoke-UnitTest -Name 'Normalize-TimeText は 24:00:00 を 24:00 として扱う' -Body {
     $actual = Normalize-TimeText -Value '24:00:00'
     Assert-True -Condition ($actual.NormalizedText -eq '24:00') -Message "正規化時刻が想定と異なります: $($actual.NormalizedText)"

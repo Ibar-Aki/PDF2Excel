@@ -1005,9 +1005,12 @@ function Invoke-NamedScenario {
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $headerMismatchDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'ヘッダー不一致負例テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $reviewReasons = @($snapshot.ReviewRecords | ForEach-Object { $_.'Reason' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
             Assert-True -Condition ($snapshot.ResultRows -eq 1) -Message "ヘッダー不一致負例で Result 行が出ています: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ErrorsRows -ge 2) -Message "ヘッダー不一致負例で Errors が不足しています: $($snapshot.ErrorsRows)"
-            return "header-mismatch Result=$($snapshot.ResultRows), Errors=$($snapshot.ErrorsRows)"
+            Assert-True -Condition ($snapshot.ReviewRows -ge 2) -Message "ヘッダー不一致負例で Review が不足しています: $($snapshot.ReviewRows)"
+            Assert-True -Condition ((@($reviewReasons | Where-Object { $_ -like '*安全に結合できませんでした*' }).Count) -ge 1) -Message ('ヘッダー不一致負例で Review 理由が見つかりません: ' + ($reviewReasons -join ' | '))
+            return "header-mismatch Result=$($snapshot.ResultRows), Errors=$($snapshot.ErrorsRows), Review=$($snapshot.ReviewRows)"
         }
         'V2 時刻確認負例の分離' {
             $reviewNegativeDir = Join-Path $fixturesRoot 'construction_review_negative_v2'
