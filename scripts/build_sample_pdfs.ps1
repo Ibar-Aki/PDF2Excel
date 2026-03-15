@@ -288,7 +288,7 @@ function New-ConstructionTransferPocWorkbookAndPdf {
     )
 
     $rows = @(
-        @("2/4`n（金）", '金', '佐藤 花子', '一次協力', "東京駅前再開発A棟`n東工区", ' 10:30', '19：00', '仮設事務所', '9時00分', '9:20', '', '', '', '60', '7:30', '8:30', '20:00', 'あり', 'なし', '職長教育', '鉄筋', '晴', '良好', '済', "入場時に`n安全帯確認", '', '山田健', 'A棟は午後からB1へ応援', '', ''),
+        @("2/4`n（金）", '金', '佐藤 花子', '一次協力', "東京駅前再開発A棟`n東工区", ' 10:30', '19：00', '仮設事務所', '23:30', '24：00', '', '', '', '60', '7:30', '8:30', '20:00', 'あり', 'なし', '職長教育', '鉄筋', '晴', '良好', '済', "入場時に`n安全帯確認", '', '山田健', 'A棟は午後からB1へ応援', '', ''),
         @("2/5`n（土）", '土', '鈴木一郎', '一次協力', "東京駅前再開発Ａ棟", '10時30分', '18時 00分', "南口歩道橋更新`nその2", '18:25', '20：10', '', '', '', '45', '8:10', '9:10', '20:20', 'あり', 'なし', '高所作業', '足場', '曇', '良好', '済', '', "現場名が微妙に揺れ", '山田健', '', '', ''),
         @("2/6`n（日）", '日', '田中美咲', '直用', "湾岸物流センター`n新築工事", '9：05', '17:30', '', '', '', '', '', '', '60', '7:25', '8:10', '18:10', 'あり', 'なし', '玉掛', '搬入', '晴', '良好', '済', '朝礼あり', '', '岡本進', "氏名表記ゆれなし", '', ''),
         @("2/7`n（月）", '月', '高橋健太', '直用', "湾岸物流センタ-新築工事", ' 9時 15分', '17時30分', "東京駅前再開発A棟", '18:00', '20:15', '', '', '', '60', '9:30', '8:50', '20:40', 'あり', 'なし', '職長教育', '鉄骨', '雨', '普通', '済', "現場名の記号ゆれ", '', '岡本進', '', '', ''),
@@ -353,7 +353,7 @@ function New-ConstructionTransferPagedPocWorkbookAndPdf {
     )
 
     $baseRows = @(
-        @("2/4`n（金）", '金', '佐藤 花子', '一次協力', "東京駅前再開発A棟`n東工区", ' 10:30', '19：00', '仮設事務所', '9時00分', '9:20', '', '', '', '60', '7:30', '8:30', '20:00', 'あり', 'なし', '職長教育', '鉄筋', '晴', '良好', '済', "入場時に`n安全帯確認", '', '山田健', 'A棟は午後からB1へ応援', '', ''),
+        @("2/4`n（金）", '金', '佐藤 花子', '一次協力', "東京駅前再開発A棟`n東工区", ' 10:30', '19：00', '仮設事務所', '23:30', '24：00', '', '', '', '60', '7:30', '8:30', '20:00', 'あり', 'なし', '職長教育', '鉄筋', '晴', '良好', '済', "入場時に`n安全帯確認", '', '山田健', 'A棟は午後からB1へ応援', '', ''),
         @("2/5`n（土）", '土', '鈴木一郎', '一次協力', "東京駅前再開発Ａ棟", '10時30分', '18時 00分', "南口歩道橋更新`nその2", '18:25', '20：10', '', '', '', '45', '8:10', '9:10', '20:20', 'あり', 'なし', '高所作業', '足場', '曇', '良好', '済', '', "現場名が微妙に揺れ", '山田健', '', '', ''),
         @("2/6`n（日）", '日', '田中美咲', '直用', "湾岸物流センター`n新築工事", '9：05', '17:30', '', '', '', '', '', '', '60', '7:25', '8:10', '18:10', 'あり', 'なし', '玉掛', '搬入', '晴', '良好', '済', '朝礼あり', '', '岡本進', "氏名表記ゆれなし", '', ''),
         @("2/7`n（月）", '月', '高橋健太', '直用', "湾岸物流センタ-新築工事", ' 9時 15分', '17時30分', "東京駅前再開発A棟", '18:00', '20:15', '', '', '', '60', '9:30', '8:50', '20:40', 'あり', 'なし', '職長教育', '鉄骨', '雨', '普通', '済', "現場名の記号ゆれ", '', '岡本進', '', '', ''),
@@ -422,6 +422,103 @@ function New-ConstructionTransferPagedPocWorkbookAndPdf {
         $worksheet.PageSetup.FitToPagesWide = 1
         $worksheet.PageSetup.FitToPagesTall = $false
         $worksheet.Columns.AutoFit() | Out-Null
+    }
+}
+
+function New-ConstructionTransferHeaderMismatchWorkbookAndPdf {
+    param(
+        [Parameter(Mandatory = $true)][string]$WorkbookPath,
+        [Parameter(Mandatory = $true)][string]$PdfPath
+    )
+
+    New-ConstructionTransferPagedPocWorkbookAndPdf -WorkbookPath $WorkbookPath -PdfPath $PdfPath -PageCount 2 -TitleLabel '建設現場別 延べ作業時間算出用 勤怠一覧（ヘッダー不一致負例）' -MonthLabels @('2026年02月', '2026年02月')
+
+    $excel = $null
+    $workbook = $null
+    $worksheet = $null
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+        $workbook = $excel.Workbooks.Open($WorkbookPath)
+        $worksheet = $workbook.Worksheets.Item(1)
+        $worksheet.Cells.Item(11, 5).Value2 = '別現場欄'
+        $workbook.Save()
+        $workbook.ExportAsFixedFormat(0, $PdfPath)
+    } finally {
+        if ($workbook) {
+            try {
+                $workbook.Close($false)
+            } catch {
+            }
+        }
+        if ($excel) {
+            try {
+                $excel.Quit()
+            } catch {
+            }
+        }
+        foreach ($comObject in @($worksheet, $workbook, $excel)) {
+            try {
+                if ($null -ne $comObject -and [System.Runtime.InteropServices.Marshal]::IsComObject($comObject)) {
+                    [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($comObject)
+                }
+            } catch {
+            }
+        }
+        [GC]::Collect()
+        [GC]::WaitForPendingFinalizers()
+    }
+}
+
+function New-ConstructionTransferReviewNegativeWorkbookAndPdf {
+    param(
+        [Parameter(Mandatory = $true)][string]$WorkbookPath,
+        [Parameter(Mandatory = $true)][string]$PdfPath
+    )
+
+    New-ConstructionTransferPocWorkbookAndPdf -WorkbookPath $WorkbookPath -PdfPath $PdfPath
+
+    $excel = $null
+    $workbook = $null
+    $worksheet = $null
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+        $workbook = $excel.Workbooks.Open($WorkbookPath)
+        $worksheet = $workbook.Worksheets.Item(1)
+        $worksheet.Cells.Item(7, 8).Value2 = '夜間巡回'
+        $worksheet.Cells.Item(7, 9).Value2 = '23:50'
+        $worksheet.Cells.Item(7, 10).Value2 = '24:30'
+        $worksheet.Cells.Item(8, 8).Value2 = '仮設事務所'
+        $worksheet.Cells.Item(8, 9).Value2 = '18:10'
+        $worksheet.Cells.Item(8, 10).Value2 = ''
+        $workbook.Save()
+        $workbook.ExportAsFixedFormat(0, $PdfPath)
+    } finally {
+        if ($workbook) {
+            try {
+                $workbook.Close($false)
+            } catch {
+            }
+        }
+        if ($excel) {
+            try {
+                $excel.Quit()
+            } catch {
+            }
+        }
+        foreach ($comObject in @($worksheet, $workbook, $excel)) {
+            try {
+                if ($null -ne $comObject -and [System.Runtime.InteropServices.Marshal]::IsComObject($comObject)) {
+                    [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($comObject)
+                }
+            } catch {
+            }
+        }
+        [GC]::Collect()
+        [GC]::WaitForPendingFinalizers()
     }
 }
 
@@ -522,6 +619,20 @@ $sampleDefinitions = @(
         WorkbookName      = '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.xlsx'
         PdfName           = '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf'
         CreateSample      = { param($workbookPath, $pdfPath) New-ConstructionTransferPagedPocWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath -PageCount 6 -TitleLabel '建設現場別 延べ作業時間算出用 勤怠一覧（6ページ同一列PoC）' -MonthLabels @('2026年04月', '2026年04月', '2026年05月', '2026年05月', '2026年06月', '2026年06月') }
+    },
+    [pscustomobject]@{
+        PdfDirectory      = 'construction_transfer_poc'
+        SourceDirectory   = 'construction_transfer_poc'
+        WorkbookName      = '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.xlsx'
+        PdfName           = '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf'
+        CreateSample      = { param($workbookPath, $pdfPath) New-ConstructionTransferHeaderMismatchWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath }
+    },
+    [pscustomobject]@{
+        PdfDirectory      = 'construction_transfer_poc'
+        SourceDirectory   = 'construction_transfer_poc'
+        WorkbookName      = '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.xlsx'
+        PdfName           = '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf'
+        CreateSample      = { param($workbookPath, $pdfPath) New-ConstructionTransferReviewNegativeWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath }
     }
 )
 

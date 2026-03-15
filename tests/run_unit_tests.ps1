@@ -246,6 +246,29 @@ $testResults += Invoke-UnitTest -Name 'Normalize-TimeText は Excel 時刻比率
     return "$($actual.NormalizedText) / $($actual.MinutesFromMidnight)"
 }
 
+$testResults += Invoke-UnitTest -Name 'Normalize-TimeText は 24:00 を有効時刻として扱う' -Body {
+    $actual = Normalize-TimeText -Value '24：00'
+    Assert-True -Condition ($actual.NormalizedText -eq '24:00') -Message "正規化時刻が想定と異なります: $($actual.NormalizedText)"
+    Assert-True -Condition ($actual.MinutesFromMidnight -eq 1440) -Message "分換算が想定と異なります: $($actual.MinutesFromMidnight)"
+    Assert-True -Condition ($actual.Status -eq 'OK') -Message "状態が想定と異なります: $($actual.Status)"
+    return "$($actual.NormalizedText) / $($actual.MinutesFromMidnight)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Normalize-TimeText は 24:30 を範囲外扱いにする' -Body {
+    $actual = Normalize-TimeText -Value '24:30'
+    Assert-True -Condition ($actual.Status -eq 'INVALID') -Message "状態が想定と異なります: $($actual.Status)"
+    Assert-True -Condition ($actual.Note -eq '時刻の範囲外です。') -Message "メモが想定と異なります: $($actual.Note)"
+    return "$($actual.Status) / $($actual.Note)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Normalize-TimeText は 24:00:00 を 24:00 として扱う' -Body {
+    $actual = Normalize-TimeText -Value '24:00:00'
+    Assert-True -Condition ($actual.NormalizedText -eq '24:00') -Message "正規化時刻が想定と異なります: $($actual.NormalizedText)"
+    Assert-True -Condition ($actual.MinutesFromMidnight -eq 1440) -Message "分換算が想定と異なります: $($actual.MinutesFromMidnight)"
+    Assert-True -Condition ($actual.Status -eq 'OK') -Message "状態が想定と異なります: $($actual.Status)"
+    return "$($actual.NormalizedText) / $($actual.MinutesFromMidnight)"
+}
+
 $testResults += Invoke-UnitTest -Name 'Get-ResultOutputColumnNames は V2 で正規化列を追加する' -Body {
     $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
     $actual = @(Get-ResultOutputColumnNames -Profile $profile -VersionMode v2)
@@ -255,13 +278,21 @@ $testResults += Invoke-UnitTest -Name 'Get-ResultOutputColumnNames は V2 で正
     return ($actual[-5..-1] -join ',')
 }
 
-$testResults += Invoke-UnitTest -Name 'Get-StagingQueryFormula は V2 で sameHeader とページ番号を考慮する' -Body {
+$testResults += Invoke-UnitTest -Name 'Get-NormalizedTimeColumnDefinitions は Review raw 列名を返す' -Body {
+    $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
+    $definitions = @(Get-NormalizedTimeColumnDefinitions -Profile $profile -VersionMode v2)
+    Assert-True -Condition ($definitions[0].ReviewRawColumnName -eq '正規化入場1_raw') -Message "ReviewRawColumnName が想定と異なります: $($definitions[0].ReviewRawColumnName)"
+    return ($definitions | ForEach-Object { $_.ReviewRawColumnName } | Select-Object -First 2) -join ','
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-StagingQueryFormula は V2 で canonical sameHeader と曖昧分離を考慮する' -Body {
     $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
     $formula = Get-StagingQueryFormula -InputPath 'C:\Temp\Input' -Profile $profile
-    Assert-True -Condition ($formula.Contains('GetHeaderSignature')) -Message 'ヘッダー署名ロジックが見つかりません。'
-    Assert-True -Condition ($formula.Contains('__PageNumber')) -Message 'ページ番号列の付与が見つかりません。'
-    Assert-True -Condition ($formula.Contains('同一 PDF 内にヘッダー不一致')) -Message 'ヘッダー不一致メモが見つかりません。'
-    return 'sameHeader / __PageNumber / review note'
+    Assert-True -Condition ($formula.Contains('GetCanonicalHeaderSignature')) -Message 'canonical ヘッダー署名ロジックが見つかりません。'
+    Assert-True -Condition ($formula.Contains('FindHorizontalMergeSequences')) -Message 'partial merge sequence ロジックが見つかりません。'
+    Assert-True -Condition ($formula.Contains('TABLE_GROUP_AMBIGUOUS')) -Message 'sameHeader 分離エラーが見つかりません。'
+    Assert-True -Condition ($formula.Contains('正規化入場1_raw')) -Message 'Review raw 列が見つかりません。'
+    return 'canonical sameHeader / ambiguity split / review raw'
 }
 
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel.bat は ASCII のみで構成される' -Body {

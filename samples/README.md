@@ -48,9 +48,13 @@
 - PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.pdf`
 - PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf`
 - PDF: `pdf/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf`
+- PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf`
+- PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf`
 - 元Excel: `source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.xlsx`
 - 元Excel: `source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.xlsx`
 - 元Excel: `source/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.xlsx`
+- 元Excel: `source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.xlsx`
+- 元Excel: `source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_時刻確認負例.xlsx`
 - 推奨プロファイル: `../config/profiles/construction_transfer_poc.json`
 - 特徴:
   - タイトル 3 行 + 4 行目ヘッダー
@@ -59,6 +63,8 @@
   - 時刻表記ゆれあり
   - 現場名と氏名の微妙な揺れあり
   - `2ページ同一列` と `6ページ同一列` のパターンを同梱
+  - `ヘッダー不一致負例` で sameHeader 拒否を確認可能
+  - `時刻確認負例` で `24:30` と片側空の Review を確認可能
 
 ## 再生成方法
 

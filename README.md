@@ -32,6 +32,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
   - 既存の標準変換です。単一表を素直に Excel 化したいときに使います。
 - [run_pdf2excel_v2.bat](run_pdf2excel_v2.bat)
   - 建設現場向けの raw 転記です。複数ページで同じ列が続く帳票や、確認作業を前提にした転記に使います。
+  - `sameHeader` の厳格判定で多ページ結合を行い、曖昧な候補は `Errors` / `Review` に分離します。
 - [run_pdf2excel.bat](run_pdf2excel.bat)
   - 互換入口です。`VER1` を起動します。
 
@@ -63,7 +64,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `samples/v1/`
   - `VER1` 用のサンプル PDF と元 Excel です。
 - `samples/v2/`
-  - `VER2` 用の建設現場 raw 転記サンプルです。`2ページ同一列` と `6ページ同一列` を含みます。
+  - `VER2` 用の建設現場 raw 転記サンプルです。`2ページ同一列`、`6ページ同一列`、`ヘッダー不一致負例`、`時刻確認負例` を含みます。
 - `scripts/run_pdf2excel.ps1`
   - PDF の staging、Excel 起動、Power Query 更新、xlsx 出力を行います。
 - `scripts/build_excel_template.ps1`

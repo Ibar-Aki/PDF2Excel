@@ -72,6 +72,36 @@ function ConvertTo-MLogicalLiteral {
     return 'false'
 }
 
+function ConvertTo-MRecordListLiteral {
+    param([object[]]$Records)
+
+    if ($null -eq $Records -or $Records.Count -eq 0) {
+        return '{}'
+    }
+
+    $items = @()
+    foreach ($record in $Records) {
+        $properties = @()
+        foreach ($property in $record.PSObject.Properties) {
+            $value = $property.Value
+            $literal =
+                if ($null -eq $value) {
+                    'null'
+                } elseif ($value -is [bool]) {
+                    ConvertTo-MLogicalLiteral -Value $value
+                } elseif ($value -is [int] -or $value -is [long] -or $value -is [double] -or $value -is [decimal]) {
+                    [string]$value
+                } else {
+                    ConvertTo-MTextLiteral -Value ([string]$value)
+                }
+            $properties += ('{0} = {1}' -f $property.Name, $literal)
+        }
+        $items += ('[' + ($properties -join ', ') + ']')
+    }
+
+    return '{' + ($items -join ', ') + '}'
+}
+
 function Get-ProfileOutputColumnNames {
     param([Parameter(Mandatory = $true)]$Profile)
 
@@ -89,6 +119,24 @@ function Convert-MinutesToTimeText {
     $hours = [int][Math]::Floor($MinutesFromMidnight / 60)
     $minutes = [int]($MinutesFromMidnight % 60)
     return ('{0:D2}:{1:D2}' -f $hours, $minutes)
+}
+
+function Count-TimeLikeTokens {
+    param([AllowNull()]$Value)
+
+    if ($null -eq $Value) {
+        return 0
+    }
+
+    $normalized = ([string]$Value).Replace("`r", ' ').Replace("`n", ' ').Replace('　', ' ')
+    $tokens = @($normalized -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    return @(
+        $tokens | Where-Object {
+            $_ -match ':' -or
+            $_ -match '：' -or
+            $_ -match '時'
+        }
+    ).Count
 }
 
 function Normalize-TimeText {
@@ -109,9 +157,9 @@ function Normalize-TimeText {
     if ($Value -isnot [string] -and $Value -is [System.IConvertible]) {
         try {
             $numericValue = [double]$Value
-            if ($numericValue -ge 0 -and $numericValue -lt 1) {
+            if ($numericValue -ge 0 -and $numericValue -le 1) {
                 $minutesFromMidnight = [int][Math]::Round($numericValue * 1440, 0, [MidpointRounding]::AwayFromZero)
-                if ($minutesFromMidnight -ge 0 -and $minutesFromMidnight -lt 1440) {
+                if ($minutesFromMidnight -ge 0 -and $minutesFromMidnight -le 1440) {
                     return [pscustomobject]@{
                         RawText              = [string]$Value
                         CandidateText        = [string]$Value
@@ -153,7 +201,7 @@ function Normalize-TimeText {
 
     $fractionValue = 0.0
     if ([double]::TryParse($candidate, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$fractionValue)) {
-        if ($fractionValue -ge 0 -and $fractionValue -lt 1) {
+        if ($fractionValue -ge 0 -and $fractionValue -le 1) {
             $minutesFromMidnight = [int][Math]::Round($fractionValue * 1440, 0, [MidpointRounding]::AwayFromZero)
             return [pscustomobject]@{
                 RawText              = $rawText
@@ -192,6 +240,20 @@ function Normalize-TimeText {
         $candidate = $candidate + ':00'
     } elseif ($candidate -match '^\d{3,4}$') {
         $candidate = $candidate.Insert($candidate.Length - 2, ':')
+    } elseif ($candidate -match '^(?<hours>\d{1,2}):(?<minutes>\d{1,2}):(?<seconds>\d{1,2})$') {
+        if ([int]$Matches.seconds -ne 0) {
+            return [pscustomobject]@{
+                RawText              = $rawText
+                CandidateText        = $candidate
+                NormalizedText       = ''
+                MinutesFromMidnight  = $null
+                ExcelTimeValue       = $null
+                Status               = 'INVALID'
+                Note                 = '秒を含む時刻は 00 秒のみ補助正規化の対象です。'
+            }
+        }
+
+        $candidate = ('{0}:{1}' -f $Matches.hours, $Matches.minutes)
     }
 
     if ($candidate -notmatch '^\d{1,2}:\d{1,2}$') {
@@ -221,6 +283,19 @@ function Normalize-TimeText {
         }
     }
 
+    if ($hours -eq 24 -and $minutes -eq 0) {
+        $minutesFromMidnight = 1440
+        return [pscustomobject]@{
+            RawText              = $rawText
+            CandidateText        = $candidate
+            NormalizedText       = '24:00'
+            MinutesFromMidnight  = $minutesFromMidnight
+            ExcelTimeValue       = 1.0
+            Status               = 'OK'
+            Note                 = ''
+        }
+    }
+
     if ($hours -lt 0 -or $hours -gt 23 -or $minutes -lt 0 -or $minutes -gt 59) {
         return [pscustomobject]@{
             RawText              = $rawText
@@ -242,6 +317,64 @@ function Normalize-TimeText {
         ExcelTimeValue       = $minutesFromMidnight / 1440.0
         Status               = 'OK'
         Note                 = ''
+    }
+}
+
+function Get-TimeNormalizationAudit {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Definitions,
+        [Parameter(Mandatory = $true)][hashtable]$RawValuesByDisplayName,
+        [string]$ExistingReason = ''
+    )
+
+    $results = @{}
+    $issues = @()
+    $hasTimeValue = $false
+
+    foreach ($definition in $Definitions) {
+        $rawValue = if ($RawValuesByDisplayName.ContainsKey($definition.DisplayName)) { [string]$RawValuesByDisplayName[$definition.DisplayName] } else { '' }
+        $normalized = Normalize-TimeText -Value $rawValue
+        $results[$definition.DisplayName] = $normalized
+
+        if (-not [string]::IsNullOrWhiteSpace($rawValue)) {
+            $hasTimeValue = $true
+        }
+
+        if ((Count-TimeLikeTokens -Value $rawValue) -gt 1) {
+            $issues += ('{0}: 複数の時刻らしき文字列があります。' -f $definition.DisplayName)
+        }
+
+        if ($normalized.Status -eq 'INVALID') {
+            $issues += ('{0}: {1}' -f $definition.DisplayName, $normalized.Note)
+        }
+    }
+
+    for ($index = 0; $index -lt $Definitions.Count; $index += 2) {
+        $left = $Definitions[$index]
+        $right = if (($index + 1) -lt $Definitions.Count) { $Definitions[$index + 1] } else { $null }
+        if ($null -eq $right) {
+            continue
+        }
+
+        $leftValue = if ($RawValuesByDisplayName.ContainsKey($left.DisplayName)) { [string]$RawValuesByDisplayName[$left.DisplayName] } else { '' }
+        $rightValue = if ($RawValuesByDisplayName.ContainsKey($right.DisplayName)) { [string]$RawValuesByDisplayName[$right.DisplayName] } else { '' }
+        $leftHasValue = -not [string]::IsNullOrWhiteSpace($leftValue)
+        $rightHasValue = -not [string]::IsNullOrWhiteSpace($rightValue)
+        if ($leftHasValue -xor $rightHasValue) {
+            $issues += ('{0}/{1}: 片側の時刻だけ埋まっています。' -f $left.DisplayName, $right.DisplayName)
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExistingReason)) {
+        $issues += $ExistingReason
+    }
+
+    $distinctIssues = @($issues | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    return [pscustomobject]@{
+        Results      = $results
+        HasTimeValue = $hasTimeValue
+        Status       = if ($distinctIssues.Count -gt 0) { '要確認' } elseif ($hasTimeValue) { 'OK' } else { '' }
+        Note         = if ($distinctIssues.Count -gt 0) { $distinctIssues -join ' / ' } else { '' }
     }
 }
 
@@ -277,10 +410,11 @@ function Get-NormalizedTimeColumnDefinitions {
             }
 
             $definitions += [pscustomobject]@{
-                SourceColumn      = $sourceColumn
-                SourceColumnName  = '{0}{1}' -f $Profile.DataColumnPrefix, $sourceColumn
-                DisplayName       = $displayName
-                MinutesColumnName = $minutesColumnName
+                SourceColumn        = $sourceColumn
+                SourceColumnName    = '{0}{1}' -f $Profile.DataColumnPrefix, $sourceColumn
+                DisplayName         = $displayName
+                MinutesColumnName   = $minutesColumnName
+                ReviewRawColumnName = '{0}_raw' -f $displayName
             }
         }
     }

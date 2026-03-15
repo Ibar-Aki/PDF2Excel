@@ -269,17 +269,22 @@ function Get-WorkbookSnapshot {
             $captureRows = [Math]::Min($rowCount, $MaxRows)
             $range = $Worksheet.Range($Worksheet.Cells.Item(1, 1), $Worksheet.Cells.Item($captureRows, $columnCount)).Value2
             $rows = @()
+            $rawRows = @()
 
             if ($null -ne $range) {
                 if ($range -is [System.Array]) {
                     for ($row = 1; $row -le $range.GetLength(0); $row += 1) {
                         $values = @()
+                        $rawValues = @()
                         for ($column = 1; $column -le $range.GetLength(1); $column += 1) {
+                            $rawValues += $range[$row, $column]
                             $values += [string]$range[$row, $column]
                         }
+                        $rawRows += ,$rawValues
                         $rows += ,$values
                     }
                 } else {
+                    $rawRows += ,@($range)
                     $rows += ,@([string]$range)
                 }
             }
@@ -290,24 +295,29 @@ function Get-WorkbookSnapshot {
             }
 
             $records = @()
+            $typedRecords = @()
             for ($rowIndex = 1; $rowIndex -lt $rows.Count; $rowIndex += 1) {
                 $record = [ordered]@{}
+                $typedRecord = [ordered]@{}
                 for ($columnIndex = 0; $columnIndex -lt $headers.Count; $columnIndex += 1) {
                     $header = $headers[$columnIndex]
                     if (-not [string]::IsNullOrWhiteSpace($header)) {
                         $record[$header] = if ($columnIndex -lt $rows[$rowIndex].Count) { $rows[$rowIndex][$columnIndex] } else { '' }
+                        $typedRecord[$header] = if ($columnIndex -lt $rawRows[$rowIndex].Count) { $rawRows[$rowIndex][$columnIndex] } else { $null }
                     }
                 }
 
                 if ($record.Count -gt 0) {
                     $records += [pscustomobject]$record
+                    $typedRecords += [pscustomobject]$typedRecord
                 }
             }
 
             return [pscustomobject]@{
-                Headers = $headers
-                Rows    = $rows
-                Records = $records
+                Headers      = $headers
+                Rows         = $rows
+                Records      = $records
+                TypedRecords = $typedRecords
             }
         }
 
@@ -331,7 +341,7 @@ function Get-WorkbookSnapshot {
         $errorsColumns = [int]$errorsSheet.UsedRange.Columns.Count
         $reviewRows = if ($reviewSheet) { [int]$reviewSheet.UsedRange.Rows.Count } else { 0 }
         $resultSnapshot = Convert-SheetToTableSnapshot -Worksheet $resultSheet
-        $reviewSnapshot = if ($reviewSheet) { Convert-SheetToTableSnapshot -Worksheet $reviewSheet } else { [pscustomobject]@{ Headers = @(); Rows = @(); Records = @() } }
+        $reviewSnapshot = if ($reviewSheet) { Convert-SheetToTableSnapshot -Worksheet $reviewSheet } else { [pscustomobject]@{ Headers = @(); Rows = @(); Records = @(); TypedRecords = @() } }
 
         return [pscustomobject]@{
             ResultRows          = $resultRows
@@ -355,8 +365,10 @@ function Get-WorkbookSnapshot {
             Sample              = $resultSnapshot.Rows
             ResultHeaders       = $resultSnapshot.Headers
             ResultRecords       = $resultSnapshot.Records
+            ResultTypedRecords  = $resultSnapshot.TypedRecords
             ReviewHeaders       = $reviewSnapshot.Headers
             ReviewRecords       = $reviewSnapshot.Records
+            ReviewTypedRecords  = $reviewSnapshot.TypedRecords
         }
     } finally {
         if ($workbook) {
@@ -605,6 +617,8 @@ function Get-TestCases {
         [pscustomobject]@{ Name = '建設現場転記PoCの変換'; Scenario = '改行セルや時刻ゆれを含む建設現場向けPoC帳票を raw 転記できること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = 'V2 2ページ同一列の変換'; Scenario = '同一列ヘッダーの2ページ建設帳票を1つの Result に連結できること'; TimeoutSeconds = 300 },
         [pscustomobject]@{ Name = 'V2 6ページ同一列の変換'; Scenario = '同一列ヘッダーの6ページ建設帳票を1つの Result に連結できること'; TimeoutSeconds = 360 },
+        [pscustomobject]@{ Name = 'V2 ヘッダー不一致負例の分離'; Scenario = 'sameHeader に乗らない multi-page 帳票を Errors 側へ分離できること'; TimeoutSeconds = 300 },
+        [pscustomobject]@{ Name = 'V2 時刻確認負例の分離'; Scenario = '第2時刻ペアの invalid / 片側空を Review で拾えること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = '一時領域の後片付け'; Scenario = '実行後に output/runtime/runs 配下へ残骸が残らないこと'; TimeoutSeconds = 60 },
         [pscustomobject]@{ Name = 'Excel プロセス残留なし'; Scenario = 'スイート完了後に余分な EXCEL.exe が残らないこと'; TimeoutSeconds = 60 }
     )
@@ -926,7 +940,10 @@ function Invoke-NamedScenario {
             $sites = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[5] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $normalizedInMinutes = @($snapshot.ResultRecords | ForEach-Object { $_.'正規化入場1_分' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $normalizedOutMinutes = @($snapshot.ResultRecords | ForEach-Object { $_.'正規化退場1_分' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $normalizedSecondOutMinutes = @($snapshot.ResultRecords | ForEach-Object { $_.'正規化退場2_分' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $normalizedSecondOutTexts = @($snapshot.ResultRecords | ForEach-Object { $_.'正規化退場2' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $normalizationStatuses = @($snapshot.ResultRecords | ForEach-Object { $_.'時刻正規化状態' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $normalizedSecondOutTypes = @($snapshot.ResultTypedRecords | ForEach-Object { if ($null -ne $_.'正規化退場2_分') { $_.'正規化退場2_分'.GetType().Name } } | Select-Object -Unique)
             Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "建設現場転記PoCの行数が想定と異なります: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "Control の版表示が想定と異なります: $($snapshot.ControlVersion)"
             Assert-True -Condition ($snapshot.ControlProfile -eq '建設現場転記PoCプロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
@@ -936,12 +953,16 @@ function Invoke-NamedScenario {
             Assert-True -Condition ($snapshot.ResultHeaders -contains '正規化入場1') -Message 'Result に正規化入場1 列がありません。'
             Assert-True -Condition ($snapshot.ResultHeaders -contains '正規化退場1_分') -Message 'Result に正規化退場1_分 列がありません。'
             Assert-True -Condition ($snapshot.ResultHeaders -contains '時刻正規化状態') -Message 'Result に時刻正規化状態 列がありません。'
-            Assert-True -Condition ($snapshot.ReviewHeaders -contains '正規化入場') -Message 'Review に正規化入場 列がありません。'
+            Assert-True -Condition ($snapshot.ReviewHeaders -contains '正規化入場1_raw') -Message 'Review に正規化入場1_raw 列がありません。'
+            Assert-True -Condition ($snapshot.ReviewHeaders -contains '正規化退場2') -Message 'Review に正規化退場2 列がありません。'
             Assert-True -Condition ($normalizedInMinutes -contains '555') -Message ('9時15分 の分換算結果が見つかりません: ' + ($normalizedInMinutes -join ','))
             Assert-True -Condition ($normalizedOutMinutes -contains '1080') -Message ('18:00 の分換算結果が見つかりません: ' + ($normalizedOutMinutes -join ','))
+            Assert-True -Condition ($normalizedSecondOutMinutes -contains '1440') -Message ('24:00 の分換算結果が見つかりません: ' + ($normalizedSecondOutMinutes -join ','))
+            Assert-True -Condition ($normalizedSecondOutTexts -contains '24:00') -Message ('24:00 の表示結果が見つかりません: ' + ($normalizedSecondOutTexts -join ','))
+            Assert-True -Condition ($normalizedSecondOutTypes -contains 'Double') -Message ('正規化退場2_分 が数値型ではありません: ' + ($normalizedSecondOutTypes -join ','))
             Assert-True -Condition ($normalizationStatuses -contains 'OK') -Message ('時刻正規化状態に OK がありません: ' + ($normalizationStatuses -join ','))
-            Assert-True -Condition ($snapshot.ReviewRows -ge 2) -Message "Review シートに確認要行が出ていません: $($snapshot.ReviewRows)"
-            return "PoCPDF=$($sourceNames -join ','), 氏名=$($names -join ','), 現場=$($sites -join ','), Review=$($snapshot.ReviewRows), 正規化退場分=$($normalizedOutMinutes -join ',')"
+            Assert-True -Condition ($snapshot.ReviewRows -ge 6) -Message "Review シートに行監査結果が十分に出ていません: $($snapshot.ReviewRows)"
+            return "PoCPDF=$($sourceNames -join ','), 氏名=$($names -join ','), 現場=$($sites -join ','), Review=$($snapshot.ReviewRows), 正規化退場2分=$($normalizedSecondOutMinutes -join ',')"
         }
         'V2 2ページ同一列の変換' {
             $twoPageDir = Join-Path $fixturesRoot 'construction_2page_v2'
@@ -951,10 +972,13 @@ function Invoke-NamedScenario {
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $twoPageDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '2ページ同一列テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $twoPageNames = @($snapshot.ResultRecords | ForEach-Object { $_.'項目3' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            $twoPageDistinctNames = @($twoPageNames | Select-Object -Unique)
             Assert-True -Condition ($snapshot.ResultRows -eq 11) -Message "2ページ同一列の Result 行数が想定と異なります: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "2ページ同一列の版表示が想定と異なります: $($snapshot.ControlVersion)"
-            Assert-True -Condition ($snapshot.ReviewRows -ge 1) -Message '2ページ同一列で Review が 0 件です。'
-            return "2ページ Result=$($snapshot.ResultRows), Review=$($snapshot.ReviewRows)"
+            Assert-True -Condition ($twoPageDistinctNames.Count -eq 5) -Message ('2ページ同一列で氏名重複が解消されていません: ' + ($twoPageDistinctNames -join ','))
+            Assert-True -Condition ($snapshot.ReviewRows -ge 11) -Message '2ページ同一列で Review が十分に出ていません。'
+            return "2ページ Result=$($snapshot.ResultRows), 氏名=$($twoPageDistinctNames -join ','), Review=$($snapshot.ReviewRows)"
         }
         'V2 6ページ同一列の変換' {
             $sixPageDir = Join-Path $fixturesRoot 'construction_6page_v2'
@@ -964,10 +988,42 @@ function Invoke-NamedScenario {
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $sixPageDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '6ページ同一列テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $fileNames = @($snapshot.ResultRecords | ForEach-Object { $_.'元ファイル名' } | Select-Object -Unique)
+            $sixPageNames = @($snapshot.ResultRecords | ForEach-Object { $_.'項目3' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             Assert-True -Condition ($snapshot.ResultRows -eq 31) -Message "6ページ同一列の Result 行数が想定と異なります: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "6ページ同一列の版表示が想定と異なります: $($snapshot.ControlVersion)"
-            Assert-True -Condition ($snapshot.ReviewRows -ge 1) -Message '6ページ同一列で Review が 0 件です。'
-            return "6ページ Result=$($snapshot.ResultRows), Review=$($snapshot.ReviewRows)"
+            Assert-True -Condition ($fileNames.Count -eq 1) -Message '6ページ同一列で元ファイル名が分断されています。'
+            Assert-True -Condition ($sixPageNames.Count -eq 5) -Message ('6ページ同一列で氏名の抽出が不安定です: ' + ($sixPageNames -join ','))
+            Assert-True -Condition ($snapshot.ReviewRows -ge 31) -Message '6ページ同一列で Review が十分に出ていません。'
+            return "6ページ Result=$($snapshot.ResultRows), 氏名=$($sixPageNames -join ','), Review=$($snapshot.ReviewRows)"
+        }
+        'V2 ヘッダー不一致負例の分離' {
+            $headerMismatchDir = Join-Path $fixturesRoot 'construction_header_mismatch_v2'
+            Reset-Directory -Path $headerMismatchDir
+            Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf') -Destination (Join-Path $headerMismatchDir '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf') -Force
+            $outputPath = Join-Path $resultsRoot 'construction_transfer_poc_header_mismatch.xlsx'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $headerMismatchDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'ヘッダー不一致負例テストの出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            Assert-True -Condition ($snapshot.ResultRows -eq 1) -Message "ヘッダー不一致負例で Result 行が出ています: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ErrorsRows -ge 2) -Message "ヘッダー不一致負例で Errors が不足しています: $($snapshot.ErrorsRows)"
+            return "header-mismatch Result=$($snapshot.ResultRows), Errors=$($snapshot.ErrorsRows)"
+        }
+        'V2 時刻確認負例の分離' {
+            $reviewNegativeDir = Join-Path $fixturesRoot 'construction_review_negative_v2'
+            Reset-Directory -Path $reviewNegativeDir
+            Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf') -Destination (Join-Path $reviewNegativeDir '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf') -Force
+            $outputPath = Join-Path $resultsRoot 'construction_transfer_poc_review_negative.xlsx'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $reviewNegativeDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '時刻確認負例テストの出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $reviewStatuses = @($snapshot.ReviewRecords | ForEach-Object { $_.'時刻正規化状態' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $reviewNotes = @($snapshot.ReviewRecords | ForEach-Object { $_.'時刻確認メモ' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "時刻確認負例で Result 行数が崩れています: $($snapshot.ResultRows)"
+            Assert-True -Condition ($reviewStatuses -contains '要確認') -Message ('時刻確認負例で Review に 要確認 がありません: ' + ($reviewStatuses -join ','))
+            Assert-True -Condition ((@($reviewNotes | Where-Object { $_ -like '*24:30*' -or $_ -like '*範囲外*' }).Count) -ge 1) -Message ('時刻確認負例で invalid 理由が見つかりません: ' + ($reviewNotes -join ' | '))
+            Assert-True -Condition ((@($reviewNotes | Where-Object { $_ -like '*片側の時刻だけ*' }).Count) -ge 1) -Message ('時刻確認負例で片側空の理由が見つかりません: ' + ($reviewNotes -join ' | '))
+            return "review-negative Result=$($snapshot.ResultRows), ReviewStatuses=$($reviewStatuses -join ',')"
         }
         '一時領域の後片付け' {
             $runtimeRuns = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'output\runtime\runs') -Directory -ErrorAction SilentlyContinue)
