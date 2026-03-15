@@ -18,14 +18,35 @@ function Ensure-Directory {
     }
 }
 
+function Remove-PathWithRetryCommon {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [int]$MaxAttempts = 5,
+        [int]$DelayMilliseconds = 500
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt += 1) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        } catch [System.IO.DirectoryNotFoundException] {
+            return
+        } catch [System.IO.FileNotFoundException] {
+            return
+        } catch {
+            if ($attempt -ge $MaxAttempts) {
+                throw
+            }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+}
+
 function Reset-Directory {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     if (Test-Path -LiteralPath $Path) {
-        try {
-            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
-        } catch [System.IO.DirectoryNotFoundException] {
-        }
+        Remove-PathWithRetryCommon -Path $Path
     }
 
     New-Item -ItemType Directory -Path $Path -Force | Out-Null

@@ -348,6 +348,9 @@ function Get-WorkbookSnapshot {
             ResultColumns       = $resultColumns
             ErrorsRows          = $errorsRows
             ErrorsColumns       = $errorsColumns
+            ControlStagingInput = [string]$controlSheet.Range('B2').Value2
+            ControlOutputPath   = [string]$controlSheet.Range('B3').Value2
+            ControlLogPath      = [string]$controlSheet.Range('B4').Value2
             ControlStatus       = [string]$controlSheet.Range('B6').Value2
             ControlSourceCount  = [string]$controlSheet.Range('B7').Value2
             ControlResultCount  = [string]$controlSheet.Range('B8').Value2
@@ -523,16 +526,35 @@ function New-ReportMarkdown {
 
 function Initialize-TestFixtures {
     Ensure-Directory -Path $testsRoot
-    Reset-Directory -Path $workRoot
+    Ensure-Directory -Path $workRoot
     Ensure-Directory -Path $resultsRoot
     Ensure-Directory -Path $reportsRoot
+    $secureRuntimeRoot = Join-Path $env:LOCALAPPDATA 'PDF2Excel\runtime'
+    $secureRuntimeRunsRoot = Join-Path $secureRuntimeRoot 'runs'
     foreach ($fixtureDir in @($validPdfDir, $mixedPdfDir, $duplicateA, $duplicateB, $profileFixtureDir, $japanesePdfDir, $bulkPdfDir, $attendancePdfDir)) {
-        Ensure-Directory -Path $fixtureDir
+        Reset-Directory -Path $fixtureDir
     }
 
     Get-ChildItem -LiteralPath $resultsRoot -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -like 'case_*.json' -or $_.Extension -eq '.xlsx' } |
         Remove-Item -Force -ErrorAction SilentlyContinue
+
+    if (Test-Path -LiteralPath $secureRuntimeRunsRoot) {
+        Get-ChildItem -LiteralPath $secureRuntimeRunsRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            [void](Remove-PathWithRetry -Path $_.FullName)
+        }
+    }
+    if (Test-Path -LiteralPath $secureRuntimeRoot) {
+        Get-ChildItem -LiteralPath $secureRuntimeRoot -File -ErrorAction SilentlyContinue | Where-Object {
+            $_.Name -ne 'run.lock'
+        } | ForEach-Object {
+            [void](Remove-PathWithRetry -Path $_.FullName)
+        }
+        $secureLockPath = Join-Path $secureRuntimeRoot 'run.lock'
+        if (Test-Path -LiteralPath $secureLockPath) {
+            [void](Remove-PathWithRetry -Path $secureLockPath)
+        }
+    }
 
     $requiredSamplePaths = @(
         (Join-Path $sampleAttendancePdfDir '2026年03月_勤怠管理表.pdf')
@@ -667,6 +689,8 @@ function Get-TestCases {
         [pscustomobject]@{ Name = '同時実行ロック'; Scenario = '別実行中は 2 本目が即時失敗すること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'BAT 経由の変換'; Scenario = '同じ PDF 群を BAT から正常に変換できること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'BAT 直実行で待機しない'; Scenario = '引数付き BAT 実行で pause せず終了すること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = 'V2 BAT ダブルクリックでメニュー表示'; Scenario = 'V2 BAT を無引数で起動すると最初にメニューが表示されること'; TimeoutSeconds = 60 },
+        [pscustomobject]@{ Name = 'V2 BAT 引数付きで直接変換'; Scenario = 'V2 BAT を引数付きで起動するとメニューを介さず直接変換できること'; TimeoutSeconds = 300 },
         [pscustomobject]@{ Name = 'input 自己参照'; Scenario = 'input 自体を入力フォルダにしても自己削除せず処理できること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = '同名ファイル拒否'; Scenario = '別フォルダの同名 PDF を明示的に拒否すること'; TimeoutSeconds = 120 },
         [pscustomobject]@{ Name = '壊れた PDF の処理'; Scenario = '壊れた PDF が全体を止めず Errors に出ること'; TimeoutSeconds = 180 },
@@ -858,6 +882,26 @@ function Invoke-NamedScenario {
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT 直実行の出力ブックが作成されていません。'
             return 'BAT 直実行が待機せず終了'
         }
+        'V2 BAT ダブルクリックでメニュー表示' {
+            $combinedOutput = '7' | & cmd.exe /c $batScriptV2 2>&1 | Out-String
+            Assert-True -Condition ($combinedOutput.Contains('PDF2Excel VER2')) -Message ('V2 BAT 無引数起動で VER2 タイトルが見つかりません: ' + $combinedOutput)
+            Assert-True -Condition ($combinedOutput.Contains('[1] PDFファイルを選んで変換')) -Message ('V2 BAT 無引数起動でメニュー項目が見つかりません: ' + $combinedOutput)
+            Assert-True -Condition ($combinedOutput.Contains('[7] 終了')) -Message ('V2 BAT 無引数起動で終了項目が見つかりません: ' + $combinedOutput)
+            return 'V2 BAT 無引数起動でメニュー表示を確認'
+        }
+        'V2 BAT 引数付きで直接変換' {
+            $singlePdfDir = Join-Path $fixturesRoot 'construction_single_v2_bat'
+            Reset-Directory -Path $singlePdfDir
+            $pocFileName = '2026年02月_作業員勤怠一覧_PoC.pdf'
+            Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir $pocFileName) -Destination (Join-Path $singlePdfDir $pocFileName) -Force
+            $outputPath = Join-Path $resultsRoot 'construction_transfer_poc_bat.xlsx'
+            & cmd /c $batScriptV2 -InputFolder $singlePdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'V2 BAT 引数付き直接変換の出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "V2 BAT 直接変換の版表示が想定と異なります: $($snapshot.ControlVersion)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "V2 BAT 直接変換の行数が想定と異なります: $($snapshot.ResultRows)"
+            return 'V2 BAT 引数付き直接変換に成功'
+        }
         'input 自己参照' {
             Get-ChildItem -LiteralPath (Join-Path $projectRoot 'input') -Filter '*.pdf' -File -ErrorAction SilentlyContinue | Remove-Item -Force
             Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join-Path $projectRoot 'input\valid_a.pdf') -Force
@@ -993,7 +1037,8 @@ function Invoke-NamedScenario {
             $outputPath = Join-Path $resultsRoot 'construction_transfer_poc.xlsx'
             $singlePdfDir = Join-Path $fixturesRoot 'construction_single_v2'
             Reset-Directory -Path $singlePdfDir
-            Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC.pdf') -Destination (Join-Path $singlePdfDir '2026年02月_作業員勤怠一覧_PoC.pdf') -Force
+            $pocFileName = '2026年02月_作業員勤怠一覧_PoC.pdf'
+            Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir $pocFileName) -Destination (Join-Path $singlePdfDir $pocFileName) -Force
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $singlePdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '建設現場転記PoCテストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
@@ -1006,12 +1051,15 @@ function Invoke-NamedScenario {
             $normalizedSecondOutTexts = @($snapshot.ResultRecords | ForEach-Object { $_.'正規化退場2' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $normalizationStatuses = @($snapshot.ResultRecords | ForEach-Object { $_.'時刻正規化状態' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $normalizedSecondOutTypes = @($snapshot.ResultTypedRecords | ForEach-Object { if ($null -ne $_.'正規化退場2_分') { $_.'正規化退場2_分'.GetType().Name } } | Select-Object -Unique)
+            $storedInputNames = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'input') -Filter '*.pdf' -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
             Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "建設現場転記PoCの行数が想定と異なります: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "Control の版表示が想定と異なります: $($snapshot.ControlVersion)"
             Assert-True -Condition ($snapshot.ControlProfile -eq '建設現場転記PoCプロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
-            Assert-True -Condition ($sourceNames -contains '2026年02月_作業員勤怠一覧_PoC.pdf') -Message 'PoC PDF 名が保持されていません。'
+            Assert-True -Condition ($sourceNames -contains $pocFileName) -Message 'PoC PDF 名が保持されていません。'
             Assert-True -Condition ($names -contains '佐藤 花子') -Message 'PoC 帳票の氏名が保持されていません。'
             Assert-True -Condition ((@($sites | Where-Object { $_ -like '*東京駅前再開発*' }).Count) -ge 1) -Message 'PoC 帳票の現場名が保持されていません。'
+            Assert-True -Condition ($snapshot.ControlStagingInput.StartsWith((Join-Path $env:LOCALAPPDATA 'PDF2Excel\runtime\runs'), [System.StringComparison]::OrdinalIgnoreCase)) -Message "V2 Secure の staging 入力先がローカル runtime ではありません: $($snapshot.ControlStagingInput)"
+            Assert-True -Condition (-not ($storedInputNames -contains $pocFileName)) -Message 'V2 Secure なのに input フォルダへ PoC PDF が同期されています。'
             Assert-True -Condition ($snapshot.ResultHeaders -contains '正規化入場1') -Message 'Result に正規化入場1 列がありません。'
             Assert-True -Condition ($snapshot.ResultHeaders -contains '正規化退場1_分') -Message 'Result に正規化退場1_分 列がありません。'
             Assert-True -Condition ($snapshot.ResultHeaders -contains '時刻正規化状態') -Message 'Result に時刻正規化状態 列がありません。'
@@ -1025,7 +1073,7 @@ function Invoke-NamedScenario {
             Assert-True -Condition ($normalizedSecondOutTypes -contains 'Double') -Message ('正規化退場2_分 が数値型ではありません: ' + ($normalizedSecondOutTypes -join ','))
             Assert-True -Condition ($normalizationStatuses -contains 'OK') -Message ('時刻正規化状態に OK がありません: ' + ($normalizationStatuses -join ','))
             Assert-True -Condition ($snapshot.ReviewRows -ge 6) -Message "Review シートに行監査結果が十分に出ていません: $($snapshot.ReviewRows)"
-            return "PoCPDF=$($sourceNames -join ','), 氏名=$($names -join ','), 現場=$($sites -join ','), Review=$($snapshot.ReviewRows), 正規化退場2分=$($normalizedSecondOutMinutes -join ',')"
+            return "PoCPDF=$($sourceNames -join ','), staging=$($snapshot.ControlStagingInput), Review=$($snapshot.ReviewRows), 正規化退場2分=$($normalizedSecondOutMinutes -join ',')"
         }
         'V2 2ページ同一列の変換' {
             $twoPageDir = Join-Path $fixturesRoot 'construction_2page_v2'
@@ -1099,8 +1147,12 @@ function Invoke-NamedScenario {
         '一時領域の後片付け' {
             $runtimeRuns = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'output\runtime\runs') -Directory -ErrorAction SilentlyContinue)
             $runtimeFileNames = @($runtimeRuns | Select-Object -ExpandProperty Name)
+            $secureRuntimeRunsRoot = Join-Path $env:LOCALAPPDATA 'PDF2Excel\runtime\runs'
+            $secureRuntimeRuns = @(Get-ChildItem -LiteralPath $secureRuntimeRunsRoot -Directory -ErrorAction SilentlyContinue)
+            $secureRuntimeFileNames = @($secureRuntimeRuns | Select-Object -ExpandProperty Name)
             Assert-True -Condition ($runtimeRuns.Count -eq 0) -Message ('一時ワークスペースが残っています: ' + ($runtimeFileNames -join ', '))
-            return '一時領域は空'
+            Assert-True -Condition ($secureRuntimeRuns.Count -eq 0) -Message ('V2 Secure のローカル一時ワークスペースが残っています: ' + ($secureRuntimeFileNames -join ', '))
+            return '共有/runtime とローカル/runtime は空'
         }
         'Excel プロセス残留なし' {
             $excelIds = @(Wait-For-ExcelBaseline -BaselineIds $suiteBaselineExcel -TimeoutSeconds 10)

@@ -217,6 +217,73 @@ $testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は建設現場�
     return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
 }
 
+$testResults += Invoke-UnitTest -Name 'run_pdf2excel.ps1 は Secure モードでローカル runtime を使う' -Body {
+    $scriptText = Get-Content -LiteralPath $runScript -Raw -Encoding UTF8
+    Assert-True -Condition ($scriptText.Contains("[ValidateSet('Standard', 'Secure')]")) -Message 'SecurityMode の ValidateSet が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('Join-Path $env:LOCALAPPDATA ''PDF2Excel\runtime''')) -Message 'LOCALAPPDATA 配下の runtime ルートが見つかりません。'
+    Assert-True -Condition ($scriptText.Contains("VER2 Secure では -KeepInput は無効")) -Message 'KeepInput 無効化メッセージが見つかりません。'
+    return 'SecurityMode / LOCALAPPDATA / KeepInput 無効化を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'V2 ラッパーは Secure モードを渡し RemoteSigned で起動する' -Body {
+    $scriptPath = Join-Path $projectRoot 'scripts\run_pdf2excel_v2.ps1'
+    $menuPath = Join-Path $projectRoot 'scripts\run_pdf2excel_menu_v2.ps1'
+    $scriptText = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
+    $menuText = Get-Content -LiteralPath $menuPath -Raw -Encoding UTF8
+    Assert-True -Condition ($scriptText.Contains("'-SecurityMode', 'Secure'")) -Message 'V2 ラッパーが SecurityMode Secure を渡していません。'
+    Assert-True -Condition (-not $scriptText.Contains('ExecutionPolicy Bypass')) -Message 'V2 ラッパーに ExecutionPolicy Bypass が残っています。'
+    Assert-True -Condition ($scriptText.Contains('ExecutionPolicy RemoteSigned')) -Message 'V2 ラッパーに ExecutionPolicy RemoteSigned がありません。'
+    Assert-True -Condition (-not $menuText.Contains('ExecutionPolicy Bypass')) -Message 'V2 メニューラッパーに ExecutionPolicy Bypass が残っています。'
+    Assert-True -Condition ($menuText.Contains('ExecutionPolicy RemoteSigned')) -Message 'V2 メニューラッパーに ExecutionPolicy RemoteSigned がありません。'
+    return 'SecurityMode Secure / RemoteSigned / Bypass 除去を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'V2 BAT は ASCII かつ RemoteSigned で起動する' -Body {
+    $batPath = Join-Path $projectRoot 'run_pdf2excel_v2.bat'
+    $batBytes = [System.IO.File]::ReadAllBytes($batPath)
+    $hasNonAscii = $false
+    foreach ($value in $batBytes) {
+        if ($value -gt 127) {
+            $hasNonAscii = $true
+            break
+        }
+    }
+    $batText = [System.Text.Encoding]::ASCII.GetString($batBytes)
+    Assert-True -Condition (-not $hasNonAscii) -Message 'V2 BAT に非 ASCII 文字が含まれています。'
+    Assert-True -Condition (-not $batText.Contains('ExecutionPolicy Bypass')) -Message 'V2 BAT に ExecutionPolicy Bypass が残っています。'
+    Assert-True -Condition ($batText.Contains('ExecutionPolicy RemoteSigned')) -Message 'V2 BAT に ExecutionPolicy RemoteSigned がありません。'
+    return 'ASCII / RemoteSigned / Bypass 除去を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'V2 BAT とメニューは ForceMenu 導線を持つ' -Body {
+    $batPath = Join-Path $projectRoot 'run_pdf2excel_v2.bat'
+    $menuPath = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
+    $menuV2Path = Join-Path $projectRoot 'scripts\run_pdf2excel_menu_v2.ps1'
+    $batText = Get-Content -LiteralPath $batPath -Raw -Encoding ASCII
+    $menuText = Get-Content -LiteralPath $menuPath -Raw -Encoding UTF8
+    $menuV2Text = Get-Content -LiteralPath $menuV2Path -Raw -Encoding UTF8
+    Assert-True -Condition ($batText.Contains('-ForceMenu')) -Message 'V2 BAT に ForceMenu 分岐がありません。'
+    Assert-True -Condition ($menuText.Contains('[switch]$ForceMenu')) -Message '共通メニューに ForceMenu スイッチがありません。'
+    Assert-True -Condition ($menuText.Contains('-not $ForceMenu -and $remainingArgs.Count -gt 0')) -Message '共通メニューに ForceMenu 優先分岐がありません。'
+    Assert-True -Condition ($menuV2Text.Contains('[switch]$ForceMenu')) -Message 'V2 メニューラッパーに ForceMenu スイッチがありません。'
+    return 'ForceMenu 導線を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 限定再生成を受け付ける' -Body {
+    $scriptPath = Join-Path $projectRoot 'scripts\build_handoff_package.ps1'
+    $scriptText = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
+    Assert-True -Condition ($scriptText.Contains("[ValidateSet('all', 'v1', 'v2')]")) -Message 'TargetVersion の ValidateSet が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('$TargetVersion -ne ''all''')) -Message 'TargetVersion のフィルタ分岐が見つかりません。'
+    return 'TargetVersion フィルタを確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'run_pdf2excel.ps1 は待機メッセージを表示する' -Body {
+    $scriptText = Get-Content -LiteralPath $runScript -Raw -Encoding UTF8
+    Assert-True -Condition ($scriptText.Contains('PDF取り込みに時間がかかります。しばらくお待ちください....')) -Message '待機メッセージが見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('Show-ProcessingNotice')) -Message '待機メッセージ呼び出しが見つかりません。'
+    return '待機メッセージを確認'
+}
+
 $testResults += Invoke-UnitTest -Name 'Normalize-TimeText は全角コロンを半角時刻へ正規化する' -Body {
     $actual = Normalize-TimeText -Value '08：00'
     Assert-True -Condition ($actual.NormalizedText -eq '08:00') -Message "正規化時刻が想定と異なります: $($actual.NormalizedText)"

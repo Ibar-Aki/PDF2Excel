@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-13 00:05 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-15
+- 更新日: 2026-03-16
 
 補助資料:
 
@@ -43,11 +43,14 @@
 ## 2. まずこれだけ見れば使える最短手順
 
 1. 標準変換なら [run_pdf2excel_v1.bat](../run_pdf2excel_v1.bat)、建設現場 raw 転記なら [run_pdf2excel_v2.bat](../run_pdf2excel_v2.bat) をダブルクリックします。
+   - `VER2` はダブルクリックで必ず最初にメニューを表示します。
 2. 表示されたメニューで `1` を押します。
 3. 変換したい PDF を複数選びます。
 4. 出力する Excel ファイルの保存先を選びます。
 5. 実行前チェックの内容を確認して `Y` を押します。
+   - `Y` の直後に `PDF取り込みに時間がかかります。しばらくお待ちください....` と表示されます。
 6. 完了後、保存した `xlsx` を開きます。
+   - 完了画面には出力先とログ先も表示されます。
 7. `Summary` シートで全体件数を確認します。
 8. `Result` シートを確認します。
 9. 失敗した PDF がないか `Errors` シートも確認します。
@@ -62,6 +65,8 @@
 - `input` に残っている過去PDFは、`-KeepInput` を使っても今回の変換には混ざりません。
 - `VER2` の `sameHeader` は、ヘッダー署名と連続ページを満たす候補だけを縦結合します。
 - `VER2` の横分割結合は、一意に組める候補だけを採用し、曖昧な候補は `Errors` / `Review` に分離します。
+- `VER2` は secure 既定です。runtime / staging は `%LOCALAPPDATA%\PDF2Excel\runtime\runs` を使い、`input` フォルダへ今回 PDF を同期しません。
+- `VER2` の配布用 ZIP と利用者向け起動導線は `ExecutionPolicy Bypass` を使わず、`RemoteSigned` を前提に起動します。
 
 ## 3. BAT メニューの意味
 
@@ -144,6 +149,9 @@
 ただし、実際の変換は毎回専用の staging フォルダで実行されます。  
 そのため、以前のPDFが今回の `Result` に混ざることはありません。
 
+`VER2` secure では、このオプションは無効です。  
+今回選んだ PDF は `input` へ複製せず、`%LOCALAPPDATA%\PDF2Excel\runtime\runs\...\staging` だけで処理します。
+
 ### 4-3. 事前に分けておくとよいケース
 
 - レイアウトが大きく違う PDF
@@ -181,6 +189,12 @@
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -SelectInputFolder -PromptForOutputFile
+```
+
+`VER2` を直接起動する場合:
+
+```powershell
+powershell -NoProfile -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result_v2.xlsx
 ```
 
 入力フォルダと出力先を直接指定する場合:

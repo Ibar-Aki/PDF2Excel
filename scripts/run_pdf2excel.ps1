@@ -6,6 +6,8 @@
     [string]$ProfilePath,
     [ValidateSet('v1', 'v2')]
     [string]$VersionMode = 'v1',
+    [ValidateSet('Standard', 'Secure')]
+    [string]$SecurityMode = 'Standard',
     [switch]$KeepInput,
     [switch]$RebuildTemplate,
     [switch]$OpenOutput,
@@ -30,7 +32,12 @@ $configDir = Join-Path $baseDir 'config'
 $profilesDir = Join-Path $configDir "profiles\$VersionMode"
 $inputDir = Join-Path $baseDir 'input'
 $outputDir = Join-Path $baseDir 'output'
-$runtimeRootDir = Join-Path $outputDir 'runtime'
+$script:isSecureMode = ($VersionMode -eq 'v2' -and $SecurityMode -eq 'Secure')
+$runtimeRootDir = if ($script:isSecureMode) {
+    Join-Path $env:LOCALAPPDATA 'PDF2Excel\runtime'
+} else {
+    Join-Path $outputDir 'runtime'
+}
 $runtimeRunsDir = Join-Path $runtimeRootDir 'runs'
 $logsDir = Join-Path $baseDir 'logs'
 $script:versionDisplayName = Get-VersionDisplayName -VersionMode $VersionMode
@@ -59,10 +66,10 @@ function Show-Usage {
         '',
         '2. PowerShell から直接実行:',
         '',
-        '   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1',
-        '   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Path\To\PdfFolder',
-        '   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Path\To\PdfFolder -OutputFile C:\Path\To\result.xlsx',
-        '   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -SelectInputFolder -PromptForOutputFile',
+        '   powershell -NoProfile -File .\scripts\run_pdf2excel.ps1',
+        '   powershell -NoProfile -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Path\To\PdfFolder',
+        '   powershell -NoProfile -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Path\To\PdfFolder -OutputFile C:\Path\To\result.xlsx',
+        '   powershell -NoProfile -File .\scripts\run_pdf2excel.ps1 -SelectInputFolder -PromptForOutputFile',
         '',
         'オプション',
         '  -InputFolder         PDF が入っているフォルダを指定します。',
@@ -70,7 +77,7 @@ function Show-Usage {
         '  -OutputFile          出力する xlsx の保存先を指定します。',
         '  -ProfileName         使用する帳票プロファイル名を指定します。既定値は default です。',
         '  -ProfilePath         使用する帳票プロファイル JSON のフルパスを指定します。',
-        '  -KeepInput           input 内の過去PDFを保持します。実際の変換は今回分だけ別 staging で実行します。',
+        '  -KeepInput           input 内の過去PDFを保持します。実際の変換は今回分だけ別 staging で実行します。VER2 Secure では無効です。',
         '  -RebuildTemplate     xlsm テンプレートを再生成します。',
         '  -OpenOutput          完成した xlsx を自動で開きます。',
         '  -OpenOutputFolder    完成後に保存先フォルダを開きます。',
@@ -133,6 +140,16 @@ function Show-RunSummary {
     Write-Host ('  出力ファイル     : {0}' -f $OutputPath)
     Write-Host ('  ログファイル     : {0}' -f $script:logPath)
     Write-Host ''
+    Write-Host '変換が完了しました。Result / Review / Errors / Summary を確認してください。' -ForegroundColor Green
+    Write-Host ''
+}
+
+function Show-ProcessingNotice {
+    $message = 'PDF取り込みに時間がかかります。しばらくお待ちください....'
+    Write-Host ''
+    Write-Host $message -ForegroundColor Yellow
+    Write-Host ''
+    Write-Log $message
 }
 
 function Ensure-UiAssembliesLoaded {
@@ -2380,9 +2397,22 @@ function Prepare-RunInputs {
     )
 
     $stagedFiles = Stage-PdfFiles -Files $SourceFiles -StagingDirectory $script:runStagingDir
-    $storedFiles = Sync-InputStorage -Files $SourceFiles -KeepExisting:$KeepInput
+    $storedFiles = @()
+    if ($script:isSecureMode) {
+        if ($KeepInput) {
+            Write-Log 'VER2 Secure では -KeepInput は無効です。input フォルダ同期を行いません。' 'WARN'
+        } else {
+            Write-Log 'VER2 Secure のため input フォルダ同期を行いません。'
+        }
+    } else {
+        $storedFiles = Sync-InputStorage -Files $SourceFiles -KeepExisting:$KeepInput
+    }
     Write-Log ("今回実行分の staging が完了しました: {0}" -f ($stagedFiles -join ', '))
-    Write-Log ("input フォルダ同期が完了しました: {0}" -f ($storedFiles -join ', '))
+    if ($script:isSecureMode) {
+        Write-Log 'VER2 Secure のため input フォルダへの PDF 複製は作成していません。'
+    } else {
+        Write-Log ("input フォルダ同期が完了しました: {0}" -f ($storedFiles -join ', '))
+    }
     # Give Excel's PDF connector a brief moment to observe freshly staged files on disk.
     Start-Sleep -Seconds 1
 
@@ -2799,12 +2829,17 @@ $reviewRowCount = 0
 $successPdfCount = 0
 $failedPdfCount = 0
 $elapsedSeconds = 0
+$runFailed = $false
 
 try {
     Initialize-RunWorkspace
     Write-Banner
+    if ($script:isSecureMode) {
+        Write-Log ("VER2 Secure モードで実行します。runtime はローカル領域を使用します: {0}" -f $runtimeRootDir)
+    }
     Write-Log '入力 PDF を確認しています。'
     $runPlan = Resolve-ExecutionPlan
+    Show-ProcessingNotice
     Prepare-RunInputs -SourceFiles $runPlan.SourceFiles | Out-Null
 
     Ensure-Template -ForceRebuild:$RebuildTemplate
@@ -2838,6 +2873,7 @@ try {
         Invoke-Item -LiteralPath $runPlan.OutputParent
     }
 } catch {
+    $runFailed = $true
     $runError = Resolve-RunErrorInfo -Message $_.Exception.Message
     Write-Log ("処理に失敗しました: [{0}] [{1}] {2}" -f $runError.ErrorCategory, $runError.ErrorCode, $_.Exception.Message) 'ERROR'
     if ($runtimeContext -and $runtimeContext.ControlSheet) {
@@ -2850,6 +2886,9 @@ try {
     throw
 } finally {
     Close-ExcelRuntimeContext -RuntimeContext $runtimeContext
+    if ($script:isSecureMode -and $runFailed) {
+        Write-Log 'VER2 Secure のため、失敗時の一時領域を即時削除します。'
+    }
     Finalize-RunWorkspace
     Release-RunLock
     [GC]::Collect()

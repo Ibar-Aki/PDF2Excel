@@ -3,7 +3,8 @@
     [string[]]$ForwardArgs,
     [ValidateSet('v1', 'v2')]
     [string]$VersionMode = 'v1',
-    [string]$RunScriptPath
+    [string]$RunScriptPath,
+    [switch]$ForceMenu
 )
 
 Set-StrictMode -Version Latest
@@ -25,7 +26,14 @@ $systemLabel = if ($VersionMode -eq 'v2') { 'PDF2Excel VER2 - 建設現場 raw �
 function Invoke-RunScript {
     param([string[]]$Arguments)
 
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript @Arguments
+    $shellArgs = @('-NoProfile')
+    if ($VersionMode -eq 'v2') {
+        $shellArgs += @('-ExecutionPolicy', 'RemoteSigned')
+    } else {
+        $shellArgs += @('-ExecutionPolicy', 'Bypass')
+    }
+    $shellArgs += @('-File', $runScript)
+    & powershell @shellArgs @Arguments
     return $LASTEXITCODE
 }
 
@@ -46,7 +54,7 @@ function Open-PathIfExists {
 }
 
 $remainingArgs = @($ForwardArgs)
-if ($remainingArgs.Count -gt 0) {
+if (-not $ForceMenu -and $remainingArgs.Count -gt 0) {
     exit (Invoke-RunScript -Arguments $remainingArgs)
 }
 
@@ -85,6 +93,9 @@ while ($true) {
             } else {
                 Write-Host ''
                 Write-Host '変換が完了しました。'
+                Write-Host "出力先: $outputDir"
+                Write-Host "ログ先: $logsDir"
+                Write-Host 'Result / Review / Errors / Summary を確認してください。'
                 Write-Host '必要に応じて output と logs の内容を確認してください。'
                 Pause
             }
@@ -99,6 +110,9 @@ while ($true) {
             } else {
                 Write-Host ''
                 Write-Host '変換が完了しました。'
+                Write-Host "出力先: $outputDir"
+                Write-Host "ログ先: $logsDir"
+                Write-Host 'Result / Review / Errors / Summary を確認してください。'
                 Write-Host '必要に応じて output と logs の内容を確認してください。'
                 Pause
             }

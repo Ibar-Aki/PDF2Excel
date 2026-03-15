@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-12 23:14 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-15
+- 更新日: 2026-03-16
 
 Excel(M365) の Power Query を使って、複数のテキストPDFをまとめて Excel に変換するローカルツールです。  
 追加インストールなしで、`BAT + PowerShell + Excel` のみで動く構成にしています。
@@ -33,6 +33,8 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - [run_pdf2excel_v2.bat](run_pdf2excel_v2.bat)
   - 建設現場向けの raw 転記です。複数ページで同じ列が続く帳票や、確認作業を前提にした転記に使います。
   - `sameHeader` の厳格判定で多ページ結合を行い、曖昧な候補は `Errors` / `Review` に分離します。
+  - `VER2` は secure 既定です。runtime / staging は `%LOCALAPPDATA%\PDF2Excel\runtime` 配下を使い、`input` フォルダへ今回 PDF を同期しません。
+  - ダブルクリック起動では、必ず最初にメニューを表示します。
 - [run_pdf2excel.bat](run_pdf2excel.bat)
   - 互換入口です。`VER1` を起動します。
 
@@ -78,13 +80,14 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `config/profiles/v2/`
   - `VER2` 用プロファイルです。建設現場 raw 転記用の `construction_transfer_poc.json` を置きます。
 - `input/`
-  - 処理対象PDFの保管先です。実行時の抽出は `output/runtime/runs/.../staging` で分離して行います。
+  - 処理対象PDFの保管先です。`VER1` と標準導線では、実行時の抽出を `output/runtime/runs/.../staging` で分離して行います。
 - `output/`
   - 出力された `xlsx` を保存します。
 - `logs/`
   - 実行ログを保存します。30日超または200件超の古いログは自動整理されます。
 - `output/runtime/`
-  - 実行中の一時領域です。`runs/` 配下に実行単位の staging / runtime を作成し、通常は実行ごとに自動クリーンアップされます。
+  - 主に `VER1` と標準導線の実行中一時領域です。`runs/` 配下に実行単位の staging / runtime を作成し、通常は実行ごとに自動クリーンアップされます。
+  - `VER2` secure 導線では `%LOCALAPPDATA%\PDF2Excel\runtime\runs` を使います。
 - `tests/`
   - 統合テストとその一時生成物を置きます。
 - `reports/`
@@ -116,12 +119,18 @@ PDF2Excel
 3. PDF または PDF フォルダを選択します。
 4. 保存先を選びます。
 5. 実行前チェックの内容を確認して続行します。
+   - `Y` を押した後は `PDF取り込みに時間がかかります。しばらくお待ちください....` が表示されます。
 6. 処理完了後、`Summary`、`Result`、`Errors` シートを確認します。
+   - 完了画面には出力先とログ先も表示されます。
 
 PowerShell から実行する場合:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -SelectInputFolder -PromptForOutputFile
+```
+
+```powershell
+powershell -NoProfile -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result_v2.xlsx
 ```
 
 ```powershell
@@ -176,6 +185,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.p
 - `PDF2ExcelTemplateBuilder.*.bas` は空ブック専用です。既存の `PDF2Excel_Converter.xlsm` へ追加インポートすると同名マクロが重複します。
 - 同名PDFを別フォルダから同時投入する運用は非対応です。ファイル名が衝突した場合はエラーで止めます。
 - `-KeepInput` は `input` フォルダの保管内容を残すためのオプションです。今回の変換対象は毎回専用 staging に切り出して処理するため、過去PDFが混ざることはありません。
+- `VER2` secure では `-KeepInput` は無効です。今回 PDF を `input` へ複製せず、ローカル runtime の staging だけで処理します。
+- `VER2` の配布用 ZIP と利用者向け BAT / PS 導線は `ExecutionPolicy Bypass` を使わず、`RemoteSigned` を前提に起動します。
 - ツールは同時に 1 実行だけ許可します。別実行が動作中の場合は `RUN_LOCKED` として即時停止します。
 - BAT メニューと利用者向けの説明文は日本語化しています。
 - 日本語の月次勤怠管理表を試す場合は `config/profiles/v1/attendance_monthly_jp.json` を利用してください。

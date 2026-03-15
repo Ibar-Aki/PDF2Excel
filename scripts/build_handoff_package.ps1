@@ -1,4 +1,7 @@
-param()
+param(
+    [ValidateSet('all', 'v1', 'v2')]
+    [string]$TargetVersion = 'all'
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -29,6 +32,10 @@ $packageDefinitions = @(
         RunScript = 'run_pdf2excel_v2.ps1'
     }
 )
+
+if ($TargetVersion -ne 'all') {
+    $packageDefinitions = @($packageDefinitions | Where-Object VersionMode -eq $TargetVersion)
+}
 
 foreach ($package in $packageDefinitions) {
     Reset-Directory -Path $package.PackageRoot
