@@ -156,6 +156,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.p
   - 抽出失敗したPDFのファイル名、エラーコード、エラー分類、利用者向けメッセージ、技術詳細、候補表の列数・行数を出力します。
 - `Review` シート
   - `VER2` のみです。確認が必要な raw 行を、元ファイル名、ページ、氏名 raw、現場 raw、入場 raw、退場 raw、確認要理由で一覧化します。
+  - `ReasonCategory` を追加し、`HEADER_MISMATCH`、`TIME_MISSING`、`TIME_MULTI`、`TIME_INVALID` を機械的に判別できるようにしています。
   - あわせて `正規化入場` / `正規化退場` / `*_分` / `時刻正規化状態` / `時刻確認メモ` を出し、`08：00`、`9時 15分`、Excel 時刻比率文字列の確認と後続分析をしやすくします。
 
 ## 前提条件
@@ -199,3 +200,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_integration_test
 - レポート: [test-report.md](reports/test-report.md)
 - JSON: [integration-test-results.json](tests/results/integration-test-results.json)
 - ユニットテストレポート: [unit-test-report.md](reports/unit-test-report.md)
+
+統合テストは `CaseName` を付けなければ全件実行です。  
+全件実行では、既知の Excel COM 一時失敗だけを 1 回だけ再試行し、`RetryCount` / `RetriedBy` をレポートへ残します。

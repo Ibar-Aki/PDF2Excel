@@ -378,6 +378,78 @@ function Get-TimeNormalizationAudit {
     }
 }
 
+function Get-ReviewReasonCategories {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Definitions,
+        [Parameter(Mandatory = $true)][hashtable]$RawValuesByDisplayName,
+        [string]$ExistingReason = '',
+        [string]$ExistingCategoryCsv = '',
+        $Audit = $null
+    )
+
+    if ($null -eq $Audit) {
+        $Audit = Get-TimeNormalizationAudit -Definitions $Definitions -RawValuesByDisplayName $RawValuesByDisplayName
+    }
+
+    $categorySet = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($category in @($ExistingCategoryCsv -split ',')) {
+        $trimmed = [string]$category
+        if (-not [string]::IsNullOrWhiteSpace($trimmed)) {
+            [void]$categorySet.Add($trimmed.Trim())
+        }
+    }
+
+    if ($ExistingReason -like '*安全に結合できませんでした*') {
+        [void]$categorySet.Add('HEADER_MISMATCH')
+    }
+
+    foreach ($definition in $Definitions) {
+        $rawValue = if ($RawValuesByDisplayName.ContainsKey($definition.DisplayName)) { [string]$RawValuesByDisplayName[$definition.DisplayName] } else { '' }
+        if ((Count-TimeLikeTokens -Value $rawValue) -gt 1) {
+            [void]$categorySet.Add('TIME_MULTI')
+        }
+
+        $normalized = if ($null -ne $Audit -and $Audit.Results.ContainsKey($definition.DisplayName)) { $Audit.Results[$definition.DisplayName] } else { Normalize-TimeText -Value $rawValue }
+        if ($normalized.Status -eq 'INVALID') {
+            [void]$categorySet.Add('TIME_INVALID')
+        }
+    }
+
+    for ($index = 0; $index -lt $Definitions.Count; $index += 2) {
+        $left = $Definitions[$index]
+        $right = if (($index + 1) -lt $Definitions.Count) { $Definitions[$index + 1] } else { $null }
+        if ($null -eq $right) {
+            continue
+        }
+
+        $leftValue = if ($RawValuesByDisplayName.ContainsKey($left.DisplayName)) { [string]$RawValuesByDisplayName[$left.DisplayName] } else { '' }
+        $rightValue = if ($RawValuesByDisplayName.ContainsKey($right.DisplayName)) { [string]$RawValuesByDisplayName[$right.DisplayName] } else { '' }
+        $leftHasValue = -not [string]::IsNullOrWhiteSpace($leftValue)
+        $rightHasValue = -not [string]::IsNullOrWhiteSpace($rightValue)
+        if ($leftHasValue -xor $rightHasValue) {
+            [void]$categorySet.Add('TIME_MISSING')
+        }
+    }
+
+    $preferredOrder = @('HEADER_MISMATCH', 'TIME_MULTI', 'TIME_MISSING', 'TIME_INVALID')
+    $ordered = New-Object System.Collections.Generic.List[string]
+
+    foreach ($category in $preferredOrder) {
+        if ($categorySet.Contains($category)) {
+            [void]$ordered.Add($category)
+        }
+    }
+
+    foreach ($category in $categorySet) {
+        if ($preferredOrder -notcontains $category) {
+            [void]$ordered.Add($category)
+        }
+    }
+
+    return ($ordered.ToArray() -join ',')
+}
+
 function Get-NormalizedTimeColumnDefinitions {
     param(
         [Parameter(Mandatory = $true)]$Profile,

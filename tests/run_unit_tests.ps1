@@ -293,6 +293,24 @@ $testResults += Invoke-UnitTest -Name 'Get-NormalizedTimeColumnDefinitions は R
     return ($definitions | ForEach-Object { $_.ReviewRawColumnName } | Select-Object -First 2) -join ','
 }
 
+$testResults += Invoke-UnitTest -Name 'Get-ReviewReasonCategories は HEADER_MISMATCH を先頭に重複なく返す' -Body {
+    $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
+    $definitions = @(Get-NormalizedTimeColumnDefinitions -Profile $profile -VersionMode v2)
+    $rawValues = @{}
+    foreach ($definition in $definitions) {
+        $rawValues[$definition.DisplayName] = ''
+    }
+    $rawValues[$definitions[0].DisplayName] = '08:00 09:00'
+    $rawValues[$definitions[1].DisplayName] = ''
+    $rawValues[$definitions[2].DisplayName] = '24:30'
+    $rawValues[$definitions[3].DisplayName] = '18:00'
+
+    $categories = Get-ReviewReasonCategories -Definitions $definitions -RawValuesByDisplayName $rawValues -ExistingReason '同一 PDF 内にヘッダー不一致または連続しない候補表があり、安全に結合できませんでした。' -ExistingCategoryCsv 'TIME_MULTI'
+
+    Assert-True -Condition ($categories -eq 'HEADER_MISMATCH,TIME_MULTI,TIME_MISSING,TIME_INVALID') -Message "ReasonCategory の並びまたは重複除去が想定と異なります: $categories"
+    return $categories
+}
+
 $testResults += Invoke-UnitTest -Name 'Get-StagingQueryFormula は V2 で canonical sameHeader と曖昧分離を考慮する' -Body {
     $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
     $formula = Get-StagingQueryFormula -InputPath 'C:\Temp\Input' -Profile $profile
@@ -300,7 +318,17 @@ $testResults += Invoke-UnitTest -Name 'Get-StagingQueryFormula は V2 で canoni
     Assert-True -Condition ($formula.Contains('FindHorizontalMergeSequences')) -Message 'partial merge sequence ロジックが見つかりません。'
     Assert-True -Condition ($formula.Contains('TABLE_GROUP_AMBIGUOUS')) -Message 'sameHeader 分離エラーが見つかりません。'
     Assert-True -Condition ($formula.Contains('正規化入場1_raw')) -Message 'Review raw 列が見つかりません。'
-    return 'canonical sameHeader / ambiguity split / review raw'
+    Assert-True -Condition ($formula.Contains('ReasonCategory')) -Message 'Review の ReasonCategory 列が見つかりません。'
+    Assert-True -Condition ($formula.Contains('TIME_MULTI')) -Message 'Review の TIME_MULTI 分類が見つかりません。'
+    Assert-True -Condition ($formula.Contains('TIME_MISSING')) -Message 'Review の TIME_MISSING 分類が見つかりません。'
+    return 'canonical sameHeader / ambiguity split / review raw / reason categories'
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-ReviewQueryFormulaV2 は ReasonCategory を展開対象に含める' -Body {
+    $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
+    $formula = Get-ReviewQueryFormulaV2 -Profile $profile
+    Assert-True -Condition ($formula.Contains('ReasonCategory')) -Message 'Review クエリの展開列に ReasonCategory がありません。'
+    return 'ReasonCategory expansion ready'
 }
 
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel.bat は ASCII のみで構成される' -Body {

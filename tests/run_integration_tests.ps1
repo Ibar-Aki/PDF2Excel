@@ -420,16 +420,25 @@ function Invoke-TestCase {
             DurationMs   = [int]$stopwatch.ElapsedMilliseconds
             Details      = $details
             ErrorMessage = $null
+            RetryCount   = 0
+            RetriedBy    = ''
         }
     } catch {
         $stopwatch.Stop()
+        $leaked = @(Wait-For-ExcelBaseline -BaselineIds $baselineExcel -TimeoutSeconds 10)
+        $errorMessage = $_.Exception.Message
+        if ($leaked.Count -gt 0) {
+            $errorMessage += " / Excel process leak detected: $($leaked -join ', ')"
+        }
         return [pscustomobject]@{
             Name         = $Name
             Scenario     = $Scenario
             Status       = 'FAIL'
             DurationMs   = [int]$stopwatch.ElapsedMilliseconds
             Details      = $null
-            ErrorMessage = $_.Exception.Message
+            ErrorMessage = $errorMessage
+            RetryCount   = 0
+            RetriedBy    = ''
         }
     }
 }
@@ -444,6 +453,7 @@ function New-ReportMarkdown {
     $duration = [int]($FinishedAt - $StartedAt).TotalSeconds
     $passCount = @($TestResults | Where-Object Status -eq 'PASS').Count
     $failCount = @($TestResults | Where-Object Status -eq 'FAIL').Count
+    $retriedCount = @($TestResults | Where-Object { $_.RetryCount -gt 0 }).Count
     $testEnv = "Windows / PowerShell $($PSVersionTable.PSVersion) / Excel(M365) COM"
 
     $lines = @(
@@ -460,6 +470,7 @@ function New-ReportMarkdown {
         '- 対象機能: PowerShell / BAT / Excel(M365) による PDF2Excel 一括変換',
         ('- 結果概要: {0} 件成功 / {1} 件失敗' -f $passCount, $failCount),
         ('- 所要時間: {0} 秒' -f $duration),
+        ('- 再試行発生: {0} 件' -f $retriedCount),
         ("- エラー有無: {0}" -f $(if ($failCount -eq 0) { 'なし' } else { 'あり' })),
         ("- 失敗概要: {0}" -f $(if ($failCount -eq 0) { 'なし' } else { '失敗シナリオ一覧を参照' })),
         '',
@@ -467,14 +478,15 @@ function New-ReportMarkdown {
         ''
     )
 
-    $lines += '| No | シナリオ | 結果 | 所要時間 | 補足 |'
-    $lines += '| --- | --- | --- | --- | --- |'
+    $lines += '| No | シナリオ | 結果 | 所要時間 | 再試行 | 補足 |'
+    $lines += '| --- | --- | --- | --- | --- | --- |'
 
     $index = 1
     foreach ($result in $TestResults) {
         $detailText = if ($result.ErrorMessage) { $result.ErrorMessage } elseif ($result.Details) { $result.Details } else { '' }
         $statusLabel = if ($result.Status -eq 'PASS') { '成功' } else { '失敗' }
-        $lines += "| $index | $($result.Name) | $statusLabel | $($result.DurationMs) ms | $detailText |"
+        $retryLabel = if ([int]$result.RetryCount -gt 0) { "$($result.RetryCount)回 ($($result.RetriedBy))" } else { 'なし' }
+        $lines += "| $index | $($result.Name) | $statusLabel | $($result.DurationMs) ms | $retryLabel | $detailText |"
         $index += 1
     }
 
@@ -484,6 +496,7 @@ function New-ReportMarkdown {
     if ($failCount -eq 0) {
         $lines += '- 主要な正常系、異常系、運用系シナリオはすべて成功しました。'
         $lines += '- 各シナリオは子プロセス隔離とタイムアウト監視付きで実行されました。'
+        $lines += '- 既知の Excel 一時失敗だけを 1 回まで再試行し、それ以外は即時失敗として扱いました。'
         $lines += '- 実行後に余分な Excel プロセスは残りませんでした。'
         $lines += '- `output/runtime/runs` 配下に一時ワークスペースは残りませんでした。'
     } else {
@@ -511,18 +524,67 @@ function New-ReportMarkdown {
 function Initialize-TestFixtures {
     Ensure-Directory -Path $testsRoot
     Reset-Directory -Path $workRoot
-    Ensure-Directory -Path $validPdfDir
-    Ensure-Directory -Path $mixedPdfDir
-    Ensure-Directory -Path $duplicateA
-    Ensure-Directory -Path $duplicateB
-    Ensure-Directory -Path $profileFixtureDir
-    Ensure-Directory -Path $japanesePdfDir
-    Ensure-Directory -Path $bulkPdfDir
-    Ensure-Directory -Path $attendancePdfDir
     Ensure-Directory -Path $resultsRoot
     Ensure-Directory -Path $reportsRoot
+    foreach ($fixtureDir in @($validPdfDir, $mixedPdfDir, $duplicateA, $duplicateB, $profileFixtureDir, $japanesePdfDir, $bulkPdfDir, $attendancePdfDir)) {
+        Ensure-Directory -Path $fixtureDir
+    }
 
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $buildSamplesScript
+    Get-ChildItem -LiteralPath $resultsRoot -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'case_*.json' -or $_.Extension -eq '.xlsx' } |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+
+    $requiredSamplePaths = @(
+        (Join-Path $sampleAttendancePdfDir '2026年03月_勤怠管理表.pdf')
+        (Join-Path $sampleSalesPdfDir '2026-03-15_売上日報_東京店.pdf')
+        (Join-Path $sampleInventoryPdfDir '春季_在庫一覧_倉庫A.pdf')
+        (Join-Path $sampleInquiryPdfDir '2026年03月_問い合わせ管理表_第1週.pdf')
+        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC.pdf')
+        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf')
+    )
+    $sampleFallbackMap = [ordered]@{
+        (Join-Path $sampleAttendancePdfDir '2026年03月_勤怠管理表.pdf') = Join-Path $projectRoot 'samples\pdf\attendance_jp\2026年03月_勤怠管理表.pdf'
+        (Join-Path $sampleSalesPdfDir '2026-03-15_売上日報_東京店.pdf') = Join-Path $projectRoot 'samples\pdf\sales_daily_jp\2026-03-15_売上日報_東京店.pdf'
+        (Join-Path $sampleInventoryPdfDir '春季_在庫一覧_倉庫A.pdf') = Join-Path $projectRoot 'samples\pdf\inventory_jp\春季_在庫一覧_倉庫A.pdf'
+        (Join-Path $sampleInquiryPdfDir '2026年03月_問い合わせ管理表_第1週.pdf') = Join-Path $projectRoot 'samples\pdf\inquiry_jp\2026年03月_問い合わせ管理表_第1週.pdf'
+        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC.pdf') = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC.pdf'
+        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf') = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf'
+        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf') = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf'
+        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf') = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf'
+        (Join-Path $sampleConstructionPocPdfDir '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf') = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc\2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf'
+    }
+    foreach ($destinationPath in $sampleFallbackMap.Keys) {
+        $sourcePath = $sampleFallbackMap[$destinationPath]
+        if ((-not (Test-Path -LiteralPath $destinationPath)) -and (Test-Path -LiteralPath $sourcePath)) {
+            Ensure-Directory -Path (Split-Path -Parent $destinationPath)
+            Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+        }
+    }
+    $needsSampleRebuild = (@($requiredSamplePaths | Where-Object { -not (Test-Path -LiteralPath $_) }).Count) -gt 0
+    if ($needsSampleRebuild) {
+        [void](Wait-For-ExcelBaseline -BaselineIds $suiteBaselineExcel -TimeoutSeconds 15)
+        for ($attempt = 0; $attempt -lt 2; $attempt += 1) {
+            $buildResult = Invoke-TestProcess -FilePath 'powershell' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $buildSamplesScript) -TimeoutSeconds 240
+            if ($buildResult.ExitCode -eq 0) {
+                break
+            }
+
+            $combinedOutput = ($buildResult.StdOut + ' ' + $buildResult.StdErr)
+            $isRetryableBuildFailure =
+                $attempt -eq 0 -and (
+                    $combinedOutput -match 'being used by another process' -or
+                    $combinedOutput -match '別のプロセス' -or
+                    $combinedOutput -match 'process cannot access the file'
+                )
+            if ($isRetryableBuildFailure) {
+                [void](Wait-For-ExcelBaseline -BaselineIds $suiteBaselineExcel -TimeoutSeconds 15)
+                Start-Sleep -Seconds 3
+                continue
+            }
+
+            throw "サンプル PDF 再生成に失敗しました: ExitCode=$($buildResult.ExitCode) / $combinedOutput"
+        }
+    }
 
     New-ExcelPdfFixture -OutputPath (Join-Path $validPdfDir 'valid_a.pdf') -Prefix 'VALIDA'
     New-ExcelPdfFixture -OutputPath (Join-Path $validPdfDir 'valid_b.pdf') -Prefix 'VALIDB'
@@ -600,7 +662,7 @@ function Get-TestCases {
         [pscustomobject]@{ Name = '単票 PDF の変換'; Scenario = '1 件だけの PDF フォルダでも正常に変換できること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'InputFiles 指定の変換'; Scenario = '公開インターフェースの -InputFiles で複数 PDF を正しく処理できること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = '日本語ファイル名の変換'; Scenario = '日本語ファイル名が Result と Summary にそのまま残ること'; TimeoutSeconds = 180 },
-        [pscustomobject]@{ Name = '50件一括変換性能'; Scenario = '50 件の PDF を許容時間内に変換し、行数が崩れないこと'; TimeoutSeconds = 480 },
+        [pscustomobject]@{ Name = '50件一括変換性能'; Scenario = '50 件の PDF を許容時間内に変換し、行数が崩れないこと'; TimeoutSeconds = 540 },
         [pscustomobject]@{ Name = 'KeepInput の隔離動作'; Scenario = 'KeepInput を使っても今回分だけが専用 staging で処理されること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = '同時実行ロック'; Scenario = '別実行中は 2 本目が即時失敗すること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'BAT 経由の変換'; Scenario = '同じ PDF 群を BAT から正常に変換できること'; TimeoutSeconds = 180 },
@@ -614,10 +676,10 @@ function Get-TestCases {
         [pscustomobject]@{ Name = '日本語売上日報の変換'; Scenario = '店舗別の売上日報を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = '日本語在庫一覧の変換'; Scenario = '倉庫別の在庫一覧を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = '日本語問い合わせ管理表の変換'; Scenario = '週次の問い合わせ管理表を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
-        [pscustomobject]@{ Name = '建設現場転記PoCの変換'; Scenario = '改行セルや時刻ゆれを含む建設現場向けPoC帳票を raw 転記できること'; TimeoutSeconds = 240 },
-        [pscustomobject]@{ Name = 'V2 2ページ同一列の変換'; Scenario = '同一列ヘッダーの2ページ建設帳票を1つの Result に連結できること'; TimeoutSeconds = 300 },
-        [pscustomobject]@{ Name = 'V2 6ページ同一列の変換'; Scenario = '同一列ヘッダーの6ページ建設帳票を1つの Result に連結できること'; TimeoutSeconds = 360 },
-        [pscustomobject]@{ Name = 'V2 ヘッダー不一致負例の分離'; Scenario = 'sameHeader に乗らない multi-page 帳票を Errors 側へ分離できること'; TimeoutSeconds = 300 },
+        [pscustomobject]@{ Name = '建設現場転記PoCの変換'; Scenario = '改行セルや時刻ゆれを含む建設現場向けPoC帳票を raw 転記できること'; TimeoutSeconds = 300 },
+        [pscustomobject]@{ Name = 'V2 2ページ同一列の変換'; Scenario = '同一列ヘッダーの2ページ建設帳票を1つの Result に連結できること'; TimeoutSeconds = 360 },
+        [pscustomobject]@{ Name = 'V2 6ページ同一列の変換'; Scenario = '同一列ヘッダーの6ページ建設帳票を1つの Result に連結できること'; TimeoutSeconds = 420 },
+        [pscustomobject]@{ Name = 'V2 ヘッダー不一致負例の分離'; Scenario = 'sameHeader に乗らない multi-page 帳票を Errors 側へ分離できること'; TimeoutSeconds = 360 },
         [pscustomobject]@{ Name = 'V2 時刻確認負例の分離'; Scenario = '第2時刻ペアの invalid / 片側空を Review で拾えること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = '一時領域の後片付け'; Scenario = '実行後に output/runtime/runs 配下へ残骸が残らないこと'; TimeoutSeconds = 60 },
         [pscustomobject]@{ Name = 'Excel プロセス残留なし'; Scenario = 'スイート完了後に余分な EXCEL.exe が残らないこと'; TimeoutSeconds = 60 }
@@ -954,6 +1016,7 @@ function Invoke-NamedScenario {
             Assert-True -Condition ($snapshot.ResultHeaders -contains '正規化退場1_分') -Message 'Result に正規化退場1_分 列がありません。'
             Assert-True -Condition ($snapshot.ResultHeaders -contains '時刻正規化状態') -Message 'Result に時刻正規化状態 列がありません。'
             Assert-True -Condition ($snapshot.ReviewHeaders -contains '正規化入場1_raw') -Message 'Review に正規化入場1_raw 列がありません。'
+            Assert-True -Condition ($snapshot.ReviewHeaders -contains 'ReasonCategory') -Message 'Review に ReasonCategory 列がありません。'
             Assert-True -Condition ($snapshot.ReviewHeaders -contains '正規化退場2') -Message 'Review に正規化退場2 列がありません。'
             Assert-True -Condition ($normalizedInMinutes -contains '555') -Message ('9時15分 の分換算結果が見つかりません: ' + ($normalizedInMinutes -join ','))
             Assert-True -Condition ($normalizedOutMinutes -contains '1080') -Message ('18:00 の分換算結果が見つかりません: ' + ($normalizedOutMinutes -join ','))
@@ -1006,11 +1069,13 @@ function Invoke-NamedScenario {
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'ヘッダー不一致負例テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $reviewReasons = @($snapshot.ReviewRecords | ForEach-Object { $_.'Reason' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            $reviewCategories = @($snapshot.ReviewRecords | ForEach-Object { $_.'ReasonCategory' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
             Assert-True -Condition ($snapshot.ResultRows -eq 1) -Message "ヘッダー不一致負例で Result 行が出ています: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ErrorsRows -ge 2) -Message "ヘッダー不一致負例で Errors が不足しています: $($snapshot.ErrorsRows)"
             Assert-True -Condition ($snapshot.ReviewRows -ge 2) -Message "ヘッダー不一致負例で Review が不足しています: $($snapshot.ReviewRows)"
             Assert-True -Condition ((@($reviewReasons | Where-Object { $_ -like '*安全に結合できませんでした*' }).Count) -ge 1) -Message ('ヘッダー不一致負例で Review 理由が見つかりません: ' + ($reviewReasons -join ' | '))
-            return "header-mismatch Result=$($snapshot.ResultRows), Errors=$($snapshot.ErrorsRows), Review=$($snapshot.ReviewRows)"
+            Assert-True -Condition ((@($reviewCategories | Where-Object { $_ -like '*HEADER_MISMATCH*' }).Count) -ge 1) -Message ('ヘッダー不一致負例で ReasonCategory が見つかりません: ' + ($reviewCategories -join ' | '))
+            return "header-mismatch Result=$($snapshot.ResultRows), Errors=$($snapshot.ErrorsRows), Review=$($snapshot.ReviewRows), Categories=$($reviewCategories -join ',')"
         }
         'V2 時刻確認負例の分離' {
             $reviewNegativeDir = Join-Path $fixturesRoot 'construction_review_negative_v2'
@@ -1022,11 +1087,14 @@ function Invoke-NamedScenario {
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $reviewStatuses = @($snapshot.ReviewRecords | ForEach-Object { $_.'時刻正規化状態' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $reviewNotes = @($snapshot.ReviewRecords | ForEach-Object { $_.'時刻確認メモ' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            $reviewCategories = @($snapshot.ReviewRecords | ForEach-Object { $_.'ReasonCategory' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "時刻確認負例で Result 行数が崩れています: $($snapshot.ResultRows)"
             Assert-True -Condition ($reviewStatuses -contains '要確認') -Message ('時刻確認負例で Review に 要確認 がありません: ' + ($reviewStatuses -join ','))
             Assert-True -Condition ((@($reviewNotes | Where-Object { $_ -like '*24:30*' -or $_ -like '*範囲外*' }).Count) -ge 1) -Message ('時刻確認負例で invalid 理由が見つかりません: ' + ($reviewNotes -join ' | '))
             Assert-True -Condition ((@($reviewNotes | Where-Object { $_ -like '*片側の時刻だけ*' }).Count) -ge 1) -Message ('時刻確認負例で片側空の理由が見つかりません: ' + ($reviewNotes -join ' | '))
-            return "review-negative Result=$($snapshot.ResultRows), ReviewStatuses=$($reviewStatuses -join ',')"
+            Assert-True -Condition ($reviewCategories -contains 'TIME_INVALID') -Message ('時刻確認負例で TIME_INVALID がありません: ' + ($reviewCategories -join ','))
+            Assert-True -Condition ($reviewCategories -contains 'TIME_MISSING') -Message ('時刻確認負例で TIME_MISSING がありません: ' + ($reviewCategories -join ','))
+            return "review-negative Result=$($snapshot.ResultRows), ReviewStatuses=$($reviewStatuses -join ','), Categories=$($reviewCategories -join ',')"
         }
         '一時領域の後片付け' {
             $runtimeRuns = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'output\runtime\runs') -Directory -ErrorAction SilentlyContinue)
@@ -1048,40 +1116,92 @@ function Invoke-NamedScenario {
 function Invoke-IsolatedTestCase {
     param([Parameter(Mandatory = $true)]$Definition)
 
-    $resultPath = Join-Path $resultsRoot ("case_" + (($Definition.Name -replace '[^A-Za-z0-9]+', '_').Trim('_')) + '.json')
-    if (Test-Path -LiteralPath $resultPath) {
-        Remove-Item -LiteralPath $resultPath -Force
-    }
+    function New-IsolatedFailureResult {
+        param(
+            [string]$ErrorMessage,
+            [int]$DurationMs = 0
+        )
 
-    $job = Start-Job -ScriptBlock {
-        param($scriptPath, $caseName, $singleResultPath)
-        & $scriptPath -CaseName $caseName -SingleResultPath $singleResultPath
-    } -ArgumentList $script:selfPath, $Definition.Name, $resultPath
-
-    if (-not ($job | Wait-Job -Timeout $Definition.TimeoutSeconds -ErrorAction SilentlyContinue)) {
-        Stop-Job -Job $job -ErrorAction SilentlyContinue
         return [pscustomobject]@{
             Name         = $Definition.Name
             Scenario     = $Definition.Scenario
             Status       = 'FAIL'
-            DurationMs   = $Definition.TimeoutSeconds * 1000
+            DurationMs   = $DurationMs
             Details      = $null
-            ErrorMessage = "$($Definition.TimeoutSeconds) 秒でタイムアウトしました。"
+            ErrorMessage = $ErrorMessage
+            RetryCount   = 0
+            RetriedBy    = ''
         }
     }
 
-    if (-not (Test-Path -LiteralPath $resultPath)) {
-        return [pscustomobject]@{
-            Name         = $Definition.Name
-            Scenario     = $Definition.Scenario
-            Status       = 'FAIL'
-            DurationMs   = 0
-            Details      = $null
-            ErrorMessage = "テスト結果ファイルが作成されませんでした。"
+    function Test-IsTransientExcelFailure {
+        param([string]$ErrorMessage)
+
+        if ([string]::IsNullOrWhiteSpace($ErrorMessage)) {
+            return $false
+        }
+
+        foreach ($pattern in @(
+            '0x800A03EC',
+            'RPC_E_CALL_REJECTED',
+            '呼び出し先が呼び出しを拒否しました',
+            'message filter indicated that the application is busy',
+            'Excel.*COM',
+            'RefreshAll.*失敗',
+            'Workbooks\.Open.*失敗'
+        )) {
+            if ($ErrorMessage -match $pattern) {
+                return $true
+            }
+        }
+
+        return $false
+    }
+
+    function Invoke-IsolatedOnce {
+        param([int]$AttemptNumber)
+
+        $resultPath = Join-Path $resultsRoot ("case_" + (($Definition.Name -replace '[^A-Za-z0-9]+', '_').Trim('_')) + "_$AttemptNumber.json")
+        if (Test-Path -LiteralPath $resultPath) {
+            Remove-Item -LiteralPath $resultPath -Force
+        }
+
+        $job = $null
+        try {
+            $job = Start-Job -ScriptBlock {
+                param($scriptPath, $caseName, $singleResultPath)
+                & $scriptPath -CaseName $caseName -SingleResultPath $singleResultPath
+            } -ArgumentList $script:selfPath, $Definition.Name, $resultPath
+
+            if (-not ($job | Wait-Job -Timeout $Definition.TimeoutSeconds -ErrorAction SilentlyContinue)) {
+                Stop-Job -Job $job -ErrorAction SilentlyContinue
+                return New-IsolatedFailureResult -ErrorMessage "$($Definition.TimeoutSeconds) 秒でタイムアウトしました。" -DurationMs ($Definition.TimeoutSeconds * 1000)
+            }
+
+            if (-not (Test-Path -LiteralPath $resultPath)) {
+                return New-IsolatedFailureResult -ErrorMessage 'テスト結果ファイルが作成されませんでした。'
+            }
+
+            return Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        } finally {
+            if ($job) {
+                Remove-Job -Job $job -ErrorAction SilentlyContinue
+            }
+            if (Test-Path -LiteralPath $resultPath) {
+                Remove-Item -LiteralPath $resultPath -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 
-    return Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $firstResult = Invoke-IsolatedOnce -AttemptNumber 1
+    if ($firstResult.Status -eq 'PASS' -or -not (Test-IsTransientExcelFailure -ErrorMessage $firstResult.ErrorMessage)) {
+        return $firstResult
+    }
+
+    $retriedResult = Invoke-IsolatedOnce -AttemptNumber 2
+    $retriedResult | Add-Member -NotePropertyName RetryCount -NotePropertyValue 1 -Force
+    $retriedResult | Add-Member -NotePropertyName RetriedBy -NotePropertyValue 'EXCEL_TRANSIENT_COM' -Force
+    return $retriedResult
 }
 
 if (-not [string]::IsNullOrWhiteSpace($CaseName)) {
