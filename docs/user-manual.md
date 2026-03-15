@@ -9,7 +9,7 @@
 - 文書一覧: [index.md](index.md)
 - 構成ガイド: [project-layout.md](project-layout.md)
 - 障害対応: [troubleshooting.md](troubleshooting.md)
-- サンプルPDF: `samples/pdf`
+- サンプルPDF: `samples/v1/pdf`, `samples/v2/pdf`
 - サンプル一覧: [../samples/README.md](../samples/README.md)
 
 ## 1. このツールの概要
@@ -23,6 +23,9 @@
 - B列以降: プロファイルに応じた表データ列
 - `Summary` シート: 成功件数、失敗件数、PDFごとの内訳
 - `Errors` シート: 壊れた PDF や列数不一致などの失敗情報
+
+`VER2` では、これに加えて `Review` シートが出ます。  
+`Review` には、確認が必要な raw 行が `元ファイル名 / ページ / 氏名 raw / 現場 raw / 入場 raw / 退場 raw / 確認要理由` で並びます。
 
 向いている用途:
 
@@ -38,7 +41,7 @@
 
 ## 2. まずこれだけ見れば使える最短手順
 
-1. [run_pdf2excel.bat](../run_pdf2excel.bat) をダブルクリックします。
+1. 標準変換なら [run_pdf2excel_v1.bat](../run_pdf2excel_v1.bat)、建設現場 raw 転記なら [run_pdf2excel_v2.bat](../run_pdf2excel_v2.bat) をダブルクリックします。
 2. 表示されたメニューで `1` を押します。
 3. 変換したい PDF を複数選びます。
 4. 出力する Excel ファイルの保存先を選びます。
@@ -174,37 +177,37 @@
 ファイル選択や保存先選択をダイアログで行う場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -SelectInputFolder -PromptForOutputFile
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -SelectInputFolder -PromptForOutputFile
 ```
 
 入力フォルダと出力先を直接指定する場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx
 ```
 
 ファイルを個別指定する場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFiles "C:\PDF\a.pdf,C:\Other\b.pdf" -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFiles "C:\PDF\a.pdf,C:\Other\b.pdf" -OutputFile C:\Work\result.xlsx
 ```
 
 完成した Excel を自動で開きたい場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx -OpenOutput
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx -OpenOutput
 ```
 
 プロファイルを名前で指定する場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -ProfileName default -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -ProfileName default -OutputFile C:\Work\result.xlsx
 ```
 
 プロファイルを JSON ファイルで直接指定する場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\custom-profile.json -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\custom-profile.json -OutputFile C:\Work\result.xlsx
 ```
 
 ## 6. 帳票プロファイルの使い方

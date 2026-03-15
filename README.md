@@ -26,7 +26,15 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 
 ## はじめに
 
-最初に使うときは、[run_pdf2excel.bat](run_pdf2excel.bat) をダブルクリックしてください。  
+最初に使うときは、用途に応じて次のどちらかを実行してください。  
+
+- [run_pdf2excel_v1.bat](run_pdf2excel_v1.bat)
+  - 既存の標準変換です。単一表を素直に Excel 化したいときに使います。
+- [run_pdf2excel_v2.bat](run_pdf2excel_v2.bat)
+  - 建設現場向けの raw 転記です。複数ページで同じ列が続く帳票や、確認作業を前提にした転記に使います。
+- [run_pdf2excel.bat](run_pdf2excel.bat)
+  - 互換入口です。`VER1` を起動します。
+
 画面に出る番号メニューから選ぶだけで変換できます。
 
 - `1`: PDFファイルを複数選んで変換
@@ -42,26 +50,32 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 
 ## 構成
 
-- `run_pdf2excel.bat`
+- `run_pdf2excel_v1.bat` / `run_pdf2excel_v2.bat`
   - 利用者向けの起動入口です。ASCII の起動ラッパーで、対話メニュー本体は PowerShell 側で表示します。
+- `run_pdf2excel.bat`
+  - 互換入口です。`VER1` を起動します。
 - `scripts/run_pdf2excel_menu.ps1`
-  - 日本語の対話メニューを表示し、`run_pdf2excel.ps1` を呼び出します。
+  - 日本語の共通対話メニューです。版別ラッパーから呼び出されます。
+- `scripts/run_pdf2excel_v1.ps1` / `scripts/run_pdf2excel_v2.ps1`
+  - 共通コア `run_pdf2excel.ps1` を版別設定付きで起動するラッパーです。
 - `docs/`
   - 利用マニュアルとフォルダ構成ガイドを置いています。
-- `samples/pdf/`
-  - 動作確認用のサンプル PDF です。
-  - 日本語勤怠管理表サンプルは `samples/pdf/attendance_jp/` に置いています。
-  - 日本語売上日報、在庫一覧、問い合わせ管理表のサンプルも同梱しています。
+- `samples/v1/`
+  - `VER1` 用のサンプル PDF と元 Excel です。
+- `samples/v2/`
+  - `VER2` 用の建設現場 raw 転記サンプルです。`2ページ同一列` と `6ページ同一列` を含みます。
 - `scripts/run_pdf2excel.ps1`
   - PDF の staging、Excel 起動、Power Query 更新、xlsx 出力を行います。
 - `scripts/build_excel_template.ps1`
-  - `template/PDF2Excel_Converter.xlsm` を自動生成します。
+  - `template/PDF2Excel_V1_Converter.xlsm` と `template/PDF2Excel_V2_Converter.xlsm` を自動生成します。
 - `template/vba/PDF2ExcelMacros.bas`
   - Excel テンプレートへ取り込む VBA モジュールです。
 - `template/vba/PDF2ExcelTemplateBuilder.bas`
   - 空の Excel ブックに取り込んで実行すると、テンプレート相当のシート構成と基本マクロを生成するブートストラップ用 VBA モジュールです。
-- `config/profiles/`
-  - 帳票プロファイルを置きます。既定は `default.json` で、日本語の `勤怠管理表`、`売上日報`、`在庫一覧`、`問い合わせ管理表` 向けプロファイルも用意しています。
+- `config/profiles/v1/`
+  - `VER1` 用プロファイルです。既定の `default.json` と、日本語の `勤怠管理表`、`売上日報`、`在庫一覧`、`問い合わせ管理表` を置きます。
+- `config/profiles/v2/`
+  - `VER2` 用プロファイルです。建設現場 raw 転記用の `construction_transfer_poc.json` を置きます。
 - `input/`
   - 処理対象PDFの保管先です。実行時の抽出は `output/runtime/runs/.../staging` で分離して行います。
 - `output/`
@@ -80,6 +94,8 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 ```text
 PDF2Excel
 ├─ run_pdf2excel.bat
+├─ run_pdf2excel_v1.bat
+├─ run_pdf2excel_v2.bat
 ├─ README.md
 ├─ docs/
 ├─ samples/pdf/
@@ -94,7 +110,7 @@ PDF2Excel
 
 ## 使い方
 
-1. [run_pdf2excel.bat](run_pdf2excel.bat) を実行します。
+1. [run_pdf2excel_v1.bat](run_pdf2excel_v1.bat) または [run_pdf2excel_v2.bat](run_pdf2excel_v2.bat) を実行します。
 2. メニューで `1` または `2` を選びます。
 3. PDF または PDF フォルダを選択します。
 4. 保存先を選びます。
@@ -104,23 +120,23 @@ PDF2Excel
 PowerShell から実行する場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -SelectInputFolder -PromptForOutputFile
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -SelectInputFolder -PromptForOutputFile
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFiles "C:\PDF\a.pdf,C:\Other\b.pdf" -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFiles "C:\PDF\a.pdf,C:\Other\b.pdf" -OutputFile C:\Work\result.xlsx
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -ProfileName default -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -ProfileName default -OutputFile C:\Work\result.xlsx
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\profile10.json -OutputFile C:\Work\result.xlsx -NoConfirm
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\profile10.json -OutputFile C:\Work\result.xlsx -NoConfirm
 ```
 
 ## 出力仕様
@@ -136,6 +152,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
   - `B列以降=プロファイルに応じた表データ列`
 - `Errors` シート
   - 抽出失敗したPDFのファイル名、エラーコード、エラー分類、利用者向けメッセージ、技術詳細、候補表の列数・行数を出力します。
+- `Review` シート
+  - `VER2` のみです。確認が必要な raw 行を、元ファイル名、ページ、氏名 raw、現場 raw、入場 raw、退場 raw、確認要理由で一覧化します。
 
 ## 前提条件
 
@@ -156,11 +174,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 
 - `-KeepInput` は `input` フォルダの保管内容を残すためのオプションです。今回の変換対象は毎回専用 staging に切り出して処理するため、過去PDFが混ざることはありません。
 - ツールは同時に 1 実行だけ許可します。別実行が動作中の場合は `RUN_LOCKED` として即時停止します。
 - BAT メニューと利用者向けの説明文は日本語化しています。
-- 日本語の月次勤怠管理表を試す場合は `config/profiles/attendance_monthly_jp.json` を利用してください。
-- 日本語の売上日報を試す場合は `config/profiles/sales_daily_jp.json` を利用してください。
-- 日本語の在庫一覧を試す場合は `config/profiles/inventory_list_jp.json` を利用してください。
-- 日本語の問い合わせ管理表を試す場合は `config/profiles/inquiry_weekly_jp.json` を利用してください。
-- 建設現場向けの raw 転記 PoC を試す場合は `config/profiles/construction_transfer_poc.json` を利用してください。
+- 日本語の月次勤怠管理表を試す場合は `config/profiles/v1/attendance_monthly_jp.json` を利用してください。
+- 日本語の売上日報を試す場合は `config/profiles/v1/sales_daily_jp.json` を利用してください。
+- 日本語の在庫一覧を試す場合は `config/profiles/v1/inventory_list_jp.json` を利用してください。
+- 日本語の問い合わせ管理表を試す場合は `config/profiles/v1/inquiry_weekly_jp.json` を利用してください。
+- 建設現場向けの raw 転記 PoC を試す場合は `config/profiles/v2/construction_transfer_poc.json` を利用してください。
 - 日本語サンプル PDF を再生成したい場合は `scripts/build_sample_pdfs.ps1` を実行してください。
 
 ## テスト

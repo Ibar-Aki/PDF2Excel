@@ -208,10 +208,11 @@ $testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は日本語問�
 }
 
 $testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は建設現場転記PoCプロファイルを読み込む' -Body {
-    $profile = Get-ProfileConfiguration -RequestedProfileName 'construction_transfer_poc'
+    $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
     Assert-True -Condition ($profile.ExpectedColumns -eq 30) -Message "expectedColumns が想定と異なります: $($profile.ExpectedColumns)"
     Assert-True -Condition ($profile.TargetRowCount -eq 5) -Message "targetRowCount が想定と異なります: $($profile.TargetRowCount)"
     Assert-True -Condition ($profile.DisplayName -eq '建設現場転記PoCプロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
+    Assert-True -Condition ($profile.MultiPageMergeMode -eq 'sameHeader') -Message "multiPageMergeMode が想定と異なります: $($profile.MultiPageMergeMode)"
     return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
 }
 
@@ -223,12 +224,32 @@ $testResults += Invoke-UnitTest -Name 'run_pdf2excel.bat は ASCII のみで構�
     return 'ASCII のみを確認'
 }
 
+$testResults += Invoke-UnitTest -Name 'run_pdf2excel_v1.bat と run_pdf2excel_v2.bat は ASCII のみで構成される' -Body {
+    foreach ($batName in @('run_pdf2excel_v1.bat', 'run_pdf2excel_v2.bat')) {
+        $batPath = Join-Path $projectRoot $batName
+        $bytes = [System.IO.File]::ReadAllBytes($batPath)
+        $nonAscii = @($bytes | Where-Object { $_ -gt 127 })
+        Assert-True -Condition ($nonAscii.Count -eq 0) -Message "$batName に非 ASCII バイトが含まれています。"
+    }
+    return '版別 BAT の ASCII を確認'
+}
+
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel_menu.ps1 は UTF-8 BOM で保存される' -Body {
     $menuPath = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
     $bytes = [System.IO.File]::ReadAllBytes($menuPath)
     Assert-True -Condition ($bytes.Length -ge 3) -Message 'run_pdf2excel_menu.ps1 が空です。'
     Assert-True -Condition ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) -Message 'run_pdf2excel_menu.ps1 が UTF-8 BOM ではありません。'
     return 'UTF-8 BOM を確認'
+}
+
+$testResults += Invoke-UnitTest -Name '版別メニュー PowerShell は UTF-8 BOM で保存される' -Body {
+    foreach ($menuName in @('run_pdf2excel_menu_v1.ps1', 'run_pdf2excel_menu_v2.ps1')) {
+        $menuPath = Join-Path $projectRoot ("scripts\{0}" -f $menuName)
+        $bytes = [System.IO.File]::ReadAllBytes($menuPath)
+        Assert-True -Condition ($bytes.Length -ge 3) -Message "$menuName が空です。"
+        Assert-True -Condition ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) -Message "$menuName が UTF-8 BOM ではありません。"
+    }
+    return '版別メニューの UTF-8 BOM を確認'
 }
 
 $timeFinished = Get-Date

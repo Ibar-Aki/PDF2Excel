@@ -1,9 +1,11 @@
 ﻿param(
-    [string]$TemplatePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\PDF2Excel_Converter.xlsm'),
+    [string]$TemplatePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\PDF2Excel_V1_Converter.xlsm'),
     [string]$VbaModulePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelMacros.bas'),
     [string]$VbaModuleShiftJisPath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelMacros.sjis.bas'),
     [string]$TemplateBuilderModulePath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelTemplateBuilder.bas'),
-    [string]$TemplateBuilderModuleShiftJisPath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelTemplateBuilder.sjis.bas')
+    [string]$TemplateBuilderModuleShiftJisPath = (Join-Path (Join-Path $PSScriptRoot '..') 'template\vba\PDF2ExcelTemplateBuilder.sjis.bas'),
+    [ValidateSet('v1', 'v2')]
+    [string]$TemplateVariant
 )
 
 Set-StrictMode -Version Latest
@@ -26,32 +28,61 @@ function Sync-VbaModuleEncodingMirror {
     [System.IO.File]::WriteAllBytes($ShiftJisPath, $encoding.GetBytes($moduleText))
 }
 
-function Ensure-WorkbookHasRequiredSheets {
-    param([Parameter(Mandatory = $true)]$Workbook)
+function Resolve-TemplateVariant {
+    param(
+        [string]$TemplatePath,
+        [string]$ExplicitVariant
+    )
 
-    while ($Workbook.Worksheets.Count -lt 4) {
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitVariant)) {
+        return $ExplicitVariant.ToLowerInvariant()
+    }
+
+    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($TemplatePath).ToLowerInvariant()
+    if ($fileName.Contains('_v2_') -or $fileName.EndsWith('_v2') -or $fileName.Contains('v2')) {
+        return 'v2'
+    }
+
+    return 'v1'
+}
+
+function Ensure-WorkbookHasRequiredSheets {
+    param(
+        [Parameter(Mandatory = $true)]$Workbook,
+        [ValidateSet('v1', 'v2')]
+        [Parameter(Mandatory = $true)][string]$TemplateVariant
+    )
+
+    $requiredSheetCount = if ($TemplateVariant -eq 'v2') { 5 } else { 4 }
+
+    while ($Workbook.Worksheets.Count -lt $requiredSheetCount) {
         $null = $Workbook.Worksheets.Add()
     }
 
-    while ($Workbook.Worksheets.Count -gt 4) {
+    while ($Workbook.Worksheets.Count -gt $requiredSheetCount) {
         $Workbook.Worksheets.Item($Workbook.Worksheets.Count).Delete()
     }
 }
 
 function Set-ControlSheetLayout {
-    param([Parameter(Mandatory = $true)]$Worksheet)
+    param(
+        [Parameter(Mandatory = $true)]$Worksheet,
+        [ValidateSet('v1', 'v2')]
+        [Parameter(Mandatory = $true)][string]$TemplateVariant
+    )
 
     $Worksheet.Cells.Clear() | Out-Null
     $Worksheet.Name = 'Control'
-    Set-ControlSheetStaticCells -Worksheet $Worksheet
+    Set-ControlSheetStaticCells -Worksheet $Worksheet -VersionMode $TemplateVariant
     $Worksheet.Range('A1:B1').Font.Bold = $true
     $Worksheet.Range('A1:B1').Interior.Color = 15773696
-    $Worksheet.Range('A16:A18').Font.Bold = $true
+    $Worksheet.Range('A15:A18').Font.Bold = $true
     $Worksheet.Columns.Item('A').ColumnWidth = 18
     $Worksheet.Columns.Item('B').ColumnWidth = 92
     $Worksheet.Range('A1:B18').VerticalAlignment = -4160
     $Worksheet.Range('A1:B18').WrapText = $true
     $Worksheet.Range('B6').Value2 = '待機中'
+    $Worksheet.Range('B15').Value2 = Get-VersionDisplayName -VersionMode $TemplateVariant
     $Worksheet.Application.ActiveWindow.SplitRow = 1
     $Worksheet.Application.ActiveWindow.FreezePanes = $true
 }
@@ -74,11 +105,15 @@ function Set-DataSheetLayout {
 }
 
 function Set-SummarySheetLayout {
-    param([Parameter(Mandatory = $true)]$Worksheet)
+    param(
+        [Parameter(Mandatory = $true)]$Worksheet,
+        [ValidateSet('v1', 'v2')]
+        [Parameter(Mandatory = $true)][string]$TemplateVariant
+    )
 
     $Worksheet.Cells.Clear() | Out-Null
     $Worksheet.Name = 'Summary'
-    Set-SummarySheetStaticCells -Worksheet $Worksheet
+    Set-SummarySheetStaticCells -Worksheet $Worksheet -VersionMode $TemplateVariant
     $Worksheet.Range('A1').Font.Bold = $true
     $Worksheet.Range('A1').Font.Size = 14
     $Worksheet.Range('A4:B4').Font.Bold = $true
@@ -100,6 +135,33 @@ function Set-SummarySheetLayout {
     $Worksheet.Columns.Item('M').ColumnWidth = 18
     $Worksheet.Columns.Item('N').ColumnWidth = 18
     $Worksheet.Columns.Item('O').ColumnWidth = 16
+}
+
+function Set-ReviewSheetLayout {
+    param([Parameter(Mandatory = $true)]$Worksheet)
+
+    $Worksheet.Cells.Clear() | Out-Null
+    $Worksheet.Name = 'Review'
+    $Worksheet.Range('A1').Value2 = 'Review'
+    $Worksheet.Range('A2').Value2 = '確認が必要な raw 転記行を一覧化します。'
+    $Worksheet.Range('A4').Value2 = '元ファイル名'
+    $Worksheet.Range('B4').Value2 = 'ページ'
+    $Worksheet.Range('C4').Value2 = '氏名 raw'
+    $Worksheet.Range('D4').Value2 = '現場 raw'
+    $Worksheet.Range('E4').Value2 = '入場 raw'
+    $Worksheet.Range('F4').Value2 = '退場 raw'
+    $Worksheet.Range('G4').Value2 = '確認要理由'
+    $Worksheet.Range('A1').Font.Bold = $true
+    $Worksheet.Range('A1').Font.Size = 14
+    $Worksheet.Range('A4:G4').Font.Bold = $true
+    $Worksheet.Range('A4:G4').Interior.Color = 15773696
+    $Worksheet.Columns.Item('A').ColumnWidth = 28
+    $Worksheet.Columns.Item('B').ColumnWidth = 10
+    $Worksheet.Columns.Item('C').ColumnWidth = 18
+    $Worksheet.Columns.Item('D').ColumnWidth = 30
+    $Worksheet.Columns.Item('E').ColumnWidth = 18
+    $Worksheet.Columns.Item('F').ColumnWidth = 18
+    $Worksheet.Columns.Item('G').ColumnWidth = 44
 }
 
 function Import-VbaModule {
@@ -151,6 +213,8 @@ $sheet1 = $null
 $sheet2 = $null
 $sheet3 = $null
 $sheet4 = $null
+$sheet5 = $null
+$resolvedTemplateVariant = Resolve-TemplateVariant -TemplatePath $TemplatePath -ExplicitVariant $TemplateVariant
 
 try {
     $excel = New-Object -ComObject Excel.Application
@@ -158,23 +222,30 @@ try {
     $excel.DisplayAlerts = $false
 
     $workbook = $excel.Workbooks.Add()
-    Ensure-WorkbookHasRequiredSheets -Workbook $workbook
+    Ensure-WorkbookHasRequiredSheets -Workbook $workbook -TemplateVariant $resolvedTemplateVariant
 
     $sheet1 = $workbook.Worksheets.Item(1)
     $sheet2 = $workbook.Worksheets.Item(2)
     $sheet3 = $workbook.Worksheets.Item(3)
     $sheet4 = $workbook.Worksheets.Item(4)
+    if ($resolvedTemplateVariant -eq 'v2') {
+        $sheet5 = $workbook.Worksheets.Item(5)
+    }
 
-    Set-ControlSheetLayout -Worksheet $sheet1
+    Set-ControlSheetLayout -Worksheet $sheet1 -TemplateVariant $resolvedTemplateVariant
     Set-DataSheetLayout -Worksheet $sheet2 -SheetName 'Result' -Description '変換成功データがここに読み込まれます。A列はPDFファイル名、B列以降はプロファイルに応じた表データです。'
     Set-DataSheetLayout -Worksheet $sheet3 -SheetName 'Errors' -Description '失敗したPDFと、分類されたエラー理由がここに一覧表示されます。'
-    Set-SummarySheetLayout -Worksheet $sheet4
+    Set-SummarySheetLayout -Worksheet $sheet4 -TemplateVariant $resolvedTemplateVariant
+    if ($resolvedTemplateVariant -eq 'v2') {
+        Set-ReviewSheetLayout -Worksheet $sheet5
+    }
 
     $workbook.SaveAs($TemplatePath, 52)
     Import-VbaModule -Workbook $workbook -ModulePath $VbaModulePath
     $workbook.Save()
 
     Write-Host "テンプレートを作成しました: $TemplatePath"
+    Write-Host "テンプレート種別: $resolvedTemplateVariant"
     Write-Host "Shift_JIS VBA ミラー: $VbaModuleShiftJisPath"
     Write-Host "Shift_JIS ブートストラップ VBA ミラー: $TemplateBuilderModuleShiftJisPath"
 } finally {
@@ -191,6 +262,7 @@ try {
         }
     }
 
+    $sheet5 | Release-ComObject
     $sheet4 | Release-ComObject
     $sheet3 | Release-ComObject
     $sheet2 | Release-ComObject

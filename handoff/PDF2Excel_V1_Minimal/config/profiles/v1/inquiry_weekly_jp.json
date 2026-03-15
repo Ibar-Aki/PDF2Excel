@@ -1,0 +1,19 @@
+﻿{
+  "name": "inquiry_weekly_jp",
+  "displayName": "日本語問い合わせ管理表プロファイル",
+  "description": "問い合わせ受付日や状態が並ぶ日本語の問い合わせ管理表を想定した 9 列プロファイルです。",
+  "expectedColumns": 9,
+  "headerRowsToSkip": 1,
+  "targetRowCount": 5,
+  "allowMoreColumns": false,
+  "preferredTableKinds": [
+    "Table"
+  ],
+  "preferredTableNameContains": [
+    "問い合わせ",
+    "管理表"
+  ],
+  "preferredTableIdContains": [],
+  "sourceFileColumnName": "元ファイル名",
+  "dataColumnPrefix": "項目"
+}

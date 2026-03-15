@@ -19,19 +19,24 @@ $profileFixtureDir = Join-Path $fixturesRoot 'profile10'
 $japanesePdfDir = Join-Path $fixturesRoot 'japanese'
 $bulkPdfDir = Join-Path $fixturesRoot 'bulk50'
 $attendancePdfDir = Join-Path $fixturesRoot 'attendance_jp'
-$sampleAttendancePdfDir = Join-Path $projectRoot 'samples\pdf\attendance_jp'
-$sampleSalesPdfDir = Join-Path $projectRoot 'samples\pdf\sales_daily_jp'
-$sampleInventoryPdfDir = Join-Path $projectRoot 'samples\pdf\inventory_jp'
-$sampleInquiryPdfDir = Join-Path $projectRoot 'samples\pdf\inquiry_jp'
-$sampleConstructionPocPdfDir = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc'
+$sampleAttendancePdfDir = Join-Path $projectRoot 'samples\v1\pdf\attendance_jp'
+$sampleSalesPdfDir = Join-Path $projectRoot 'samples\v1\pdf\sales_daily_jp'
+$sampleInventoryPdfDir = Join-Path $projectRoot 'samples\v1\pdf\inventory_jp'
+$sampleInquiryPdfDir = Join-Path $projectRoot 'samples\v1\pdf\inquiry_jp'
+$sampleConstructionPocPdfDir = Join-Path $projectRoot 'samples\v2\pdf\construction_transfer_poc'
 $resultsRoot = Join-Path $testsRoot 'results'
 $reportsRoot = Join-Path $projectRoot 'reports'
 $runScript = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'
+$runScriptV1 = Join-Path $projectRoot 'scripts\run_pdf2excel_v1.ps1'
+$runScriptV2 = Join-Path $projectRoot 'scripts\run_pdf2excel_v2.ps1'
 $buildTemplateScript = Join-Path $projectRoot 'scripts\build_excel_template.ps1'
 $buildSamplesScript = Join-Path $projectRoot 'scripts\build_sample_pdfs.ps1'
 $batScript = Join-Path $projectRoot 'run_pdf2excel.bat'
+$batScriptV1 = Join-Path $projectRoot 'run_pdf2excel_v1.bat'
+$batScriptV2 = Join-Path $projectRoot 'run_pdf2excel_v2.bat'
 $commonScript = Join-Path $projectRoot 'scripts\pdf2excel.common.ps1'
-$templatePath = Join-Path $projectRoot 'template\PDF2Excel_Converter.xlsm'
+$templatePathV1 = Join-Path $projectRoot 'template\PDF2Excel_V1_Converter.xlsm'
+$templatePathV2 = Join-Path $projectRoot 'template\PDF2Excel_V2_Converter.xlsm'
 $jsonReportPath = Join-Path $resultsRoot 'integration-test-results.json'
 $markdownReportPath = Join-Path $reportsRoot 'test-report.md'
 $timeStarted = Get-Date
@@ -68,11 +73,11 @@ function Wait-For-ExcelBaseline {
 
 $suiteBaselineExcel = @(Get-ExcelProcessIds)
 $script:customProfilePath = Join-Path $workRoot 'profile10.json'
-$script:attendanceProfilePath = Join-Path $projectRoot 'config\profiles\attendance_monthly_jp.json'
-$script:salesProfilePath = Join-Path $projectRoot 'config\profiles\sales_daily_jp.json'
-$script:inventoryProfilePath = Join-Path $projectRoot 'config\profiles\inventory_list_jp.json'
-$script:inquiryProfilePath = Join-Path $projectRoot 'config\profiles\inquiry_weekly_jp.json'
-$script:constructionPocProfilePath = Join-Path $projectRoot 'config\profiles\construction_transfer_poc.json'
+$script:attendanceProfilePath = Join-Path $projectRoot 'config\profiles\v1\attendance_monthly_jp.json'
+$script:salesProfilePath = Join-Path $projectRoot 'config\profiles\v1\sales_daily_jp.json'
+$script:inventoryProfilePath = Join-Path $projectRoot 'config\profiles\v1\inventory_list_jp.json'
+$script:inquiryProfilePath = Join-Path $projectRoot 'config\profiles\v1\inquiry_weekly_jp.json'
+$script:constructionPocProfilePath = Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json'
 $script:selfPath = $MyInvocation.MyCommand.Path
 
 function Assert-True {
@@ -249,6 +254,7 @@ function Get-WorkbookSnapshot {
     $errorsSheet = $null
     $controlSheet = $null
     $summarySheet = $null
+    $reviewSheet = $null
 
     try {
         $excel = New-Object -ComObject Excel.Application
@@ -259,11 +265,17 @@ function Get-WorkbookSnapshot {
         $summarySheet = $workbook.Worksheets.Item('Summary')
         $resultSheet = $workbook.Worksheets.Item('Result')
         $errorsSheet = $workbook.Worksheets.Item('Errors')
+        try {
+            $reviewSheet = $workbook.Worksheets.Item('Review')
+        } catch {
+            $reviewSheet = $null
+        }
 
         $resultRows = [int]$resultSheet.UsedRange.Rows.Count
         $resultColumns = [int]$resultSheet.UsedRange.Columns.Count
         $errorsRows = [int]$errorsSheet.UsedRange.Rows.Count
         $errorsColumns = [int]$errorsSheet.UsedRange.Columns.Count
+        $reviewRows = if ($reviewSheet) { [int]$reviewSheet.UsedRange.Rows.Count } else { 0 }
 
         $sampleRange = $resultSheet.Range('A1:H20').Value2
         $sample = @()
@@ -294,10 +306,12 @@ function Get-WorkbookSnapshot {
             ControlFailedCount  = [string]$controlSheet.Range('B11').Value2
             ControlElapsed      = [string]$controlSheet.Range('B12').Value2
             ControlProfile      = [string]$controlSheet.Range('B13').Value2
+            ControlVersion      = [string]$controlSheet.Range('B15').Value2
             SummaryTitle        = [string]$summarySheet.Range('A1').Value2
             SummaryFileCount    = [string]$summarySheet.Range('B5').Value2
             SummarySuccessCount = [string]$summarySheet.Range('B6').Value2
             SummaryFailedCount  = [string]$summarySheet.Range('B7').Value2
+            ReviewRows          = $reviewRows
             Sample              = $sample
         }
     } finally {
@@ -314,7 +328,7 @@ function Get-WorkbookSnapshot {
             }
         }
 
-        foreach ($comObject in @($summarySheet, $controlSheet, $errorsSheet, $resultSheet, $workbook, $excel)) {
+        foreach ($comObject in @($reviewSheet, $summarySheet, $controlSheet, $errorsSheet, $resultSheet, $workbook, $excel)) {
             try {
                 if ($null -ne $comObject -and [System.Runtime.InteropServices.Marshal]::IsComObject($comObject)) {
                     [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($comObject)
@@ -545,6 +559,8 @@ function Get-TestCases {
         [pscustomobject]@{ Name = '日本語在庫一覧の変換'; Scenario = '倉庫別の在庫一覧を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = '日本語問い合わせ管理表の変換'; Scenario = '週次の問い合わせ管理表を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = '建設現場転記PoCの変換'; Scenario = '改行セルや時刻ゆれを含む建設現場向けPoC帳票を raw 転記できること'; TimeoutSeconds = 240 },
+        [pscustomobject]@{ Name = 'V2 2ページ同一列の変換'; Scenario = '同一列ヘッダーの2ページ建設帳票を1つの Result に連結できること'; TimeoutSeconds = 300 },
+        [pscustomobject]@{ Name = 'V2 6ページ同一列の変換'; Scenario = '同一列ヘッダーの6ページ建設帳票を1つの Result に連結できること'; TimeoutSeconds = 360 },
         [pscustomobject]@{ Name = '一時領域の後片付け'; Scenario = '実行後に output/runtime/runs 配下へ残骸が残らないこと'; TimeoutSeconds = 60 },
         [pscustomobject]@{ Name = 'Excel プロセス残留なし'; Scenario = 'スイート完了後に余分な EXCEL.exe が残らないこと'; TimeoutSeconds = 60 }
     )
@@ -555,12 +571,17 @@ function Invoke-NamedScenario {
 
     switch ($Name) {
         'テンプレート再生成' {
-            $templateTimestampBefore = if (Test-Path -LiteralPath $templatePath) { (Get-Item -LiteralPath $templatePath).LastWriteTimeUtc } else { $null }
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript
-            Assert-True -Condition (Test-Path -LiteralPath $templatePath) -Message 'テンプレートファイルが作成されていません。'
-            $newTimestamp = (Get-Item -LiteralPath $templatePath).LastWriteTimeUtc
-            Assert-True -Condition ($null -eq $templateTimestampBefore -or $newTimestamp -ge $templateTimestampBefore) -Message 'テンプレートの更新日時が進んでいません。'
-            return "テンプレート更新日時=$newTimestamp"
+            $beforeV1 = if (Test-Path -LiteralPath $templatePathV1) { (Get-Item -LiteralPath $templatePathV1).LastWriteTimeUtc } else { $null }
+            $beforeV2 = if (Test-Path -LiteralPath $templatePathV2) { (Get-Item -LiteralPath $templatePathV2).LastWriteTimeUtc } else { $null }
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript -TemplatePath $templatePathV1 -TemplateVariant v1
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript -TemplatePath $templatePathV2 -TemplateVariant v2
+            Assert-True -Condition (Test-Path -LiteralPath $templatePathV1) -Message 'V1 テンプレートファイルが作成されていません。'
+            Assert-True -Condition (Test-Path -LiteralPath $templatePathV2) -Message 'V2 テンプレートファイルが作成されていません。'
+            $afterV1 = (Get-Item -LiteralPath $templatePathV1).LastWriteTimeUtc
+            $afterV2 = (Get-Item -LiteralPath $templatePathV2).LastWriteTimeUtc
+            Assert-True -Condition ($null -eq $beforeV1 -or $afterV1 -ge $beforeV1) -Message 'V1 テンプレートの更新日時が進んでいません。'
+            Assert-True -Condition ($null -eq $beforeV2 -or $afterV2 -ge $beforeV2) -Message 'V2 テンプレートの更新日時が進んでいません。'
+            return "V1=$afterV1 / V2=$afterV2"
         }
         'PowerShell 経由の正常変換' {
             $outputPath = Join-Path $resultsRoot 'powershell_success.xlsx'
@@ -705,7 +726,7 @@ function Invoke-NamedScenario {
         }
         'BAT 経由の変換' {
             $outputPath = Join-Path $resultsRoot 'bat_success.xlsx'
-            & cmd /c $batScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
+            & cmd /c $batScriptV1 -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT 実行の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "BAT 実行の Result 行数が想定と異なります: $($snapshot.ResultRows)"
@@ -713,7 +734,7 @@ function Invoke-NamedScenario {
         }
         'BAT 直実行で待機しない' {
             $outputPath = Join-Path $resultsRoot 'bat_direct_no_pause.xlsx'
-            & cmd /c $batScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
+            & cmd /c $batScriptV1 -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT 直実行の出力ブックが作成されていません。'
             return 'BAT 直実行が待機せず終了'
         }
@@ -850,7 +871,10 @@ function Invoke-NamedScenario {
         }
         '建設現場転記PoCの変換' {
             $outputPath = Join-Path $resultsRoot 'construction_transfer_poc.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $sampleConstructionPocPdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            $singlePdfDir = Join-Path $fixturesRoot 'construction_single_v2'
+            Reset-Directory -Path $singlePdfDir
+            Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC.pdf') -Destination (Join-Path $singlePdfDir '2026年02月_作業員勤怠一覧_PoC.pdf') -Force
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $singlePdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '建設現場転記PoCテストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
@@ -858,11 +882,39 @@ function Invoke-NamedScenario {
             $sites = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[5] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             Assert-True -Condition ($snapshot.ResultColumns -eq 31) -Message "建設現場転記PoCの列数が想定と異なります: $($snapshot.ResultColumns)"
             Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "建設現場転記PoCの行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "Control の版表示が想定と異なります: $($snapshot.ControlVersion)"
             Assert-True -Condition ($snapshot.ControlProfile -eq '建設現場転記PoCプロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
             Assert-True -Condition ($sourceNames -contains '2026年02月_作業員勤怠一覧_PoC.pdf') -Message 'PoC PDF 名が保持されていません。'
             Assert-True -Condition ($names -contains '佐藤 花子') -Message 'PoC 帳票の氏名が保持されていません。'
             Assert-True -Condition ((@($sites | Where-Object { $_ -like '*東京駅前再開発*' }).Count) -ge 1) -Message 'PoC 帳票の現場名が保持されていません。'
-            return "PoCPDF=$($sourceNames -join ','), 氏名=$($names -join ','), 現場=$($sites -join ',')"
+            Assert-True -Condition ($snapshot.ReviewRows -ge 2) -Message "Review シートに確認要行が出ていません: $($snapshot.ReviewRows)"
+            return "PoCPDF=$($sourceNames -join ','), 氏名=$($names -join ','), 現場=$($sites -join ','), Review=$($snapshot.ReviewRows)"
+        }
+        'V2 2ページ同一列の変換' {
+            $twoPageDir = Join-Path $fixturesRoot 'construction_2page_v2'
+            Reset-Directory -Path $twoPageDir
+            Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf') -Destination (Join-Path $twoPageDir '2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf') -Force
+            $outputPath = Join-Path $resultsRoot 'construction_transfer_poc_2page.xlsx'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $twoPageDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '2ページ同一列テストの出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            Assert-True -Condition ($snapshot.ResultRows -eq 11) -Message "2ページ同一列の Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "2ページ同一列の版表示が想定と異なります: $($snapshot.ControlVersion)"
+            Assert-True -Condition ($snapshot.ReviewRows -ge 1) -Message '2ページ同一列で Review が 0 件です。'
+            return "2ページ Result=$($snapshot.ResultRows), Review=$($snapshot.ReviewRows)"
+        }
+        'V2 6ページ同一列の変換' {
+            $sixPageDir = Join-Path $fixturesRoot 'construction_6page_v2'
+            Reset-Directory -Path $sixPageDir
+            Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf') -Destination (Join-Path $sixPageDir '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf') -Force
+            $outputPath = Join-Path $resultsRoot 'construction_transfer_poc_6page.xlsx'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $sixPageDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '6ページ同一列テストの出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            Assert-True -Condition ($snapshot.ResultRows -eq 31) -Message "6ページ同一列の Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "6ページ同一列の版表示が想定と異なります: $($snapshot.ControlVersion)"
+            Assert-True -Condition ($snapshot.ReviewRows -ge 1) -Message '6ページ同一列で Review が 0 件です。'
+            return "6ページ Result=$($snapshot.ResultRows), Review=$($snapshot.ReviewRows)"
         }
         '一時領域の後片付け' {
             $runtimeRuns = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'output\runtime\runs') -Directory -ErrorAction SilentlyContinue)

@@ -12,12 +12,14 @@
 
 ```text
 PDF2Excel
-├─ run_pdf2excel.bat        利用者向けの入口
+├─ run_pdf2excel.bat        互換入口 (VER1)
+├─ run_pdf2excel_v1.bat     VER1 の入口
+├─ run_pdf2excel_v2.bat     VER2 の入口
 ├─ README.md                最初に読む概要
 ├─ docs/                    マニュアルと構成説明
 ├─ config/profiles/         帳票プロファイル
-├─ samples/pdf/             動作確認用のサンプル PDF
-├─ samples/source/          サンプル PDF の元 Excel
+├─ samples/v1/              VER1 サンプル
+├─ samples/v2/              VER2 サンプル
 ├─ scripts/                 PowerShell 本体と共通関数
 ├─ template/                Excel テンプレートと VBA
 ├─ tests/                   統合テストとユニットテスト
@@ -31,18 +33,22 @@ PDF2Excel
 
 - [index.md](index.md)
   - 文書の入口です。
-- [run_pdf2excel.bat](../run_pdf2excel.bat)
-  - 変換を始める入口です。
+- [run_pdf2excel_v1.bat](../run_pdf2excel_v1.bat)
+  - 標準変換の入口です。
+- [run_pdf2excel_v2.bat](../run_pdf2excel_v2.bat)
+  - 建設現場 raw 転記の入口です。
 - [README.md](../README.md)
   - 全体概要を短く確認できます。
 - [user-manual.md](user-manual.md)
   - 詳しい使い方です。
-- `config/profiles`
-  - 帳票プロファイルです。`default.json` と、日本語の `attendance_monthly_jp.json`、`sales_daily_jp.json`、`inventory_list_jp.json`、`inquiry_weekly_jp.json` を同梱しています。
-- `samples/pdf`
-  - サンプル PDF です。`attendance_jp`、`sales_daily_jp`、`inventory_jp`、`inquiry_jp` に日本語サンプルがあります。
-- `samples/source`
-  - サンプル PDF の元 Excel です。
+- `config/profiles/v1`
+  - `VER1` 用プロファイルです。
+- `config/profiles/v2`
+  - `VER2` 用プロファイルです。
+- `samples/v1`
+  - `VER1` のサンプル PDF と元 Excel です。
+- `samples/v2`
+  - `VER2` の建設現場 raw 転記サンプルです。
 - `output`
   - 変換後の Excel が出ます。
 - `logs`
@@ -52,8 +58,16 @@ PDF2Excel
 
 - [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
   - 変換本体です。
+- [run_pdf2excel_v1.ps1](../scripts/run_pdf2excel_v1.ps1)
+  - `VER1` ラッパーです。
+- [run_pdf2excel_v2.ps1](../scripts/run_pdf2excel_v2.ps1)
+  - `VER2` ラッパーです。
 - [run_pdf2excel_menu.ps1](../scripts/run_pdf2excel_menu.ps1)
   - 日本語の対話メニューを表示する起動補助です。
+- [run_pdf2excel_menu_v1.ps1](../scripts/run_pdf2excel_menu_v1.ps1)
+  - `VER1` のメニュー入口です。
+- [run_pdf2excel_menu_v2.ps1](../scripts/run_pdf2excel_menu_v2.ps1)
+  - `VER2` のメニュー入口です。
 - [pdf2excel.common.ps1](../scripts/pdf2excel.common.ps1)
   - 共通関数です。
 - [build_excel_template.ps1](../scripts/build_excel_template.ps1)

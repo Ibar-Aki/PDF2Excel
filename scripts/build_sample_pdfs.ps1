@@ -7,6 +7,8 @@ $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $samplesRoot = Join-Path $projectRoot 'samples'
 $pdfRoot = Join-Path $samplesRoot 'pdf'
 $sourceRoot = Join-Path $samplesRoot 'source'
+$versionedSamplesRoot = Join-Path $samplesRoot 'v1'
+$versionedSamplesRootV2 = Join-Path $samplesRoot 'v2'
 
 function Ensure-Directory {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -335,6 +337,94 @@ function New-ConstructionTransferPocWorkbookAndPdf {
     }
 }
 
+function New-ConstructionTransferPagedPocWorkbookAndPdf {
+    param(
+        [Parameter(Mandatory = $true)][string]$WorkbookPath,
+        [Parameter(Mandatory = $true)][string]$PdfPath,
+        [Parameter(Mandatory = $true)][int]$PageCount,
+        [Parameter(Mandatory = $true)][string]$TitleLabel,
+        [Parameter(Mandatory = $true)][string[]]$MonthLabels
+    )
+
+    $headers = @(
+        '日付', '曜日', '氏名', '所属', '現場1', '入場1', '退場1', '現場2', '入場2', '退場2',
+        '現場3', '入場3', '退場3', '休憩', '当日小計', '事務所入', '事務所出', '移動', '宿泊', '資格',
+        '工種', '天候', '体調', '安全確認', '備考1', '備考2', '確認者', '管理者メモ', '予備1', '予備2'
+    )
+
+    $baseRows = @(
+        @("2/4`n（金）", '金', '佐藤 花子', '一次協力', "東京駅前再開発A棟`n東工区", ' 10:30', '19：00', '仮設事務所', '9時00分', '9:20', '', '', '', '60', '7:30', '8:30', '20:00', 'あり', 'なし', '職長教育', '鉄筋', '晴', '良好', '済', "入場時に`n安全帯確認", '', '山田健', 'A棟は午後からB1へ応援', '', ''),
+        @("2/5`n（土）", '土', '鈴木一郎', '一次協力', "東京駅前再開発Ａ棟", '10時30分', '18時 00分', "南口歩道橋更新`nその2", '18:25', '20：10', '', '', '', '45', '8:10', '9:10', '20:20', 'あり', 'なし', '高所作業', '足場', '曇', '良好', '済', '', "現場名が微妙に揺れ", '山田健', '', '', ''),
+        @("2/6`n（日）", '日', '田中美咲', '直用', "湾岸物流センター`n新築工事", '9：05', '17:30', '', '', '', '', '', '', '60', '7:25', '8:10', '18:10', 'あり', 'なし', '玉掛', '搬入', '晴', '良好', '済', '朝礼あり', '', '岡本進', "氏名表記ゆれなし", '', ''),
+        @("2/7`n（月）", '月', '高橋健太', '直用', "湾岸物流センタ-新築工事", ' 9時 15分', '17時30分', "東京駅前再開発A棟", '18:00', '20:15', '', '', '', '60', '9:30', '8:50', '20:40', 'あり', 'なし', '職長教育', '鉄骨', '雨', '普通', '済', "現場名の記号ゆれ", '', '岡本進', '', '', ''),
+        @("2/8`n（火）", '火', '渡辺大輔', '二次協力', "渋谷駅西口改良工事`n南工区", '10：3０', '19:05', '', '', '', '', '', '', '60', '7:35', '9:00', '19:30', 'なし', 'なし', '誘導員', '雑工', '晴', '良好', '済', "全角数字混在`n確認要", '', '山田健', '', '', '')
+    )
+
+    Export-WorkbookAsSample -WorkbookPath $WorkbookPath -PdfPath $PdfPath -PopulateWorkbook {
+        param($worksheet)
+
+        $worksheet.Name = '勤怠一覧MultiPoC'
+
+        $worksheet.Range('A1:AD1').Merge()
+        $worksheet.Range('A1').Value2 = $TitleLabel
+        $worksheet.Range('A2').Value2 = '管理者: 山田健'
+        $worksheet.Range('A3').Value2 = ('対象月: ' + ($MonthLabels -join ' / '))
+
+        $worksheet.Range('A1:AD1').HorizontalAlignment = -4108
+        $worksheet.Range('A1:AD1').Font.Bold = $true
+        $worksheet.Range('A1:AD1').Font.Size = 14
+        $worksheet.Range('A2:A3').Font.Bold = $true
+
+        $currentRow = 4
+        for ($page = 1; $page -le $PageCount; $page += 1) {
+            if ($page -gt 1) {
+                $worksheet.Cells.Item($currentRow, 1).Value2 = "ページ$page 補助欄"
+                $worksheet.Rows.Item($currentRow).RowHeight = 16
+                $currentRow += 1
+            }
+
+            for ($column = 1; $column -le $headers.Count; $column += 1) {
+                $worksheet.Cells.Item($currentRow, $column).Value2 = $headers[$column - 1]
+            }
+
+            $headerRow = $currentRow
+            $worksheet.Range("A${headerRow}:AD${headerRow}").Font.Bold = $true
+            $worksheet.Range("A${headerRow}:AD${headerRow}").Interior.Color = 15921906
+            $currentRow += 1
+
+            for ($rowIndex = 0; $rowIndex -lt $baseRows.Count; $rowIndex += 1) {
+                $excelRow = $currentRow + $rowIndex
+                $rowValues = @($baseRows[$rowIndex])
+                $monthLabel = $MonthLabels[[Math]::Min($page - 1, $MonthLabels.Count - 1)]
+                $daySeed = (($page - 1) * 5) + $rowIndex + 1
+                $rowValues[0] = "{0}`n（{1}）" -f ("{0}/{1}" -f ($page + 1), $daySeed), @('月', '火', '水', '木', '金', '土', '日')[($page + $rowIndex) % 7]
+                $rowValues[4] = if ($rowIndex % 2 -eq 0) { "$monthLabel`n$rowValues[4]" } else { $rowValues[4] }
+                $rowValues[27] = "ページ$page / $monthLabel / " + $rowValues[27]
+                for ($column = 1; $column -le $headers.Count; $column += 1) {
+                    $worksheet.Cells.Item($excelRow, $column).Value2 = $rowValues[$column - 1]
+                }
+                $worksheet.Rows.Item($excelRow).RowHeight = 42
+            }
+
+            $lastDataRow = $currentRow + $baseRows.Count - 1
+            $worksheet.Range("A${headerRow}:AD${lastDataRow}").Borders.LineStyle = 1
+            $worksheet.Range("A${headerRow}:AD${lastDataRow}").WrapText = $true
+            $currentRow = $lastDataRow + 1
+
+            if ($page -lt $PageCount) {
+                [void]$worksheet.HPageBreaks.Add($worksheet.Cells.Item($currentRow, 1))
+            }
+        }
+
+        $worksheet.PageSetup.PaperSize = 8
+        $worksheet.PageSetup.Orientation = 2
+        $worksheet.PageSetup.Zoom = $false
+        $worksheet.PageSetup.FitToPagesWide = 1
+        $worksheet.PageSetup.FitToPagesTall = $false
+        $worksheet.Columns.AutoFit() | Out-Null
+    }
+}
+
 $managedDirectories = @(
     'attendance_jp',
     'sales_daily_jp',
@@ -345,6 +435,10 @@ $managedDirectories = @(
 
 Ensure-Directory -Path $pdfRoot
 Ensure-Directory -Path $sourceRoot
+Ensure-Directory -Path (Join-Path $versionedSamplesRoot 'pdf')
+Ensure-Directory -Path (Join-Path $versionedSamplesRoot 'source')
+Ensure-Directory -Path (Join-Path $versionedSamplesRootV2 'pdf')
+Ensure-Directory -Path (Join-Path $versionedSamplesRootV2 'source')
 
 foreach ($directoryName in $managedDirectories) {
     Reset-Directory -Path (Join-Path $pdfRoot $directoryName)
@@ -414,6 +508,20 @@ $sampleDefinitions = @(
         WorkbookName      = '2026年02月_作業員勤怠一覧_PoC.xlsx'
         PdfName           = '2026年02月_作業員勤怠一覧_PoC.pdf'
         CreateSample      = { param($workbookPath, $pdfPath) New-ConstructionTransferPocWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath }
+    },
+    [pscustomobject]@{
+        PdfDirectory      = 'construction_transfer_poc'
+        SourceDirectory   = 'construction_transfer_poc'
+        WorkbookName      = '2026年02月_作業員勤怠一覧_PoC_2ページ同一列.xlsx'
+        PdfName           = '2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf'
+        CreateSample      = { param($workbookPath, $pdfPath) New-ConstructionTransferPagedPocWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath -PageCount 2 -TitleLabel '建設現場別 延べ作業時間算出用 勤怠一覧（2ページ同一列PoC）' -MonthLabels @('2026年02月', '2026年02月') }
+    },
+    [pscustomobject]@{
+        PdfDirectory      = 'construction_transfer_poc'
+        SourceDirectory   = 'construction_transfer_poc'
+        WorkbookName      = '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.xlsx'
+        PdfName           = '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf'
+        CreateSample      = { param($workbookPath, $pdfPath) New-ConstructionTransferPagedPocWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath -PageCount 6 -TitleLabel '建設現場別 延べ作業時間算出用 勤怠一覧（6ページ同一列PoC）' -MonthLabels @('2026年04月', '2026年04月', '2026年05月', '2026年05月', '2026年06月', '2026年06月') }
     }
 )
 
@@ -428,6 +536,29 @@ foreach ($definition in $sampleDefinitions) {
     & $definition.CreateSample $workbookPath $pdfPath
 }
 
+$v1SampleDirectories = @('attendance_jp', 'sales_daily_jp', 'inventory_jp', 'inquiry_jp')
+$v2SampleDirectories = @('construction_transfer_poc')
+
+foreach ($directoryName in $v1SampleDirectories) {
+    $targetPdfDir = Join-Path (Join-Path $versionedSamplesRoot 'pdf') $directoryName
+    $targetSourceDir = Join-Path (Join-Path $versionedSamplesRoot 'source') $directoryName
+    Reset-Directory -Path $targetPdfDir
+    Reset-Directory -Path $targetSourceDir
+    Copy-Item -Path (Join-Path (Join-Path $pdfRoot $directoryName) '*') -Destination $targetPdfDir -Recurse -Force
+    Copy-Item -Path (Join-Path (Join-Path $sourceRoot $directoryName) '*') -Destination $targetSourceDir -Recurse -Force
+}
+
+foreach ($directoryName in $v2SampleDirectories) {
+    $targetPdfDir = Join-Path (Join-Path $versionedSamplesRootV2 'pdf') $directoryName
+    $targetSourceDir = Join-Path (Join-Path $versionedSamplesRootV2 'source') $directoryName
+    Reset-Directory -Path $targetPdfDir
+    Reset-Directory -Path $targetSourceDir
+    Copy-Item -Path (Join-Path (Join-Path $pdfRoot $directoryName) '*') -Destination $targetPdfDir -Recurse -Force
+    Copy-Item -Path (Join-Path (Join-Path $sourceRoot $directoryName) '*') -Destination $targetSourceDir -Recurse -Force
+}
+
 Write-Host '日本語サンプル帳票を作成しました。'
 Write-Host "PDF: $pdfRoot"
 Write-Host "元Excel: $sourceRoot"
+Write-Host "V1 PDF: $(Join-Path $versionedSamplesRoot 'pdf')"
+Write-Host "V2 PDF: $(Join-Path $versionedSamplesRootV2 'pdf')"

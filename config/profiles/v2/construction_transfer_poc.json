@@ -1,0 +1,25 @@
+﻿{
+  "name": "construction_transfer_poc",
+  "displayName": "建設現場転記PoCプロファイル",
+  "description": "建設現場別の入退場時間転記を想定した 30 列プロファイルです。タイトル行は表外、4行目ヘッダー、5行目以降データを想定します。",
+  "expectedColumns": 30,
+  "headerRowsToSkip": 1,
+  "targetRowCount": 5,
+  "allowMoreColumns": false,
+  "preferredTableKinds": [
+    "Table"
+  ],
+  "preferredTableNameContains": [
+    "勤怠",
+    "現場",
+    "入退場"
+  ],
+  "preferredTableIdContains": [],
+  "sourceFileColumnName": "元ファイル名",
+  "dataColumnPrefix": "項目",
+  "multiPageMergeMode": "sameHeader",
+  "reviewPersonColumn": 3,
+  "reviewSiteColumn": 5,
+  "reviewInTimeColumn": 6,
+  "reviewOutTimeColumn": 7
+}

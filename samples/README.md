@@ -1,9 +1,15 @@
-# サンプルデータ
+﻿# サンプルデータ
 
 - 作成日: 2026-03-15 01:10 JST
 - 作成者: Codex (GPT-5)
+- 更新日: 2026-03-15
 
 `samples` フォルダには、PDF2Excel の動作確認に使えるサンプル帳票を置いています。
+
+- `samples/v1`
+  - 標準変換向けサンプルです。
+- `samples/v2`
+  - 建設現場 raw 転記向けサンプルです。
 
 ## 日本語勤怠管理表サンプル
 
@@ -40,7 +46,11 @@
 ## 建設現場転記 PoC サンプル
 
 - PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.pdf`
+- PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf`
+- PDF: `pdf/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf`
 - 元Excel: `source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.xlsx`
+- 元Excel: `source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.xlsx`
+- 元Excel: `source/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.xlsx`
 - 推奨プロファイル: `../config/profiles/construction_transfer_poc.json`
 - 特徴:
   - タイトル 3 行 + 4 行目ヘッダー
@@ -48,6 +58,7 @@
   - セル内改行あり
   - 時刻表記ゆれあり
   - 現場名と氏名の微妙な揺れあり
+  - `2ページ同一列` と `6ページ同一列` のパターンを同梱
 
 ## 再生成方法
 

@@ -5,6 +5,7 @@ Private Const CONTROL_SHEET As String = "Control"
 Private Const RESULT_SHEET As String = "Result"
 Private Const ERRORS_SHEET As String = "Errors"
 Private Const SUMMARY_SHEET As String = "Summary"
+Private Const REVIEW_SHEET As String = "Review"
 
 Private Function ControlSheet() As Worksheet
     Set ControlSheet = ThisWorkbook.Worksheets(CONTROL_SHEET)
@@ -56,6 +57,9 @@ Public Sub RefreshAndBuildWorkbook()
     ThisWorkbook.Worksheets(RESULT_SHEET).Columns.AutoFit
     ThisWorkbook.Worksheets(ERRORS_SHEET).Columns.AutoFit
     ThisWorkbook.Worksheets(SUMMARY_SHEET).Columns.AutoFit
+    If WorksheetExists(REVIEW_SHEET) Then
+        ThisWorkbook.Worksheets(REVIEW_SHEET).Columns.AutoFit
+    End If
     SetStatus "Refreshed"
     Application.ScreenUpdating = True
 
@@ -65,6 +69,16 @@ EH:
     SetStatus "MacroError"
     Err.Raise Err.Number, "RefreshAndBuildWorkbook", Err.Description
 End Sub
+
+Private Function WorksheetExists(ByVal worksheetName As String) As Boolean
+    Dim sheet As Worksheet
+
+    On Error Resume Next
+    Set sheet = ThisWorkbook.Worksheets(worksheetName)
+    WorksheetExists = Not sheet Is Nothing
+    Set sheet = Nothing
+    On Error GoTo 0
+End Function
 
 Public Sub ExportResultAsXlsx()
     On Error GoTo EH
@@ -84,7 +98,11 @@ Public Sub ExportResultAsXlsx()
     End If
 
     SetStatus "Exporting"
-    ThisWorkbook.Worksheets(Array(CONTROL_SHEET, SUMMARY_SHEET, RESULT_SHEET, ERRORS_SHEET)).Copy
+    If WorksheetExists(REVIEW_SHEET) Then
+        ThisWorkbook.Worksheets(Array(CONTROL_SHEET, SUMMARY_SHEET, RESULT_SHEET, ERRORS_SHEET, REVIEW_SHEET)).Copy
+    Else
+        ThisWorkbook.Worksheets(Array(CONTROL_SHEET, SUMMARY_SHEET, RESULT_SHEET, ERRORS_SHEET)).Copy
+    End If
     Set outputWorkbook = ActiveWorkbook
 
     Application.DisplayAlerts = False
