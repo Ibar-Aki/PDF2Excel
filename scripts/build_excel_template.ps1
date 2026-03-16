@@ -143,7 +143,7 @@ function Set-ReviewSheetLayout {
     $Worksheet.Cells.Clear() | Out-Null
     $Worksheet.Name = 'Review'
     $Worksheet.Range('A1').Value2 = 'Review'
-    $Worksheet.Range('A2').Value2 = '確認が必要な raw 転記行を一覧化します。'
+    $Worksheet.Range('A2').Value2 = '確認が必要な生データ転記行を一覧化します。'
     $Worksheet.Range('A4').Value2 = '元ファイル名'
     $Worksheet.Range('B4').Value2 = 'ページ'
     $Worksheet.Range('C4').Value2 = '氏名 raw'

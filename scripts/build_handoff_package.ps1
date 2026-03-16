@@ -21,6 +21,7 @@ $packageDefinitions = @(
         RunBat = 'run_pdf2excel_v1.bat'
         MenuScript = 'run_pdf2excel_menu_v1.ps1'
         RunScript = 'run_pdf2excel_v1.ps1'
+        ReadmeSource = 'handoff\HANDOFF_README_SOURCE.md'
     },
     [pscustomobject]@{
         VersionMode = 'v2'
@@ -28,8 +29,9 @@ $packageDefinitions = @(
         ZipPath = Join-Path $handoffRoot 'PDF2Excel_V2_Minimal.zip'
         TemplateFile = 'PDF2Excel_V2_Converter.xlsm'
         RunBat = 'run_pdf2excel_v2.bat'
-        MenuScript = 'run_pdf2excel_menu_v2.ps1'
-        RunScript = 'run_pdf2excel_v2.ps1'
+        MenuScript = $null
+        RunScript = $null
+        ReadmeSource = 'handoff\HANDOFF_README_V2_SOURCE.md'
     }
 )
 
@@ -40,20 +42,36 @@ if ($TargetVersion -ne 'all') {
 foreach ($package in $packageDefinitions) {
     Reset-Directory -Path $package.PackageRoot
 
-    foreach ($relativeDir in @('scripts', 'template', "config\profiles\$($package.VersionMode)", 'input', 'output', 'output\runtime', 'logs')) {
+    foreach ($relativeDir in @('scripts', 'template', 'template\vba', "config\profiles\$($package.VersionMode)", 'input', 'output', 'output\runtime', 'logs')) {
         Ensure-Directory -Path (Join-Path $package.PackageRoot $relativeDir)
     }
 
     $filesToCopy = @(
         @{ Source = Join-Path $projectRoot $package.RunBat; Destination = Join-Path $package.PackageRoot 'run_pdf2excel.bat' },
         @{ Source = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'; Destination = Join-Path $package.PackageRoot 'scripts\run_pdf2excel.ps1' },
-        @{ Source = Join-Path $projectRoot ("scripts\{0}" -f $package.RunScript); Destination = Join-Path $package.PackageRoot ("scripts\{0}" -f $package.RunScript) },
-        @{ Source = Join-Path $projectRoot ("scripts\{0}" -f $package.MenuScript); Destination = Join-Path $package.PackageRoot ("scripts\{0}" -f $package.MenuScript) },
         @{ Source = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'; Destination = Join-Path $package.PackageRoot 'scripts\run_pdf2excel_menu.ps1' },
         @{ Source = Join-Path $projectRoot 'scripts\pdf2excel.common.ps1'; Destination = Join-Path $package.PackageRoot 'scripts\pdf2excel.common.ps1' },
         @{ Source = Join-Path $projectRoot ("template\{0}" -f $package.TemplateFile); Destination = Join-Path $package.PackageRoot ("template\{0}" -f $package.TemplateFile) },
-        @{ Source = Join-Path $projectRoot 'handoff\HANDOFF_README_SOURCE.md'; Destination = Join-Path $package.PackageRoot 'HANDOFF_README.md' }
+        @{ Source = Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.bas'; Destination = Join-Path $package.PackageRoot 'template\vba\PDF2ExcelMacros.bas' },
+        @{ Source = Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.sjis.bas'; Destination = Join-Path $package.PackageRoot 'template\vba\PDF2ExcelMacros.sjis.bas' },
+        @{ Source = Join-Path $projectRoot 'template\vba\PDF2ExcelTemplateBuilder.bas'; Destination = Join-Path $package.PackageRoot 'template\vba\PDF2ExcelTemplateBuilder.bas' },
+        @{ Source = Join-Path $projectRoot 'template\vba\PDF2ExcelTemplateBuilder.sjis.bas'; Destination = Join-Path $package.PackageRoot 'template\vba\PDF2ExcelTemplateBuilder.sjis.bas' },
+        @{ Source = Join-Path $projectRoot $package.ReadmeSource; Destination = Join-Path $package.PackageRoot 'HANDOFF_README.md' }
     )
+
+    if (-not [string]::IsNullOrWhiteSpace($package.RunScript)) {
+        $filesToCopy += @{
+            Source = Join-Path $projectRoot ("scripts\{0}" -f $package.RunScript)
+            Destination = Join-Path $package.PackageRoot ("scripts\{0}" -f $package.RunScript)
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($package.MenuScript)) {
+        $filesToCopy += @{
+            Source = Join-Path $projectRoot ("scripts\{0}" -f $package.MenuScript)
+            Destination = Join-Path $package.PackageRoot ("scripts\{0}" -f $package.MenuScript)
+        }
+    }
 
     foreach ($file in $filesToCopy) {
         Copy-Item -LiteralPath $file.Source -Destination $file.Destination -Force

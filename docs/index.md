@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-13 00:51 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-15
+- 更新日: 2026-03-16
 
 ## はじめに
 
@@ -27,8 +27,8 @@
   - 現行システムの要件、対象範囲、機能要件、非機能要件を整理した要件定義書です。
 - [technical-description.md](technical-description.md)
   - 動作フロー、技術スタック、アーキテクチャ、主要モジュールを整理した技術説明書です。
-- [construction-site-transfer-proposal.md](construction-site-transfer-proposal.md)
-  - 建設現場ごとの延べ作業時間算出に向けた raw 転記方式と PoC 方針を整理した提案書です。
+- [v2-data-transfer-proposal.md](v2-data-transfer-proposal.md)
+  - 生データ転記方式と PoC 方針を整理した提案書です。
 - [v2-tdd-implementation-report.md](v2-tdd-implementation-report.md)
   - V2 の多ページ結合、時刻正規化、TDD 実施内容、代表検証結果をまとめた実装報告です。
 - [v2-stabilization-implementation-report.md](v2-stabilization-implementation-report.md)

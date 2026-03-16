@@ -1,7 +1,7 @@
 ﻿{
   "name": "construction_transfer_poc",
-  "displayName": "建設現場転記PoCプロファイル",
-  "description": "建設現場別の入退場時間転記を想定した 30 列プロファイルです。タイトル行は表外、4行目ヘッダー、5行目以降データを想定します。",
+  "displayName": "生データ転記PoCプロファイル",
+  "description": "入退場時刻を含む 30 列帳票を想定したプロファイルです。タイトル行は表外、4行目ヘッダー、5行目以降データを想定します。",
   "expectedColumns": 30,
   "headerRowsToSkip": 1,
   "targetRowCount": 5,

@@ -4,6 +4,10 @@
     [ValidateSet('v1', 'v2')]
     [string]$VersionMode = 'v1',
     [string]$RunScriptPath,
+    [switch]$PassCoreDefaults,
+    [ValidateSet('Standard', 'Secure')]
+    [string]$DefaultSecurityMode,
+    [string]$DefaultProfileName,
     [switch]$ForceMenu
 )
 
@@ -21,7 +25,7 @@ $manualPath = Join-Path $projectRoot 'docs\user-manual.md'
 $profileDir = Join-Path $projectRoot ("config\profiles\{0}" -f $VersionMode)
 $outputDir = Join-Path $projectRoot 'output'
 $logsDir = Join-Path $projectRoot 'logs'
-$systemLabel = if ($VersionMode -eq 'v2') { 'PDF2Excel VER2 - 建設現場 raw 転記' } else { 'PDF2Excel VER1 - 標準変換' }
+$systemLabel = if ($VersionMode -eq 'v2') { 'PDF2Excel VER2 - 生データ転記' } else { 'PDF2Excel VER1 - 標準変換' }
 
 function Invoke-RunScript {
     param([string[]]$Arguments)
@@ -32,8 +36,26 @@ function Invoke-RunScript {
     } else {
         $shellArgs += @('-ExecutionPolicy', 'Bypass')
     }
+    $effectiveArguments = @()
+    if ($PassCoreDefaults) {
+        if (-not ($Arguments -contains '-VersionMode')) {
+            $effectiveArguments += @('-VersionMode', $VersionMode)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($DefaultSecurityMode) -and -not ($Arguments -contains '-SecurityMode')) {
+            $effectiveArguments += @('-SecurityMode', $DefaultSecurityMode)
+        }
+        if (
+            -not [string]::IsNullOrWhiteSpace($DefaultProfileName) -and
+            -not ($Arguments -contains '-ProfileName') -and
+            -not ($Arguments -contains '-ProfilePath')
+        ) {
+            $effectiveArguments += @('-ProfileName', $DefaultProfileName)
+        }
+    }
+
+    $effectiveArguments += $Arguments
     $shellArgs += @('-File', $runScript)
-    & powershell @shellArgs @Arguments
+    & powershell @shellArgs @effectiveArguments
     return $LASTEXITCODE
 }
 
@@ -65,7 +87,8 @@ while ($true) {
     Write-Host '=========================================='
     Write-Host ''
     if ($VersionMode -eq 'v2') {
-        Write-Host ' 建設現場向けの raw 転記を行います。'
+        Write-Host ' 生データ転記を行います。'
+        Write-Host ' 曖昧な候補は Review へ分離し、確認しながら扱います。'
         Write-Host ' 保存先を指定しない場合は output フォルダに保存します。'
     } else {
         Write-Host ' PDF の表をまとめて Excel に変換します。'

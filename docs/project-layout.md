@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-13 00:49 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-15
+- 更新日: 2026-03-16
 
 ## 目的
 
@@ -36,7 +36,7 @@ PDF2Excel
 - [run_pdf2excel_v1.bat](../run_pdf2excel_v1.bat)
   - 標準変換の入口です。
 - [run_pdf2excel_v2.bat](../run_pdf2excel_v2.bat)
-  - 建設現場 raw 転記の入口です。
+  - 生データ転記の入口です。
 - [README.md](../README.md)
   - 全体概要を短く確認できます。
 - [user-manual.md](user-manual.md)
@@ -48,7 +48,7 @@ PDF2Excel
 - `samples/v1`
   - `VER1` のサンプル PDF と元 Excel です。
 - `samples/v2`
-  - `VER2` の建設現場 raw 転記サンプルです。
+  - `VER2` の生データ転記サンプルです。
 - `output`
   - 変換後の Excel が出ます。
 - `logs`

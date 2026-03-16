@@ -25,7 +25,7 @@
 - `Errors` シート: 壊れた PDF や列数不一致などの失敗情報
 
 `VER2` では、これに加えて `Review` シートが出ます。  
-`Review` には、確認が必要な raw 行が `元ファイル名 / ページ / 氏名 raw / 現場 raw / 全時刻 raw / 確認要理由 / ReasonCategory` で並びます。
+`Review` には、確認が必要な行が `元ファイル名 / ページ / 氏名 raw / 現場 raw / 全時刻 raw / 確認要理由 / ReasonCategory` で並びます。
 さらに `Result` の末尾に `正規化入場*` / `正規化退場*` / `*_分` / `時刻正規化状態` / `時刻確認メモ` が追加され、`08：00` や `9時 15分`、Excel 時刻比率文字列、`24:00` / `24:00:00` を分析向けにそろえやすくしています。
 
 向いている用途:
@@ -42,7 +42,7 @@
 
 ## 2. まずこれだけ見れば使える最短手順
 
-1. 標準変換なら [run_pdf2excel_v1.bat](../run_pdf2excel_v1.bat)、建設現場 raw 転記なら [run_pdf2excel_v2.bat](../run_pdf2excel_v2.bat) をダブルクリックします。
+1. 標準変換なら [run_pdf2excel_v1.bat](../run_pdf2excel_v1.bat)、生データ転記なら [run_pdf2excel_v2.bat](../run_pdf2excel_v2.bat) をダブルクリックします。
    - `VER2` はダブルクリックで必ず最初にメニューを表示します。
 2. 表示されたメニューで `1` を押します。
 3. 変換したい PDF を複数選びます。
@@ -67,6 +67,20 @@
 - `VER2` の横分割結合は、一意に組める候補だけを採用し、曖昧な候補は `Errors` / `Review` に分離します。
 - `VER2` は secure 既定です。runtime / staging は `%LOCALAPPDATA%\PDF2Excel\runtime\runs` を使い、`input` フォルダへ今回 PDF を同期しません。
 - `VER2` の配布用 ZIP と利用者向け起動導線は `ExecutionPolicy Bypass` を使わず、`RemoteSigned` を前提に起動します。
+
+## 2-2. テンプレートを空ブックから作る
+
+既存テンプレートがなくても、空の Excel ブックに VBA モジュール 2 つを取り込めば再作成できます。
+
+1. Excel で空のブックを開き、`xlsm` 形式で保存します。
+2. VBA エディターを開き、標準モジュールとして [../template/vba/PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas) と [../template/vba/PDF2ExcelTemplateBuilder.bas](../template/vba/PDF2ExcelTemplateBuilder.bas) を取り込みます。
+3. 必要な版に応じて次のマクロを実行します。
+   - `VER1`: `BuildPDF2ExcelV1TemplateInActiveWorkbook`
+   - `VER2`: `BuildPDF2ExcelV2TemplateInActiveWorkbook`
+4. `VER2` を選ぶと、`Control / Result / Errors / Summary / Review` が自動作成されます。
+5. 保存した `xlsm` を、そのまま PDF2Excel のテンプレートとして使います。
+
+既定の互換入口 `BuildPDF2ExcelTemplateInActiveWorkbook` は `VER1` を組み立てます。
 
 ## 3. BAT メニューの意味
 
@@ -356,7 +370,7 @@ PowerShell 実行時には、主に次の情報が表示されます。
 ### Review シート
 
 - `VER2` のみです。
-- 確認が必要な raw 行を、元ファイル名、ページ、氏名 raw、現場 raw、全時刻 raw、理由で一覧します。
+- 確認が必要な行を、元ファイル名、ページ、氏名 raw、現場 raw、全時刻 raw、理由で一覧します。
 - `ReasonCategory` は機械判定用の補助列です。`HEADER_MISMATCH`、`TIME_MISSING`、`TIME_MULTI`、`TIME_INVALID` を出します。
 - `normalizedTimeColumns` に載せた全時刻列を対象に `正規化入場` / `正規化退場` / `*_分` / `時刻正規化状態` / `時刻確認メモ` を出します。
 - `*_分` は数値列です。並べ替え、フィルター、数式、ピボットの入力に使えます。

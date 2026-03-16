@@ -19,7 +19,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - Copilot 実装委任: [copilot-implementation-report.md](docs/copilot-implementation-report.md)
 - 要件定義書: [requirements-specification.md](docs/requirements-specification.md)
 - 技術説明書: [technical-description.md](docs/technical-description.md)
-- 建設現場転記案: [construction-site-transfer-proposal.md](docs/construction-site-transfer-proposal.md)
+- 生データ転記案: [v2-data-transfer-proposal.md](docs/v2-data-transfer-proposal.md)
 
 詳しい使い方は [ユーザーマニュアル](docs/user-manual.md) を参照してください。
 フォルダ構成は [project-layout.md](docs/project-layout.md) を参照してください。
@@ -31,7 +31,8 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - [run_pdf2excel_v1.bat](run_pdf2excel_v1.bat)
   - 既存の標準変換です。単一表を素直に Excel 化したいときに使います。
 - [run_pdf2excel_v2.bat](run_pdf2excel_v2.bat)
-  - 建設現場向けの raw 転記です。複数ページで同じ列が続く帳票や、確認作業を前提にした転記に使います。
+  - 生データ転記です。PDF から読めた値を、意味解釈や標準化を最小限にして Excel に近い形で出力します。
+  - 複数ページで同じ列が続く帳票や、確認作業を前提にした転記に使います。
   - `sameHeader` の厳格判定で多ページ結合を行い、曖昧な候補は `Errors` / `Review` に分離します。
   - `VER2` は secure 既定です。runtime / staging は `%LOCALAPPDATA%\PDF2Excel\runtime` 配下を使い、`input` フォルダへ今回 PDF を同期しません。
   - ダブルクリック起動では、必ず最初にメニューを表示します。
@@ -66,7 +67,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `samples/v1/`
   - `VER1` 用のサンプル PDF と元 Excel です。
 - `samples/v2/`
-  - `VER2` 用の建設現場 raw 転記サンプルです。`2ページ同一列`、`6ページ同一列`、`ヘッダー不一致負例`、`時刻確認負例` を含みます。
+  - `VER2` 用の生データ転記サンプルです。`2ページ同一列`、`6ページ同一列`、`ヘッダー不一致負例`、`時刻確認負例` を含みます。
 - `scripts/run_pdf2excel.ps1`
   - PDF の staging、Excel 起動、Power Query 更新、xlsx 出力を行います。
 - `scripts/build_excel_template.ps1`
@@ -78,7 +79,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `config/profiles/v1/`
   - `VER1` 用プロファイルです。既定の `default.json` と、日本語の `勤怠管理表`、`売上日報`、`在庫一覧`、`問い合わせ管理表` を置きます。
 - `config/profiles/v2/`
-  - `VER2` 用プロファイルです。建設現場 raw 転記用の `construction_transfer_poc.json` を置きます。
+  - `VER2` 用プロファイルです。生データ転記用の `construction_transfer_poc.json` を置きます。
 - `input/`
   - 処理対象PDFの保管先です。`VER1` と標準導線では、実行時の抽出を `output/runtime/runs/.../staging` で分離して行います。
 - `output/`
@@ -149,6 +150,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.p
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\profile10.json -OutputFile C:\Work\result.xlsx -NoConfirm
 ```
 
+## テンプレートを空ブックから再作成する
+
+空の Excel ブックへ VBA モジュール 2 つを取り込めば、テンプレートをその場で組み立てられます。
+
+1. Excel で空のブックを開き、`xlsm` 形式で保存します。
+2. VBA エディターを開き、標準モジュールとして [PDF2ExcelMacros.bas](template/vba/PDF2ExcelMacros.bas) と [PDF2ExcelTemplateBuilder.bas](template/vba/PDF2ExcelTemplateBuilder.bas) を取り込みます。
+3. 次のいずれかのマクロを実行します。
+   - `VER1`: `BuildPDF2ExcelV1TemplateInActiveWorkbook`
+   - `VER2`: `BuildPDF2ExcelV2TemplateInActiveWorkbook`
+4. `VER2` では `Control / Result / Errors / Summary / Review` の 5 シートが自動作成されます。
+5. そのまま保存すれば、`run_pdf2excel` から使えるテンプレートになります。
+
+既定の互換入口として `BuildPDF2ExcelTemplateInActiveWorkbook` も残しており、これは `VER1` を組み立てます。
+
 ## 出力仕様
 
 - `Control` シート
@@ -160,11 +175,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.p
 - `Result` シート
   - `A列=SourceFile`
   - `B列以降=プロファイルに応じた表データ列`
-  - `VER2` では raw 列を保持したまま、末尾に `正規化入場*` / `正規化退場*` / `*_分` / `時刻正規化状態` / `時刻確認メモ` を追加します。
+  - `VER2` では生データ列を保持したまま、末尾に `正規化入場*` / `正規化退場*` / `*_分` / `時刻正規化状態` / `時刻確認メモ` を追加します。
 - `Errors` シート
   - 抽出失敗したPDFのファイル名、エラーコード、エラー分類、利用者向けメッセージ、技術詳細、候補表の列数・行数を出力します。
 - `Review` シート
-  - `VER2` のみです。確認が必要な raw 行を、元ファイル名、ページ、氏名 raw、現場 raw、入場 raw、退場 raw、確認要理由で一覧化します。
+  - `VER2` のみです。確認が必要な行を、元ファイル名、ページ、氏名 raw、現場 raw、入場 raw、退場 raw、確認要理由で一覧化します。
   - `ReasonCategory` を追加し、`HEADER_MISMATCH`、`TIME_MISSING`、`TIME_MULTI`、`TIME_INVALID` を機械的に判別できるようにしています。
   - あわせて `正規化入場` / `正規化退場` / `*_分` / `時刻正規化状態` / `時刻確認メモ` を出し、`08：00`、`9時 15分`、Excel 時刻比率文字列の確認と後続分析をしやすくします。
 
@@ -193,7 +208,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.p
 - 日本語の売上日報を試す場合は `config/profiles/v1/sales_daily_jp.json` を利用してください。
 - 日本語の在庫一覧を試す場合は `config/profiles/v1/inventory_list_jp.json` を利用してください。
 - 日本語の問い合わせ管理表を試す場合は `config/profiles/v1/inquiry_weekly_jp.json` を利用してください。
-- 建設現場向けの raw 転記 PoC を試す場合は `config/profiles/v2/construction_transfer_poc.json` を利用してください。
+- 生データ転記 PoC を試す場合は `config/profiles/v2/construction_transfer_poc.json` を利用してください。
 - 日本語サンプル PDF を再生成したい場合は `scripts/build_sample_pdfs.ps1` を実行してください。
 
 ## テスト

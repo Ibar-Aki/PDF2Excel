@@ -207,14 +207,25 @@ $testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は日本語問�
     return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
 }
 
-$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は建設現場転記PoCプロファイルを読み込む' -Body {
+$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は生データ転記PoCプロファイルを読み込む' -Body {
     $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
     Assert-True -Condition ($profile.ExpectedColumns -eq 30) -Message "expectedColumns が想定と異なります: $($profile.ExpectedColumns)"
     Assert-True -Condition ($profile.TargetRowCount -eq 5) -Message "targetRowCount が想定と異なります: $($profile.TargetRowCount)"
-    Assert-True -Condition ($profile.DisplayName -eq '建設現場転記PoCプロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
+    Assert-True -Condition ($profile.DisplayName -eq '生データ転記PoCプロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
     Assert-True -Condition ($profile.MultiPageMergeMode -eq 'sameHeader') -Message "multiPageMergeMode が想定と異なります: $($profile.MultiPageMergeMode)"
     Assert-True -Condition ($profile.NormalizedTimeColumns.Count -eq 4) -Message "normalizedTimeColumns 数が想定と異なります: $($profile.NormalizedTimeColumns.Count)"
     return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
+}
+
+$testResults += Invoke-UnitTest -Name 'TemplateBuilder VBA は V2 テンプレート生成マクロを持つ' -Body {
+    $builderPath = Join-Path $projectRoot 'template\vba\PDF2ExcelTemplateBuilder.bas'
+    $builderText = Get-Content -LiteralPath $builderPath -Raw -Encoding UTF8
+    Assert-True -Condition ($builderText.Contains('Private Const REVIEW_SHEET As String = "Review"')) -Message 'Review シート定数が見つかりません。'
+    Assert-True -Condition ($builderText.Contains('Public Sub BuildPDF2ExcelV2TemplateInActiveWorkbook()')) -Message 'V2 テンプレート生成マクロが見つかりません。'
+    Assert-True -Condition ($builderText.Contains('GetRequiredSheetCount = 5')) -Message 'V2 用の 5 シート構成が見つかりません。'
+    Assert-True -Condition (-not $builderText.Contains('Public Sub RefreshAndBuildWorkbook()')) -Message 'TemplateBuilder に重複する Refresh マクロが残っています。'
+    Assert-True -Condition (-not $builderText.Contains('Public Sub ExportResultAsXlsx()')) -Message 'TemplateBuilder に重複する Export マクロが残っています。'
+    return 'Review / BuildPDF2ExcelV2 / 5 シート / 重複除去を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel.ps1 は Secure モードでローカル runtime を使う' -Body {
@@ -267,6 +278,15 @@ $testResults += Invoke-UnitTest -Name 'V2 BAT とメニューは ForceMenu 導�
     Assert-True -Condition ($menuText.Contains('-not $ForceMenu -and $remainingArgs.Count -gt 0')) -Message '共通メニューに ForceMenu 優先分岐がありません。'
     Assert-True -Condition ($menuV2Text.Contains('[switch]$ForceMenu')) -Message 'V2 メニューラッパーに ForceMenu スイッチがありません。'
     return 'ForceMenu 導線を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'handoff ビルドは VBA モジュールを同梱する' -Body {
+    $scriptPath = Join-Path $projectRoot 'scripts\build_handoff_package.ps1'
+    $scriptText = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
+    Assert-True -Condition ($scriptText.Contains("'template\vba'")) -Message 'handoff 作成先に template\vba がありません。'
+    Assert-True -Condition ($scriptText.Contains("template\vba\PDF2ExcelTemplateBuilder.bas")) -Message 'TemplateBuilder.bas の同梱が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains("template\vba\PDF2ExcelMacros.bas")) -Message 'PDF2ExcelMacros.bas の同梱が見つかりません。'
+    return 'template\vba / TemplateBuilder.bas / PDF2ExcelMacros.bas を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 限定再生成を受け付ける' -Body {

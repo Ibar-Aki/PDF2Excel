@@ -543,13 +543,13 @@ function Get-ControlSheetStaticCells {
     )
 
     $usageText = if ($VersionMode -eq 'v2') {
-        '1. run_pdf2excel_v2.bat を実行  2. 建設現場向け PDF を選択  3. 実行前チェックを確認  4. Result / Review / Summary / Errors を確認'
+        '1. run_pdf2excel_v2.bat を実行  2. 対象 PDF を選択  3. 実行前チェックを確認  4. Result / Review / Summary / Errors を確認'
     } else {
         '1. run_pdf2excel_v1.bat を実行  2. PDF を選択  3. 実行前チェックを確認  4. Result / Summary / Errors を確認'
     }
 
     $checkText = if ($VersionMode -eq 'v2') {
-        'Summary は全体件数、Result は raw 転記、Review は確認要行、Errors は失敗した PDF と理由です。'
+        'Summary は全体件数、Result は生データ転記結果、Review は確認要行、Errors は失敗した PDF と理由です。'
     } else {
         'Summary は件数の全体像、Result は変換成功データ、Errors は失敗した PDF と理由です。'
     }

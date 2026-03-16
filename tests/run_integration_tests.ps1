@@ -700,9 +700,9 @@ function Get-TestCases {
         [pscustomobject]@{ Name = '日本語売上日報の変換'; Scenario = '店舗別の売上日報を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = '日本語在庫一覧の変換'; Scenario = '倉庫別の在庫一覧を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = '日本語問い合わせ管理表の変換'; Scenario = '週次の問い合わせ管理表を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
-        [pscustomobject]@{ Name = '建設現場転記PoCの変換'; Scenario = '改行セルや時刻ゆれを含む建設現場向けPoC帳票を raw 転記できること'; TimeoutSeconds = 300 },
-        [pscustomobject]@{ Name = 'V2 2ページ同一列の変換'; Scenario = '同一列ヘッダーの2ページ建設帳票を1つの Result に連結できること'; TimeoutSeconds = 360 },
-        [pscustomobject]@{ Name = 'V2 6ページ同一列の変換'; Scenario = '同一列ヘッダーの6ページ建設帳票を1つの Result に連結できること'; TimeoutSeconds = 420 },
+        [pscustomobject]@{ Name = '建設現場転記PoCの変換'; Scenario = '改行セルや時刻ゆれを含む PoC 帳票を生データ転記できること'; TimeoutSeconds = 300 },
+        [pscustomobject]@{ Name = 'V2 2ページ同一列の変換'; Scenario = '同一列ヘッダーの2ページ帳票を1つの Result に連結できること'; TimeoutSeconds = 360 },
+        [pscustomobject]@{ Name = 'V2 6ページ同一列の変換'; Scenario = '同一列ヘッダーの6ページ帳票を1つの Result に連結できること'; TimeoutSeconds = 420 },
         [pscustomobject]@{ Name = 'V2 ヘッダー不一致負例の分離'; Scenario = 'sameHeader に乗らない multi-page 帳票を Errors 側へ分離できること'; TimeoutSeconds = 360 },
         [pscustomobject]@{ Name = 'V2 時刻確認負例の分離'; Scenario = '第2時刻ペアの invalid / 片側空を Review で拾えること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = '一時領域の後片付け'; Scenario = '実行後に output/runtime/runs 配下へ残骸が残らないこと'; TimeoutSeconds = 60 },
@@ -1040,7 +1040,7 @@ function Invoke-NamedScenario {
             $pocFileName = '2026年02月_作業員勤怠一覧_PoC.pdf'
             Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir $pocFileName) -Destination (Join-Path $singlePdfDir $pocFileName) -Force
             & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $singlePdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
-            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '建設現場転記PoCテストの出力ブックが作成されていません。'
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '生データ転記PoCテストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $names = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[3] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
@@ -1052,9 +1052,9 @@ function Invoke-NamedScenario {
             $normalizationStatuses = @($snapshot.ResultRecords | ForEach-Object { $_.'時刻正規化状態' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $normalizedSecondOutTypes = @($snapshot.ResultTypedRecords | ForEach-Object { if ($null -ne $_.'正規化退場2_分') { $_.'正規化退場2_分'.GetType().Name } } | Select-Object -Unique)
             $storedInputNames = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'input') -Filter '*.pdf' -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-            Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "建設現場転記PoCの行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "生データ転記PoCの行数が想定と異なります: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "Control の版表示が想定と異なります: $($snapshot.ControlVersion)"
-            Assert-True -Condition ($snapshot.ControlProfile -eq '建設現場転記PoCプロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
+            Assert-True -Condition ($snapshot.ControlProfile -eq '生データ転記PoCプロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
             Assert-True -Condition ($sourceNames -contains $pocFileName) -Message 'PoC PDF 名が保持されていません。'
             Assert-True -Condition ($names -contains '佐藤 花子') -Message 'PoC 帳票の氏名が保持されていません。'
             Assert-True -Condition ((@($sites | Where-Object { $_ -like '*東京駅前再開発*' }).Count) -ge 1) -Message 'PoC 帳票の現場名が保持されていません。'
