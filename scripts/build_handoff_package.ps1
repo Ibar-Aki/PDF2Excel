@@ -9,8 +9,26 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'pdf2excel.common.ps1')
 
+function Sync-VbaModuleEncodingMirror {
+    param(
+        [Parameter(Mandatory = $true)][string]$Utf8Path,
+        [Parameter(Mandatory = $true)][string]$ShiftJisPath
+    )
+
+    if (-not (Test-Path -LiteralPath $Utf8Path)) {
+        throw "VBA モジュールファイルが見つかりません: $Utf8Path"
+    }
+
+    $moduleText = Get-Content -LiteralPath $Utf8Path -Raw -Encoding UTF8
+    $encoding = [System.Text.Encoding]::GetEncoding(932)
+    [System.IO.File]::WriteAllBytes($ShiftJisPath, $encoding.GetBytes($moduleText))
+}
+
 $handoffRoot = Join-Path $projectRoot 'handoff'
 Ensure-Directory -Path $handoffRoot
+
+Sync-VbaModuleEncodingMirror -Utf8Path (Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.bas') -ShiftJisPath (Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.sjis.bas')
+Sync-VbaModuleEncodingMirror -Utf8Path (Join-Path $projectRoot 'template\vba\PDF2ExcelTemplateBuilder.bas') -ShiftJisPath (Join-Path $projectRoot 'template\vba\PDF2ExcelTemplateBuilder.sjis.bas')
 
 $packageDefinitions = @(
     [pscustomobject]@{

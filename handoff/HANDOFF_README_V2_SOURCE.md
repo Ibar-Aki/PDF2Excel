@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-16 03:20 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-16
+- 更新日: 2026-03-17
 
 ## これは何か
 
@@ -64,7 +64,7 @@
 1. 空の Excel ブックを `xlsm` 形式で保存します。
 2. VBA エディターを開き、`template/vba/PDF2ExcelMacros.bas` と `template/vba/PDF2ExcelTemplateBuilder.bas` を標準モジュールとして取り込みます。
 3. `VER2` テンプレートを作る場合は `BuildPDF2ExcelV2TemplateInActiveWorkbook` を実行します。
-4. `Control / Result / Errors / Summary / Review` が自動作成されたら、そのまま保存します。
+4. `Control / Result / Errors / Summary / Review` が自動作成されたら、`template/PDF2Excel_V2_Converter.xlsm` として保存または置き換えます。
 
 文字化けする環境では、同じ名前の `*.sjis.bas` を代わりに使ってください。
 

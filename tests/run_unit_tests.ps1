@@ -228,6 +228,21 @@ $testResults += Invoke-UnitTest -Name 'TemplateBuilder VBA は V2 テンプレ�
     return 'Review / BuildPDF2ExcelV2 / 5 シート / 重複除去を確認'
 }
 
+$testResults += Invoke-UnitTest -Name 'テンプレート再作成手順は配置先を明記する' -Body {
+    $readmePath = Join-Path $projectRoot 'README.md'
+    $manualPath = Join-Path $projectRoot 'docs\user-manual.md'
+    $handoffReadmePath = Join-Path $projectRoot 'handoff\HANDOFF_README_V2_SOURCE.md'
+    $readmeText = Get-Content -LiteralPath $readmePath -Raw -Encoding UTF8
+    $manualText = Get-Content -LiteralPath $manualPath -Raw -Encoding UTF8
+    $handoffReadmeText = Get-Content -LiteralPath $handoffReadmePath -Raw -Encoding UTF8
+    Assert-True -Condition ($readmeText.Contains('template/PDF2Excel_V1_Converter.xlsm')) -Message 'README に V1 テンプレート配置先がありません。'
+    Assert-True -Condition ($readmeText.Contains('template/PDF2Excel_V2_Converter.xlsm')) -Message 'README に V2 テンプレート配置先がありません。'
+    Assert-True -Condition ($manualText.Contains('template/PDF2Excel_V1_Converter.xlsm')) -Message 'ユーザーマニュアルに V1 テンプレート配置先がありません。'
+    Assert-True -Condition ($manualText.Contains('template/PDF2Excel_V2_Converter.xlsm')) -Message 'ユーザーマニュアルに V2 テンプレート配置先がありません。'
+    Assert-True -Condition ($handoffReadmeText.Contains('template/PDF2Excel_V2_Converter.xlsm')) -Message 'handoff README に V2 テンプレート配置先がありません。'
+    return 'README / user-manual / handoff README の配置先明記を確認'
+}
+
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel.ps1 は Secure モードでローカル runtime を使う' -Body {
     $scriptText = Get-Content -LiteralPath $runScript -Raw -Encoding UTF8
     Assert-True -Condition ($scriptText.Contains("[ValidateSet('Standard', 'Secure')]")) -Message 'SecurityMode の ValidateSet が見つかりません。'
@@ -280,13 +295,24 @@ $testResults += Invoke-UnitTest -Name 'V2 BAT とメニューは ForceMenu 導�
     return 'ForceMenu 導線を確認'
 }
 
+$testResults += Invoke-UnitTest -Name '共通メニューは完了メッセージを版別に分ける' -Body {
+    $menuPath = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
+    $menuText = Get-Content -LiteralPath $menuPath -Raw -Encoding UTF8
+    Assert-True -Condition ($menuText.Contains('$completionSheetMessage = if ($VersionMode -eq ''v2'')')) -Message '完了メッセージの版別分岐がありません。'
+    Assert-True -Condition ($menuText.Contains('Result / Review / Errors / Summary を確認してください。')) -Message 'V2 用完了メッセージがありません。'
+    Assert-True -Condition ($menuText.Contains('Result / Errors / Summary を確認してください。')) -Message 'V1 用完了メッセージがありません。'
+    return 'V1/V2 完了メッセージ分岐を確認'
+}
+
 $testResults += Invoke-UnitTest -Name 'handoff ビルドは VBA モジュールを同梱する' -Body {
     $scriptPath = Join-Path $projectRoot 'scripts\build_handoff_package.ps1'
     $scriptText = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
     Assert-True -Condition ($scriptText.Contains("'template\vba'")) -Message 'handoff 作成先に template\vba がありません。'
     Assert-True -Condition ($scriptText.Contains("template\vba\PDF2ExcelTemplateBuilder.bas")) -Message 'TemplateBuilder.bas の同梱が見つかりません。'
     Assert-True -Condition ($scriptText.Contains("template\vba\PDF2ExcelMacros.bas")) -Message 'PDF2ExcelMacros.bas の同梱が見つかりません。'
-    return 'template\vba / TemplateBuilder.bas / PDF2ExcelMacros.bas を確認'
+    Assert-True -Condition ($scriptText.Contains('function Sync-VbaModuleEncodingMirror')) -Message 'Shift_JIS ミラー同期関数が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('PDF2ExcelTemplateBuilder.sjis.bas')) -Message 'TemplateBuilder.sjis.bas の同期が見つかりません。'
+    return 'template\vba / sjis ミラー同期 / TemplateBuilder.bas / PDF2ExcelMacros.bas を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 限定再生成を受け付ける' -Body {

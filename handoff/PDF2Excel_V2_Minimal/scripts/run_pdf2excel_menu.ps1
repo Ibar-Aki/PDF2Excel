@@ -26,6 +26,7 @@ $profileDir = Join-Path $projectRoot ("config\profiles\{0}" -f $VersionMode)
 $outputDir = Join-Path $projectRoot 'output'
 $logsDir = Join-Path $projectRoot 'logs'
 $systemLabel = if ($VersionMode -eq 'v2') { 'PDF2Excel VER2 - 生データ転記' } else { 'PDF2Excel VER1 - 標準変換' }
+$completionSheetMessage = if ($VersionMode -eq 'v2') { 'Result / Review / Errors / Summary を確認してください。' } else { 'Result / Errors / Summary を確認してください。' }
 
 function Invoke-RunScript {
     param([string[]]$Arguments)
@@ -118,7 +119,7 @@ while ($true) {
                 Write-Host '変換が完了しました。'
                 Write-Host "出力先: $outputDir"
                 Write-Host "ログ先: $logsDir"
-                Write-Host 'Result / Review / Errors / Summary を確認してください。'
+                Write-Host $completionSheetMessage
                 Write-Host '必要に応じて output と logs の内容を確認してください。'
                 Pause
             }
@@ -135,7 +136,7 @@ while ($true) {
                 Write-Host '変換が完了しました。'
                 Write-Host "出力先: $outputDir"
                 Write-Host "ログ先: $logsDir"
-                Write-Host 'Result / Review / Errors / Summary を確認してください。'
+                Write-Host $completionSheetMessage
                 Write-Host '必要に応じて output と logs の内容を確認してください。'
                 Pause
             }

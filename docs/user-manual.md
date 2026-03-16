@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-13 00:05 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-16
+- 更新日: 2026-03-17
 
 補助資料:
 
@@ -78,7 +78,7 @@
    - `VER1`: `BuildPDF2ExcelV1TemplateInActiveWorkbook`
    - `VER2`: `BuildPDF2ExcelV2TemplateInActiveWorkbook`
 4. `VER2` を選ぶと、`Control / Result / Errors / Summary / Review` が自動作成されます。
-5. 保存した `xlsm` を、そのまま PDF2Excel のテンプレートとして使います。
+5. `run_pdf2excel` で使う場合は、保存した `xlsm` を `template/PDF2Excel_V1_Converter.xlsm` または `template/PDF2Excel_V2_Converter.xlsm` に置き換えます。
 
 既定の互換入口 `BuildPDF2ExcelTemplateInActiveWorkbook` は `VER1` を組み立てます。
 

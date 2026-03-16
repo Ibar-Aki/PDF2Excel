@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-12 23:14 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-16
+- 更新日: 2026-03-17
 
 Excel(M365) の Power Query を使って、複数のテキストPDFをまとめて Excel に変換するローカルツールです。  
 追加インストールなしで、`BAT + PowerShell + Excel` のみで動く構成にしています。
@@ -160,7 +160,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.p
    - `VER1`: `BuildPDF2ExcelV1TemplateInActiveWorkbook`
    - `VER2`: `BuildPDF2ExcelV2TemplateInActiveWorkbook`
 4. `VER2` では `Control / Result / Errors / Summary / Review` の 5 シートが自動作成されます。
-5. そのまま保存すれば、`run_pdf2excel` から使えるテンプレートになります。
+5. `run_pdf2excel` から使う場合は、保存したブックを `template/PDF2Excel_V1_Converter.xlsm` または `template/PDF2Excel_V2_Converter.xlsm` として配置し直します。
 
 既定の互換入口として `BuildPDF2ExcelTemplateInActiveWorkbook` も残しており、これは `VER1` を組み立てます。
 
