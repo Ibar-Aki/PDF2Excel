@@ -2,14 +2,14 @@
 
 - 作成日: 2026-03-15 01:10 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-15
+- 更新日: 2026-03-18
 
 `samples` フォルダには、PDF2Excel の動作確認に使えるサンプル帳票を置いています。
 
 - `samples/v1`
   - 標準変換向けサンプルです。
 - `samples/v2`
-  - 建設現場 raw 転記向けサンプルです。
+  - 生データ転記向けサンプルです。
 
 ## 日本語勤怠管理表サンプル
 
@@ -43,7 +43,7 @@
 - 元Excel: `source/inquiry_jp/2026年03月_問い合わせ管理表_第2週.xlsx`
 - 推奨プロファイル: `../config/profiles/inquiry_weekly_jp.json`
 
-## 建設現場転記 PoC サンプル
+## 生データ転記サンプル
 
 - PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.pdf`
 - PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf`

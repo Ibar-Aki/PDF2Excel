@@ -18,6 +18,63 @@ function Ensure-Directory {
     }
 }
 
+function Get-LocalAppDataPdf2ExcelPath {
+    param([string]$ChildPath = '')
+
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        return $null
+    }
+
+    $basePath = Join-Path $env:LOCALAPPDATA 'PDF2Excel'
+    if ([string]::IsNullOrWhiteSpace($ChildPath)) {
+        return $basePath
+    }
+
+    return Join-Path $basePath $ChildPath
+}
+
+function Get-PathLocationInfo {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $normalizedPath = try {
+        [System.IO.Path]::GetFullPath($Path)
+    } catch {
+        $Path
+    }
+
+    $rootPath = ''
+    try {
+        $rootPath = [System.IO.Path]::GetPathRoot($normalizedPath)
+    } catch {
+        $rootPath = ''
+    }
+
+    $isUnc = -not [string]::IsNullOrWhiteSpace($rootPath) -and $rootPath.StartsWith('\\')
+    $driveType = ''
+    $isNetworkDrive = $false
+
+    if ($isUnc) {
+        $driveType = [System.IO.DriveType]::Network.ToString()
+    } elseif (-not [string]::IsNullOrWhiteSpace($rootPath)) {
+        try {
+            $driveInfo = New-Object System.IO.DriveInfo($rootPath)
+            $driveType = $driveInfo.DriveType.ToString()
+            $isNetworkDrive = ($driveInfo.DriveType -eq [System.IO.DriveType]::Network)
+        } catch {
+            $driveType = ''
+        }
+    }
+
+    return [pscustomobject]@{
+        NormalizedPath  = $normalizedPath
+        RootPath        = $rootPath
+        IsUnc           = $isUnc
+        DriveType       = $driveType
+        IsNetworkDrive  = $isNetworkDrive
+        IsShared        = ($isUnc -or $isNetworkDrive)
+    }
+}
+
 function Remove-PathWithRetryCommon {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -643,6 +700,9 @@ function Resolve-RunErrorInfo {
     param([Parameter(Mandatory = $true)][string]$Message)
 
     $normalizedMessage = $Message.ToLowerInvariant()
+    if ($normalizedMessage.Contains('共有パス上')) {
+        return [pscustomobject]@{ ErrorCode = 'SHARED_EXECUTION_PATH'; ErrorCategory = 'セキュリティ制約' }
+    }
     if ($normalizedMessage.Contains('実行前チェックでキャンセル')) {
         return [pscustomobject]@{ ErrorCode = 'RUN_CANCELLED'; ErrorCategory = '実行キャンセル' }
     }

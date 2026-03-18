@@ -33,13 +33,22 @@ $profilesDir = Join-Path $configDir "profiles\$VersionMode"
 $inputDir = Join-Path $baseDir 'input'
 $outputDir = Join-Path $baseDir 'output'
 $script:isSecureMode = ($VersionMode -eq 'v2' -and $SecurityMode -eq 'Secure')
-$runtimeRootDir = if ($script:isSecureMode) {
-    Join-Path $env:LOCALAPPDATA 'PDF2Excel\runtime'
+$secureRuntimeRootDir = Get-LocalAppDataPdf2ExcelPath -ChildPath 'runtime'
+$secureLogsDir = Get-LocalAppDataPdf2ExcelPath -ChildPath 'logs'
+$script:runtimeUsesProjectFallback = ($script:isSecureMode -and [string]::IsNullOrWhiteSpace($secureRuntimeRootDir))
+$script:logsUseProjectFallback = ($script:isSecureMode -and [string]::IsNullOrWhiteSpace($secureLogsDir))
+$runtimeRootDir = if ($script:isSecureMode -and -not $script:runtimeUsesProjectFallback) {
+    $secureRuntimeRootDir
 } else {
     Join-Path $outputDir 'runtime'
 }
 $runtimeRunsDir = Join-Path $runtimeRootDir 'runs'
-$logsDir = Join-Path $baseDir 'logs'
+$logsDir = if ($script:isSecureMode -and -not $script:logsUseProjectFallback) {
+    $secureLogsDir
+} else {
+    Join-Path $baseDir 'logs'
+}
+$script:executionLocation = Get-PathLocationInfo -Path $baseDir
 $script:versionDisplayName = Get-VersionDisplayName -VersionMode $VersionMode
 $templatePath = Join-Path $templateDir $(if ($VersionMode -eq 'v2') { 'PDF2Excel_V2_Converter.xlsm' } else { 'PDF2Excel_V1_Converter.xlsm' })
 $buildTemplateScript = Join-Path $scriptDir 'build_excel_template.ps1'
@@ -140,7 +149,7 @@ function Show-RunSummary {
     Write-Host ('  出力ファイル     : {0}' -f $OutputPath)
     Write-Host ('  ログファイル     : {0}' -f $script:logPath)
     Write-Host ''
-    Write-Host '変換が完了しました。Result / Review / Errors / Summary を確認してください。' -ForegroundColor Green
+    Write-Host $(if ($VersionMode -eq 'v2') { '変換が完了しました。Result / Review / Errors / Summary を確認してください。' } else { '変換が完了しました。Result / Errors / Summary を確認してください。' }) -ForegroundColor Green
     Write-Host ''
 }
 
@@ -208,6 +217,28 @@ function Ensure-Workspace {
     )) {
         Ensure-Directory -Path $path
     }
+}
+
+function Write-EnvironmentWarnings {
+    if ($script:isSecureMode -and $script:runtimeUsesProjectFallback) {
+        Write-Log "LOCALAPPDATA が取得できないため、runtime を共有配置側へフォールバックします: $runtimeRootDir" 'WARN'
+    }
+
+    if ($script:isSecureMode -and $script:logsUseProjectFallback) {
+        Write-Log "LOCALAPPDATA が取得できないため、ログを共有配置側へフォールバックします: $logsDir" 'WARN'
+    }
+}
+
+function Assert-ExecutionLocationAllowed {
+    if (-not $script:executionLocation.IsShared) {
+        return
+    }
+
+    if ($script:isSecureMode) {
+        throw "Secure モードでは共有パス上から実行できません。ローカルへ展開して再実行してください。"
+    }
+
+    Write-Log ("共有パス上から実行しています。ローカル実行を推奨します: {0}" -f $script:executionLocation.NormalizedPath) 'WARN'
 }
 
 function Rotate-LogFiles {
@@ -2833,9 +2864,12 @@ $runFailed = $false
 
 try {
     Initialize-RunWorkspace
+    Write-EnvironmentWarnings
     Write-Banner
+    Assert-ExecutionLocationAllowed
     if ($script:isSecureMode) {
         Write-Log ("VER2 Secure モードで実行します。runtime はローカル領域を使用します: {0}" -f $runtimeRootDir)
+        Write-Log ("VER2 Secure のログ出力先: {0}" -f $logsDir)
     }
     Write-Log '入力 PDF を確認しています。'
     $runPlan = Resolve-ExecutionPlan

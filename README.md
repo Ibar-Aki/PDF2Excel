@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-12 23:14 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-17
+- 更新日: 2026-03-18
 
 Excel(M365) の Power Query を使って、複数のテキストPDFをまとめて Excel に変換するローカルツールです。  
 追加インストールなしで、`BAT + PowerShell + Excel` のみで動く構成にしています。
@@ -35,6 +35,8 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
   - 複数ページで同じ列が続く帳票や、確認作業を前提にした転記に使います。
   - `sameHeader` の厳格判定で多ページ結合を行い、曖昧な候補は `Errors` / `Review` に分離します。
   - `VER2` は secure 既定です。runtime / staging は `%LOCALAPPDATA%\PDF2Excel\runtime` 配下を使い、`input` フォルダへ今回 PDF を同期しません。
+  - `VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
+  - `VER2 Secure` は共有パス上からの実行を拒否します。ローカルへ展開して使ってください。
   - ダブルクリック起動では、必ず最初にメニューを表示します。
 - [run_pdf2excel.bat](run_pdf2excel.bat)
   - 互換入口です。`VER1` を起動します。
@@ -46,11 +48,12 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `3`: 使い方マニュアルを開く
 - `4`: 出力フォルダを開く
 - `5`: プロファイルフォルダを開く
-- `6`: ログフォルダを開く
-- `7`: 終了
+- `6`: プロファイル雛形を作成
+- `7`: ログフォルダを開く
+- `8`: 終了
 
 保存先を指定しない場合は、`output` フォルダに `PDF2Excel_yyyyMMdd_HHmmss.xlsx` が作成されます。
-変換前には、対象件数、保存先、使用プロファイル、想定列数を確認する「実行前チェック」が表示されます。
+変換前には、対象件数、保存先、使用プロファイル、想定列数を確認する「実行前チェック」が表示されます。`VER2 Secure` のログは `%LOCALAPPDATA%\PDF2Excel\logs` に保存されます。
 
 ## 構成
 
@@ -60,6 +63,8 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
   - 互換入口です。`VER1` を起動します。
 - `scripts/run_pdf2excel_menu.ps1`
   - 日本語の共通対話メニューです。版別ラッパーから呼び出されます。
+- `scripts/new_profile_scaffold.ps1`
+  - v1/v2 のプロファイル雛形を生成する保守者向けスクリプトです。
 - `scripts/run_pdf2excel_v1.ps1` / `scripts/run_pdf2excel_v2.ps1`
   - 共通コア `run_pdf2excel.ps1` を版別設定付きで起動するラッパーです。
 - `docs/`
@@ -85,7 +90,8 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `output/`
   - 出力された `xlsx` を保存します。
 - `logs/`
-  - 実行ログを保存します。30日超または200件超の古いログは自動整理されます。
+  - 主に `VER1` と標準導線の実行ログを保存します。30日超または200件超の古いログは自動整理されます。
+  - `VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
 - `output/runtime/`
   - 主に `VER1` と標準導線の実行中一時領域です。`runs/` 配下に実行単位の staging / runtime を作成し、通常は実行ごとに自動クリーンアップされます。
   - `VER2` secure 導線では `%LOCALAPPDATA%\PDF2Excel\runtime\runs` を使います。
@@ -208,7 +214,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.p
 - 日本語の売上日報を試す場合は `config/profiles/v1/sales_daily_jp.json` を利用してください。
 - 日本語の在庫一覧を試す場合は `config/profiles/v1/inventory_list_jp.json` を利用してください。
 - 日本語の問い合わせ管理表を試す場合は `config/profiles/v1/inquiry_weekly_jp.json` を利用してください。
-- 生データ転記 PoC を試す場合は `config/profiles/v2/construction_transfer_poc.json` を利用してください。
+- 生データ転記サンプルを試す場合は `config/profiles/v2/construction_transfer_poc.json` を利用してください。
 - 日本語サンプル PDF を再生成したい場合は `scripts/build_sample_pdfs.ps1` を実行してください。
 
 ## テスト

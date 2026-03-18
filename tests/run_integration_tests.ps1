@@ -886,7 +886,7 @@ function Invoke-NamedScenario {
             $combinedOutput = '7' | & cmd.exe /c $batScriptV2 2>&1 | Out-String
             Assert-True -Condition ($combinedOutput.Contains('PDF2Excel VER2')) -Message ('V2 BAT 無引数起動で VER2 タイトルが見つかりません: ' + $combinedOutput)
             Assert-True -Condition ($combinedOutput.Contains('[1] PDFファイルを選んで変換')) -Message ('V2 BAT 無引数起動でメニュー項目が見つかりません: ' + $combinedOutput)
-            Assert-True -Condition ($combinedOutput.Contains('[7] 終了')) -Message ('V2 BAT 無引数起動で終了項目が見つかりません: ' + $combinedOutput)
+            Assert-True -Condition ($combinedOutput.Contains('[8] 終了')) -Message ('V2 BAT 無引数起動で終了項目が見つかりません: ' + $combinedOutput)
             return 'V2 BAT 無引数起動でメニュー表示を確認'
         }
         'V2 BAT 引数付きで直接変換' {
@@ -1054,7 +1054,7 @@ function Invoke-NamedScenario {
             $storedInputNames = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'input') -Filter '*.pdf' -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
             Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "生データ転記PoCの行数が想定と異なります: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "Control の版表示が想定と異なります: $($snapshot.ControlVersion)"
-            Assert-True -Condition ($snapshot.ControlProfile -eq '生データ転記PoCプロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
+            Assert-True -Condition ($snapshot.ControlProfile -eq '生データ転記サンプルプロファイル') -Message "Control のプロファイル表示が想定と異なります: $($snapshot.ControlProfile)"
             Assert-True -Condition ($sourceNames -contains $pocFileName) -Message 'PoC PDF 名が保持されていません。'
             Assert-True -Condition ($names -contains '佐藤 花子') -Message 'PoC 帳票の氏名が保持されていません。'
             Assert-True -Condition ((@($sites | Where-Object { $_ -like '*東京駅前再開発*' }).Count) -ge 1) -Message 'PoC 帳票の現場名が保持されていません。'

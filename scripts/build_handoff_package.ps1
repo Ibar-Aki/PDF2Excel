@@ -68,6 +68,7 @@ foreach ($package in $packageDefinitions) {
         @{ Source = Join-Path $projectRoot $package.RunBat; Destination = Join-Path $package.PackageRoot 'run_pdf2excel.bat' },
         @{ Source = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'; Destination = Join-Path $package.PackageRoot 'scripts\run_pdf2excel.ps1' },
         @{ Source = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'; Destination = Join-Path $package.PackageRoot 'scripts\run_pdf2excel_menu.ps1' },
+        @{ Source = Join-Path $projectRoot 'scripts\new_profile_scaffold.ps1'; Destination = Join-Path $package.PackageRoot 'scripts\new_profile_scaffold.ps1' },
         @{ Source = Join-Path $projectRoot 'scripts\pdf2excel.common.ps1'; Destination = Join-Path $package.PackageRoot 'scripts\pdf2excel.common.ps1' },
         @{ Source = Join-Path $projectRoot ("template\{0}" -f $package.TemplateFile); Destination = Join-Path $package.PackageRoot ("template\{0}" -f $package.TemplateFile) },
         @{ Source = Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.bas'; Destination = Join-Path $package.PackageRoot 'template\vba\PDF2ExcelMacros.bas' },

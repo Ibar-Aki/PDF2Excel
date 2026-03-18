@@ -1,7 +1,7 @@
 ﻿{
   "name": "construction_transfer_poc",
-  "displayName": "生データ転記PoCプロファイル",
-  "description": "入退場時刻を含む 30 列帳票を想定したプロファイルです。タイトル行は表外、4行目ヘッダー、5行目以降データを想定します。",
+  "displayName": "生データ転記サンプルプロファイル",
+  "description": "30 列の特定レイアウト帳票を想定した生データ転記サンプルです。タイトル行は表外、4行目ヘッダー、5行目以降データを想定します。",
   "expectedColumns": 30,
   "headerRowsToSkip": 1,
   "targetRowCount": 5,

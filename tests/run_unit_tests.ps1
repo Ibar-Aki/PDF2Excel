@@ -8,6 +8,7 @@ $jsonReportPath = Join-Path $resultsRoot 'unit-test-results.json'
 $markdownReportPath = Join-Path $reportsRoot 'unit-test-report.md'
 $commonScript = Join-Path $projectRoot 'scripts\pdf2excel.common.ps1'
 $runScript = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'
+$scaffoldScript = Join-Path $projectRoot 'scripts\new_profile_scaffold.ps1'
 $timeStarted = Get-Date
 
 . $commonScript
@@ -131,6 +132,27 @@ $testResults += Invoke-UnitTest -Name 'ConvertTo-MLogicalLiteral は小文字の
     return "$trueValue / $falseValue"
 }
 
+$testResults += Invoke-UnitTest -Name 'Get-PathLocationInfo は UNC とローカルパスを判定できる' -Body {
+    $unc = Get-PathLocationInfo -Path '\\server\share\PDF2Excel'
+    $local = Get-PathLocationInfo -Path 'C:\Work\PDF2Excel'
+    Assert-True -Condition $unc.IsShared -Message 'UNC パスが shared と判定されません。'
+    Assert-True -Condition $unc.IsUnc -Message 'UNC パスが UNC と判定されません。'
+    Assert-True -Condition (-not $local.IsUnc) -Message 'ローカルパスが UNC 扱いされています。'
+    return 'UNC / local を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-LocalAppDataPdf2ExcelPath は PDF2Excel 配下を返す' -Body {
+    $original = $env:LOCALAPPDATA
+    try {
+        $env:LOCALAPPDATA = 'C:\Users\TestUser\AppData\Local'
+        $actual = Get-LocalAppDataPdf2ExcelPath -ChildPath 'logs'
+        Assert-True -Condition ($actual -eq 'C:\Users\TestUser\AppData\Local\PDF2Excel\logs') -Message "LOCALAPPDATA 配下のパスが想定と異なります: $actual"
+        return $actual
+    } finally {
+        $env:LOCALAPPDATA = $original
+    }
+}
+
 $testResults += Invoke-UnitTest -Name 'Get-ProfileOutputColumnNames は接頭辞と元ファイル列を並べる' -Body {
     $profile = [pscustomobject]@{
         SourceFileColumnName = 'SourceFile'
@@ -207,11 +229,11 @@ $testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は日本語問�
     return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
 }
 
-$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は生データ転記PoCプロファイルを読み込む' -Body {
+$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は生データ転記サンプルプロファイルを読み込む' -Body {
     $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
     Assert-True -Condition ($profile.ExpectedColumns -eq 30) -Message "expectedColumns が想定と異なります: $($profile.ExpectedColumns)"
     Assert-True -Condition ($profile.TargetRowCount -eq 5) -Message "targetRowCount が想定と異なります: $($profile.TargetRowCount)"
-    Assert-True -Condition ($profile.DisplayName -eq '生データ転記PoCプロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
+    Assert-True -Condition ($profile.DisplayName -eq '生データ転記サンプルプロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
     Assert-True -Condition ($profile.MultiPageMergeMode -eq 'sameHeader') -Message "multiPageMergeMode が想定と異なります: $($profile.MultiPageMergeMode)"
     Assert-True -Condition ($profile.NormalizedTimeColumns.Count -eq 4) -Message "normalizedTimeColumns 数が想定と異なります: $($profile.NormalizedTimeColumns.Count)"
     return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
@@ -246,9 +268,10 @@ $testResults += Invoke-UnitTest -Name 'テンプレート再作成手順は配�
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel.ps1 は Secure モードでローカル runtime を使う' -Body {
     $scriptText = Get-Content -LiteralPath $runScript -Raw -Encoding UTF8
     Assert-True -Condition ($scriptText.Contains("[ValidateSet('Standard', 'Secure')]")) -Message 'SecurityMode の ValidateSet が見つかりません。'
-    Assert-True -Condition ($scriptText.Contains('Join-Path $env:LOCALAPPDATA ''PDF2Excel\runtime''')) -Message 'LOCALAPPDATA 配下の runtime ルートが見つかりません。'
+    Assert-True -Condition ($scriptText.Contains("Get-LocalAppDataPdf2ExcelPath -ChildPath 'runtime'")) -Message 'LOCALAPPDATA 配下の runtime ルート解決が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains("Get-LocalAppDataPdf2ExcelPath -ChildPath 'logs'")) -Message 'LOCALAPPDATA 配下の logs ルート解決が見つかりません。'
     Assert-True -Condition ($scriptText.Contains("VER2 Secure では -KeepInput は無効")) -Message 'KeepInput 無効化メッセージが見つかりません。'
-    return 'SecurityMode / LOCALAPPDATA / KeepInput 無効化を確認'
+    return 'SecurityMode / LOCALAPPDATA runtime/logs / KeepInput 無効化を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'V2 ラッパーは Secure モードを渡し RemoteSigned で起動する' -Body {
@@ -295,6 +318,17 @@ $testResults += Invoke-UnitTest -Name 'V2 BAT とメニューは ForceMenu 導�
     return 'ForceMenu 導線を確認'
 }
 
+$testResults += Invoke-UnitTest -Name '共通メニューは共有パス制約とプロファイル雛形導線を持つ' -Body {
+    $menuPath = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
+    $menuText = Get-Content -LiteralPath $menuPath -Raw -Encoding UTF8
+    Assert-True -Condition ($menuText.Contains('Assert-ExecutionLocationAllowed')) -Message '共有パス制約の呼び出しが見つかりません。'
+    Assert-True -Condition ($menuText.Contains('Secure モードでは共有パス上から実行できません')) -Message '共有パス拒否メッセージが見つかりません。'
+    Assert-True -Condition ($menuText.Contains('Invoke-ProfileScaffoldScript')) -Message 'プロファイル雛形生成の呼び出しが見つかりません。'
+    Assert-True -Condition ($menuText.Contains('[6] プロファイル雛形を作成')) -Message 'メニュー項目 6 が見つかりません。'
+    Assert-True -Condition ($menuText.Contains('[8] 終了')) -Message '終了メニュー番号の更新が見つかりません。'
+    return '共有パス制約 / プロファイル雛形 / メニュー番号を確認'
+}
+
 $testResults += Invoke-UnitTest -Name '共通メニューは完了メッセージを版別に分ける' -Body {
     $menuPath = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
     $menuText = Get-Content -LiteralPath $menuPath -Raw -Encoding UTF8
@@ -312,7 +346,34 @@ $testResults += Invoke-UnitTest -Name 'handoff ビルドは VBA モジュール�
     Assert-True -Condition ($scriptText.Contains("template\vba\PDF2ExcelMacros.bas")) -Message 'PDF2ExcelMacros.bas の同梱が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('function Sync-VbaModuleEncodingMirror')) -Message 'Shift_JIS ミラー同期関数が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('PDF2ExcelTemplateBuilder.sjis.bas')) -Message 'TemplateBuilder.sjis.bas の同期が見つかりません。'
-    return 'template\vba / sjis ミラー同期 / TemplateBuilder.bas / PDF2ExcelMacros.bas を確認'
+    Assert-True -Condition ($scriptText.Contains('new_profile_scaffold.ps1')) -Message 'new_profile_scaffold.ps1 の同梱が見つかりません。'
+    return 'template\vba / sjis ミラー同期 / new_profile_scaffold.ps1 / TemplateBuilder.bas / PDF2ExcelMacros.bas を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'new_profile_scaffold は v1/v2 雛形を生成できる' -Body {
+    $scaffoldRoot = Join-Path $resultsRoot 'profile-scaffold'
+    Ensure-Directory -Path $scaffoldRoot
+    $v1Path = Join-Path $scaffoldRoot 'sample_v1.json'
+    $v2Path = Join-Path $scaffoldRoot 'sample_v2.json'
+    foreach ($path in @($v1Path, $v2Path)) {
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Force
+        }
+    }
+
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $scaffoldScript -VersionMode v1 -ProfileName sample_v1 -DisplayName 'テストV1' -OutputPath $v1Path
+    Assert-True -Condition ($LASTEXITCODE -eq 0) -Message "v1 雛形生成が失敗しました: $LASTEXITCODE"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $scaffoldScript -VersionMode v2 -ProfileName sample_v2 -DisplayName 'テストV2' -OutputPath $v2Path
+    Assert-True -Condition ($LASTEXITCODE -eq 0) -Message "v2 雛形生成が失敗しました: $LASTEXITCODE"
+
+    $v1 = Get-Content -LiteralPath $v1Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    $v2 = Get-Content -LiteralPath $v2Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-True -Condition ($v1.displayName -eq 'テストV1') -Message "v1 displayName が想定と異なります: $($v1.displayName)"
+    Assert-True -Condition ($v1.sourceFileColumnName -eq 'SourceFile') -Message "v1 sourceFileColumnName が想定と異なります: $($v1.sourceFileColumnName)"
+    Assert-True -Condition ($v2.displayName -eq 'テストV2') -Message "v2 displayName が想定と異なります: $($v2.displayName)"
+    Assert-True -Condition ($v2.multiPageMergeMode -eq 'single') -Message "v2 multiPageMergeMode が想定と異なります: $($v2.multiPageMergeMode)"
+    Assert-True -Condition ($v2.sourceFileColumnName -eq '元ファイル名') -Message "v2 sourceFileColumnName が想定と異なります: $($v2.sourceFileColumnName)"
+    return 'v1/v2 雛形生成を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 限定再生成を受け付ける' -Body {

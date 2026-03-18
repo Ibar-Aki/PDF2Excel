@@ -2,19 +2,21 @@
 
 - 作成日: 2026-03-16 03:20 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-17
+- 更新日: 2026-03-18
 
 ## これは何か
 
 このフォルダは、PDF2Excel `VER2` を他の人へ渡すための最小構成です。  
-生データ転記 PoC を前提に、実行に必要なものだけを残しています。
+生データ転記サンプルを前提に、実行に必要なものだけを残しています。
 
 ## VER2 の特徴
 
 - 生データ転記は、PDF から読めた値を、意味解釈や標準化を最小限にして Excel に近い形で出力する方式です。
 - `VER2` は secure 既定です。
 - 実行中の `runtime / staging` は `%LOCALAPPDATA%\PDF2Excel\runtime\runs` を使います。
+- 既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
 - 今回選んだ PDF は `input` フォルダへ複製しません。
+- 共有パス上からの `VER2 Secure` 実行は拒否します。ローカルへ展開して使ってください。
 - 起動導線は `ExecutionPolicy Bypass` を使わず、`RemoteSigned` 前提です。
 - 出力 Excel には `Review` シートが追加されます。
 
@@ -26,6 +28,8 @@
   - 変換処理の本体です。
 - `scripts/run_pdf2excel_menu.ps1`
   - 利用者向けメニューです。
+- `scripts/new_profile_scaffold.ps1`
+  - `VER2` のプロファイル雛形を作る保守者向けスクリプトです。
 - `scripts/pdf2excel.common.ps1`
   - 共通関数です。
 - `template/PDF2Excel_V2_Converter.xlsm`
@@ -41,7 +45,7 @@
 - `output`
   - 出力された Excel の保存先です。
 - `logs`
-  - 実行ログの保存先です。
+  - `VER1` や標準導線の実行ログ保存先です。`VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
 
 ## 使う前の条件
 
@@ -53,7 +57,7 @@
 ## いちばん簡単な使い方
 
 1. `run_pdf2excel.bat` をダブルクリックします。
-2. メニューで `1` または `2` を選びます。
+2. メニューで `1` または `2` を選びます。必要なら `6` でプロファイル雛形を作れます。
 3. PDF または PDF フォルダを選びます。
 4. 保存先を選びます。
 5. 実行前チェックを確認し、問題なければ続行します。
