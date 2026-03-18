@@ -1,8 +1,8 @@
-# PDF2Excel
+﻿# PDF2Excel
 
 - 作成日: 2026-03-12 23:14 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-18
+- 更新日: 2026-03-19
 
 Excel(M365) の Power Query を使って、複数のテキストPDFをまとめて Excel に変換するローカルツールです。  
 追加インストールなしで、`BAT + PowerShell + Excel` のみで動く構成にしています。
@@ -26,20 +26,20 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 
 ## はじめに
 
-最初に使うときは、用途に応じて次のどちらかを実行してください。  
+正式運用では [run_pdf2excel.bat](run_pdf2excel.bat) を使ってください。  
+この BAT は `VER2 Secure` の正式入口です。
 
-- [run_pdf2excel_v1.bat](run_pdf2excel_v1.bat)
-  - 既存の標準変換です。単一表を素直に Excel 化したいときに使います。
-- [run_pdf2excel_v2.bat](run_pdf2excel_v2.bat)
-  - 生データ転記です。PDF から読めた値を、意味解釈や標準化を最小限にして Excel に近い形で出力します。
-  - 複数ページで同じ列が続く帳票や、確認作業を前提にした転記に使います。
-  - `sameHeader` の厳格判定で多ページ結合を行い、曖昧な候補は `Errors` / `Review` に分離します。
-  - `VER2` は secure 既定です。runtime / staging は `%LOCALAPPDATA%\PDF2Excel\runtime` 配下を使い、`input` フォルダへ今回 PDF を同期しません。
-  - `VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
-  - `VER2 Secure` は共有パス上からの実行を拒否します。ローカルへ展開して使ってください。
-  - ダブルクリック起動では、必ず最初にメニューを表示します。
-- [run_pdf2excel.bat](run_pdf2excel.bat)
-  - 互換入口です。`VER1` を起動します。
+- 生データ転記は、PDF から読めた値を、意味解釈や標準化を最小限にして Excel に近い形で出力します。
+- 複数ページで同じ列が続く帳票や、確認作業を前提にした転記に向いています。
+- `sameHeader` の厳格判定で多ページ結合を行い、曖昧な候補は `Errors` / `Review` に分離します。
+- `VER2 Secure` は `%LOCALAPPDATA%\PDF2Excel\runtime` を runtime / staging に使い、`input` フォルダへ今回 PDF を同期しません。
+- `VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
+- `VER2 Secure` のログは、既定で詳細パスをマスクして記録します。
+- `VER2 Secure` は共有パス上からの実行を拒否します。ZIP は必ずローカルへ展開して使ってください。
+- 正式運用では、出力された `xlsx` だけを部署共有へ移動してください。スクリプトやテンプレートを共有フォルダ上で直接更新しないでください。
+- ダブルクリック起動では、必ず最初にメニューを表示します。
+
+`VER1` の BAT / PowerShell ラッパーは開発・検証用として repo に残していますが、正式運用の案内対象にはしません。
 
 画面に出る番号メニューから選ぶだけで変換できます。
 
@@ -57,16 +57,18 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 
 ## 構成
 
-- `run_pdf2excel_v1.bat` / `run_pdf2excel_v2.bat`
-  - 利用者向けの起動入口です。ASCII の起動ラッパーで、対話メニュー本体は PowerShell 側で表示します。
 - `run_pdf2excel.bat`
-  - 互換入口です。`VER1` を起動します。
+  - 正式運用の起動入口です。`VER2 Secure` を固定引数付きで起動します。
+- `run_pdf2excel_v2.bat`
+  - `VER2 Secure` を明示的に起動したい保守者向けの入口です。
 - `scripts/run_pdf2excel_menu.ps1`
-  - 日本語の共通対話メニューです。版別ラッパーから呼び出されます。
+  - 日本語の共通対話メニューです。既定では `VER2` を前提に動作します。
 - `scripts/new_profile_scaffold.ps1`
   - v1/v2 のプロファイル雛形を生成する保守者向けスクリプトです。
-- `scripts/run_pdf2excel_v1.ps1` / `scripts/run_pdf2excel_v2.ps1`
-  - 共通コア `run_pdf2excel.ps1` を版別設定付きで起動するラッパーです。
+- `scripts/run_pdf2excel_v2.ps1`
+  - 共通コア `run_pdf2excel.ps1` を `VER2 Secure` 既定で起動するラッパーです。
+- `scripts/run_pdf2excel_v1.ps1` / `scripts/run_pdf2excel_v1.bat`
+  - 開発・検証用の旧導線です。正式運用の案内対象外です。
 - `docs/`
   - 利用マニュアルとフォルダ構成ガイドを置いています。
 - `samples/v1/`
@@ -90,8 +92,9 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `output/`
   - 出力された `xlsx` を保存します。
 - `logs/`
-  - 主に `VER1` と標準導線の実行ログを保存します。30日超または200件超の古いログは自動整理されます。
+  - 開発・検証導線の実行ログを保存します。30日超または200件超の古いログは自動整理されます。
   - `VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
+  - `VER2 Secure` では `INFO` を既定にし、詳細パスは既定でマスクします。詳細ログは保守者が `-LogLevel DEBUG` を明示した場合だけ使ってください。
 - `output/runtime/`
   - 主に `VER1` と標準導線の実行中一時領域です。`runs/` 配下に実行単位の staging / runtime を作成し、通常は実行ごとに自動クリーンアップされます。
   - `VER2` secure 導線では `%LOCALAPPDATA%\PDF2Excel\runtime\runs` を使います。
@@ -121,39 +124,32 @@ PDF2Excel
 
 ## 使い方
 
-1. [run_pdf2excel_v1.bat](run_pdf2excel_v1.bat) または [run_pdf2excel_v2.bat](run_pdf2excel_v2.bat) を実行します。
+1. [run_pdf2excel.bat](run_pdf2excel.bat) をローカル展開先から実行します。
 2. メニューで `1` または `2` を選びます。
 3. PDF または PDF フォルダを選択します。
 4. 保存先を選びます。
 5. 実行前チェックの内容を確認して続行します。
    - `Y` を押した後は `PDF取り込みに時間がかかります。しばらくお待ちください....` が表示されます。
-6. 処理完了後、`Summary`、`Result`、`Errors` シートを確認します。
+6. 処理完了後、`Summary`、`Result`、`Review`、`Errors` シートを確認します。
    - 完了画面には出力先とログ先も表示されます。
+7. 必要なら、完成した `xlsx` だけを部署共有へ移動します。
 
 PowerShell から実行する場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -SelectInputFolder -PromptForOutputFile
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -SelectInputFolder -PromptForOutputFile
 ```
 
 ```powershell
-powershell -NoProfile -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result_v2.xlsx
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result_v2.xlsx
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -InputFiles "C:\PDF\a.pdf,C:\Other\b.pdf" -OutputFile C:\Work\result_v2.xlsx
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFiles "C:\PDF\a.pdf,C:\Other\b.pdf" -OutputFile C:\Work\result.xlsx
-```
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -ProfileName default -OutputFile C:\Work\result.xlsx
-```
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\profile10.json -OutputFile C:\Work\result.xlsx -NoConfirm
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\profile-v2.json -OutputFile C:\Work\result_v2.xlsx -NoConfirm
 ```
 
 ## テンプレートを空ブックから再作成する
@@ -173,7 +169,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.p
 ## 出力仕様
 
 - `Control` シート
-  - 実行時の入力フォルダ、出力先、ログファイル、最終実行状態を保持します。
+  - 実行時の件数、状態、使用プロファイルを保持します。
+  - `VER2 Secure` の最終 `xlsx` では、入力フォルダ、出力先、ログファイルは空欄で保存します。
   - あわせて、対象PDF数、取込データ行数、エラー件数、成功PDF数、失敗PDF数、処理時間、使用プロファイルを表示します。
 - `Summary` シート
   - PDFごとの取込件数と成功/失敗の内訳を表示します。
@@ -207,13 +204,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.p
 - 同名PDFを別フォルダから同時投入する運用は非対応です。ファイル名が衝突した場合はエラーで止めます。
 - `-KeepInput` は `input` フォルダの保管内容を残すためのオプションです。今回の変換対象は毎回専用 staging に切り出して処理するため、過去PDFが混ざることはありません。
 - `VER2` secure では `-KeepInput` は無効です。今回 PDF を `input` へ複製せず、ローカル runtime の staging だけで処理します。
-- `VER2` の配布用 ZIP と利用者向け BAT / PS 導線は `ExecutionPolicy Bypass` を使わず、`RemoteSigned` を前提に起動します。
+- 正式運用では `run_pdf2excel.bat` または `run_pdf2excel_v2.bat` を使い、ZIP はローカルへ展開して実行してください。
+- 利用者向け BAT / PS 導線は `RemoteSigned` を前提に起動します。
 - ツールは同時に 1 実行だけ許可します。別実行が動作中の場合は `RUN_LOCKED` として即時停止します。
 - BAT メニューと利用者向けの説明文は日本語化しています。
-- 日本語の月次勤怠管理表を試す場合は `config/profiles/v1/attendance_monthly_jp.json` を利用してください。
-- 日本語の売上日報を試す場合は `config/profiles/v1/sales_daily_jp.json` を利用してください。
-- 日本語の在庫一覧を試す場合は `config/profiles/v1/inventory_list_jp.json` を利用してください。
-- 日本語の問い合わせ管理表を試す場合は `config/profiles/v1/inquiry_weekly_jp.json` を利用してください。
 - 生データ転記サンプルを試す場合は `config/profiles/v2/construction_transfer_poc.json` を利用してください。
 - 日本語サンプル PDF を再生成したい場合は `scripts/build_sample_pdfs.ps1` を実行してください。
 
@@ -224,7 +218,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.p
 ユニットテストは [run_unit_tests.ps1](tests/run_unit_tests.ps1) で実行できます。
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_integration_tests.ps1
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\tests\run_integration_tests.ps1
 ```
 
 結果は次に出力されます。

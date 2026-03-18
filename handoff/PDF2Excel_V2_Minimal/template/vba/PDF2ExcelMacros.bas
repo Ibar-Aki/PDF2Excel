@@ -104,6 +104,7 @@ Public Sub ExportResultAsXlsx()
         ThisWorkbook.Worksheets(Array(CONTROL_SHEET, SUMMARY_SHEET, RESULT_SHEET, ERRORS_SHEET)).Copy
     End If
     Set outputWorkbook = ActiveWorkbook
+    outputWorkbook.Worksheets(CONTROL_SHEET).Range("B2:B4").Value = ""
 
     Application.DisplayAlerts = False
     outputWorkbook.SaveAs Filename:=outputPath, FileFormat:=xlOpenXMLWorkbook

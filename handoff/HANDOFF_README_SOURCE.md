@@ -2,12 +2,12 @@
 
 - 作成日: 2026-03-14 00:05 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-15
+- 更新日: 2026-03-19
 
 ## これは何か
 
-このフォルダは、PDF2Excel を他の人へ渡すための最小構成です。  
-開発用ファイル、テスト、サンプル、詳細レポートは含めず、実行に必要なものだけをまとめています。
+このフォルダは、PDF2Excel `VER1` を開発・検証用に再現したいときの最小構成です。  
+正式運用の配布対象は `VER2 Secure` です。このパッケージは保守者向けとして扱ってください。
 
 ## 同梱ファイル
 
@@ -15,11 +15,23 @@
   - もっとも簡単な起動方法です。
 - `scripts/run_pdf2excel.ps1`
   - 変換処理の本体です。
-- `template/PDF2Excel_Converter.xlsm`
+- `scripts/run_pdf2excel_menu.ps1`
+  - 共通メニューです。
+- `scripts/run_pdf2excel_menu_v1.ps1`
+  - `VER1` 用の起動ラッパーです。
+- `scripts/run_pdf2excel_v1.ps1`
+  - `VER1` 用の実行ラッパーです。
+- `scripts/new_profile_scaffold.ps1`
+  - `VER1` / `VER2` のプロファイル雛形を作る保守者向けスクリプトです。
+- `template/PDF2Excel_V1_Converter.xlsm`
   - 実行に使う Excel テンプレートです。
-- `config/profiles/default.json`
+- `template/vba/PDF2ExcelMacros.bas`
+  - 空の `xlsm` に取り込む基本マクロです。
+- `template/vba/PDF2ExcelTemplateBuilder.bas`
+  - 空の `xlsm` に取り込んでテンプレートを組み立てるブートストラップ VBA です。
+- `config/profiles/v1/default.json`
   - 既定の帳票プロファイルです。
-- `config/profiles/attendance_monthly_jp.json`
+- `config/profiles/v1/attendance_monthly_jp.json`
   - 日本語の月次勤怠管理表向けプロファイルです。
 - `input`
   - 一時的な PDF の配置先です。
@@ -38,7 +50,7 @@
 ## いちばん簡単な使い方
 
 1. `run_pdf2excel.bat` をダブルクリックします。
-2. メニューで `1` または `2` を選びます。
+2. メニューで `1` または `2` を選びます。必要なら `6` でプロファイル雛形を作れます。
 3. PDF または PDF フォルダを選びます。
 4. 保存先を選びます。
 5. 実行前チェックを確認し、問題なければ続行します。
@@ -75,8 +87,8 @@
 - 同じ名前の PDF を同時に処理しないでください。
 - 画像 PDF やスキャン PDF は対象外です。
 - レイアウトが大きく違う PDF を混ぜると `Errors` が増えます。
-- 既定では `config/profiles/default.json` を使います。
-- 日本語の勤怠管理表を扱う場合は `config/profiles/attendance_monthly_jp.json` も試してください。
+- 既定では `config/profiles/v1/default.json` を使います。
+- 日本語の勤怠管理表を扱う場合は `config/profiles/v1/attendance_monthly_jp.json` も試してください。
 
 ## 配布時のおすすめ
 

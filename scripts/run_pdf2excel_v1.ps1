@@ -8,5 +8,5 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $coreScript = Join-Path $PSScriptRoot 'run_pdf2excel.ps1'
-& powershell -NoProfile -ExecutionPolicy Bypass -File $coreScript -VersionMode v1 @ForwardArgs
+& powershell -NoProfile -ExecutionPolicy RemoteSigned -File $coreScript -VersionMode v1 @ForwardArgs
 exit $LASTEXITCODE

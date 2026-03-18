@@ -13,6 +13,16 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'pdf2excel.common.ps1')
 
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
+
+$TemplatePath = [System.IO.Path]::GetFullPath($TemplatePath)
+$VbaModulePath = [System.IO.Path]::GetFullPath($VbaModulePath)
+$VbaModuleShiftJisPath = [System.IO.Path]::GetFullPath($VbaModuleShiftJisPath)
+$TemplateBuilderModulePath = [System.IO.Path]::GetFullPath($TemplateBuilderModulePath)
+$TemplateBuilderModuleShiftJisPath = [System.IO.Path]::GetFullPath($TemplateBuilderModuleShiftJisPath)
+
 function Sync-VbaModuleEncodingMirror {
     param(
         [Parameter(Mandatory = $true)][string]$Utf8Path,

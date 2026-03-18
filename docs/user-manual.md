@@ -1,8 +1,8 @@
-# PDF2Excel ユーザーマニュアル
+﻿# PDF2Excel ユーザーマニュアル
 
 - 作成日: 2026-03-13 00:05 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-18
+- 更新日: 2026-03-19
 
 補助資料:
 
@@ -42,8 +42,9 @@
 
 ## 2. まずこれだけ見れば使える最短手順
 
-1. 標準変換なら [run_pdf2excel_v1.bat](../run_pdf2excel_v1.bat)、生データ転記なら [run_pdf2excel_v2.bat](../run_pdf2excel_v2.bat) をダブルクリックします。
-   - `VER2` はダブルクリックで必ず最初にメニューを表示します。
+1. [run_pdf2excel.bat](../run_pdf2excel.bat) をローカル展開先からダブルクリックします。
+   - 正式運用では `VER2 Secure` のみを使います。
+   - `run_pdf2excel.bat` はダブルクリックで必ず最初にメニューを表示します。
 2. 表示されたメニューで `1` を押します。
 3. 変換したい PDF を複数選びます。
 4. 出力する Excel ファイルの保存先を選びます。
@@ -67,8 +68,10 @@
 - `VER2` の横分割結合は、一意に組める候補だけを採用し、曖昧な候補は `Errors` / `Review` に分離します。
 - `VER2` は secure 既定です。runtime / staging は `%LOCALAPPDATA%\PDF2Excel\runtime\runs` を使い、`input` フォルダへ今回 PDF を同期しません。
 - `VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
-- `VER2 Secure` は共有パス上からの実行を拒否します。ローカルへ展開して使ってください。
-- `VER2` の配布用 ZIP と利用者向け起動導線は `ExecutionPolicy Bypass` を使わず、`RemoteSigned` を前提に起動します。
+- `VER2 Secure` のログは、既定で詳細パスをマスクして記録します。
+- `VER2 Secure` は共有パス上からの実行を拒否します。ZIP はローカルへ展開して使ってください。
+- 正式運用では、出力された `xlsx` だけを部署共有へ移動してください。スクリプトやテンプレートは共有フォルダ上で直接更新しないでください。
+- 利用者向け起動導線は `RemoteSigned` を前提に起動します。
 
 ## 2-2. テンプレートを空ブックから作る
 
@@ -76,13 +79,11 @@
 
 1. Excel で空のブックを開き、`xlsm` 形式で保存します。
 2. VBA エディターを開き、標準モジュールとして [../template/vba/PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas) と [../template/vba/PDF2ExcelTemplateBuilder.bas](../template/vba/PDF2ExcelTemplateBuilder.bas) を取り込みます。
-3. 必要な版に応じて次のマクロを実行します。
-   - `VER1`: `BuildPDF2ExcelV1TemplateInActiveWorkbook`
-   - `VER2`: `BuildPDF2ExcelV2TemplateInActiveWorkbook`
-4. `VER2` を選ぶと、`Control / Result / Errors / Summary / Review` が自動作成されます。
-5. `run_pdf2excel` で使う場合は、保存した `xlsm` を `template/PDF2Excel_V1_Converter.xlsm` または `template/PDF2Excel_V2_Converter.xlsm` に置き換えます。
+3. `BuildPDF2ExcelV2TemplateInActiveWorkbook` を実行します。
+4. `Control / Result / Errors / Summary / Review` が自動作成されます。
+5. `run_pdf2excel` で使う場合は、保存した `xlsm` を `template/PDF2Excel_V2_Converter.xlsm` に置き換えます。
 
-既定の互換入口 `BuildPDF2ExcelTemplateInActiveWorkbook` は `VER1` を組み立てます。
+`VER1` 系マクロは開発・検証用として残していますが、正式運用では使いません。
 
 ## 3. BAT メニューの意味
 
@@ -110,16 +111,16 @@
 
 ### [5] プロファイルフォルダを開く
 
-- `config\profiles` フォルダを開きます。
+- `config\profiles\v2` フォルダを開きます。
 - 帳票プロファイルを確認、複製、編集したいときに使います。
-- 日本語の月次勤怠管理表を試す場合は `attendance_monthly_jp.json` を確認してください。
-- 日本語の売上日報、在庫一覧、問い合わせ管理表も、それぞれ専用プロファイルを同梱しています。
+- 既定の `construction_transfer_poc.json` を起点に、帳票別プロファイルを増やしてください。
 
 ### [6] プロファイル雛形を作成
 
-- `VER1` / `VER2` の新しいプロファイル JSON を雛形から作ります。
+- 新しいプロファイル JSON を雛形から作ります。正式運用では `VER2` 雛形を使います。
 - 内部名、表示名、保存先を順に入力して使います。
 - 既存ファイルと同名の場合は上書きしません。上書きしたいときは保守者向けスクリプトへ `-Force` を付けます。
+- 正式運用で新規帳票を追加するときは、`VER2` の雛形から始めてください。
 
 ### [7] ログフォルダを開く
 
@@ -211,50 +212,44 @@
 ファイル選択や保存先選択をダイアログで行う場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -SelectInputFolder -PromptForOutputFile
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -SelectInputFolder -PromptForOutputFile
 ```
 
-`VER2` を直接起動する場合:
+`VER2 Secure` を直接起動する場合:
 
 ```powershell
-powershell -NoProfile -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result_v2.xlsx
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result_v2.xlsx
 ```
 
 入力フォルダと出力先を直接指定する場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result_v2.xlsx
 ```
 
 ファイルを個別指定する場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFiles "C:\PDF\a.pdf,C:\Other\b.pdf" -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -InputFiles "C:\PDF\a.pdf,C:\Other\b.pdf" -OutputFile C:\Work\result_v2.xlsx
 ```
 
 完成した Excel を自動で開きたい場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx -OpenOutput
-```
-
-プロファイルを名前で指定する場合:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -ProfileName default -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result_v2.xlsx -OpenOutput
 ```
 
 プロファイルを JSON ファイルで直接指定する場合:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel_v1.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\custom-profile.json -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\custom-profile.json -OutputFile C:\Work\result_v2.xlsx
 ```
 
 ## 6. 帳票プロファイルの使い方
 
 帳票プロファイルは、帳票ごとの抽出条件をまとめた JSON です。  
-既定では `config/profiles/default.json` を使います。  
-日本語サンプル向けには `attendance_monthly_jp.json`、`sales_daily_jp.json`、`inventory_list_jp.json`、`inquiry_weekly_jp.json` も用意しています。  
+正式運用では `config/profiles/v2/construction_transfer_poc.json` を起点に使います。  
+新しい帳票を追加するときは、`[6] プロファイル雛形を作成` から `VER2` 雛形を作って調整してください。  
 
 プロファイルで主に調整する項目:
 
@@ -335,9 +330,6 @@ PowerShell 実行時には、主に次の情報が表示されます。
 
 - 実行の基本情報が入ります。
 - 主な確認項目:
-  - 入力フォルダ
-  - 出力ファイル
-  - ログファイル
   - 最終実行日時
   - 状態
   - 対象PDF数
@@ -345,7 +337,7 @@ PowerShell 実行時には、主に次の情報が表示されます。
   - エラー件数
 
 初見の人は、まずこのシートを見ると全体像がわかります。
-`入力フォルダ` には、今回の変換に使った専用 staging フォルダが記録されます。
+`VER2 Secure` の最終 `xlsx` では、入力フォルダ、出力ファイル、ログファイルは空欄で保存されます。
 
 ### Summary シート
 
@@ -415,7 +407,7 @@ PowerShell 実行時には、主に次の情報が表示されます。
 
 1. `Errors` シートを見る
 2. `Control` シートの状態と件数を見る
-3. `logs` フォルダの最新ログを見る
+3. `%LOCALAPPDATA%\PDF2Excel\logs` の最新ログを見る
 4. 元 PDF を開いて文字選択できるかを見る
 5. レイアウトが他の PDF と大きく違わないかを見る
 
@@ -447,7 +439,7 @@ PowerShell 実行時には、主に次の情報が表示されます。
 ### パターンC: PowerShell から明示的に実行したい
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Work\pdf -OutputFile C:\Work\result.xlsx
 ```
 
 ## 11. よくある質問
@@ -480,16 +472,16 @@ OCR 前提の画像 PDF ではなく、文字を選択できるテキスト PDF 
 ## 12. ファイルとログの場所
 
 - 実行ログ:
-  - `logs`
+  - `%LOCALAPPDATA%\PDF2Excel\logs` (`VER2 Secure` の既定)
   - 古いログは 30 日超または 200 件超で自動整理されます。
 - 出力された Excel:
-- `output`
+  - `output`
 - プロファイル:
-- `config/profiles`
+  - `config/profiles/v2`
 - サンプル PDF:
-- `samples/pdf`
+  - `samples/v2/pdf`
 - テンプレート:
-- `template/PDF2Excel_Converter.xlsm`
+  - `template/PDF2Excel_V2_Converter.xlsm`
 - テスト結果レポート:
 - [test-report.md](../reports/test-report.md)
 

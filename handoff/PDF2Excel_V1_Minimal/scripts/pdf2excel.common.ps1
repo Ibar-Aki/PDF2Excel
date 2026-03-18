@@ -18,14 +18,216 @@ function Ensure-Directory {
     }
 }
 
+function Get-LocalAppDataPdf2ExcelPath {
+    param([string]$ChildPath = '')
+
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        return $null
+    }
+
+    $basePath = Join-Path $env:LOCALAPPDATA 'PDF2Excel'
+    if ([string]::IsNullOrWhiteSpace($ChildPath)) {
+        return $basePath
+    }
+
+    return Join-Path $basePath $ChildPath
+}
+
+function Get-PathLocationInfo {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $normalizedPath = try {
+        [System.IO.Path]::GetFullPath($Path)
+    } catch {
+        $Path
+    }
+
+    $rootPath = ''
+    try {
+        $rootPath = [System.IO.Path]::GetPathRoot($normalizedPath)
+    } catch {
+        $rootPath = ''
+    }
+
+    $isUnc = -not [string]::IsNullOrWhiteSpace($rootPath) -and $rootPath.StartsWith('\\')
+    $driveType = ''
+    $isNetworkDrive = $false
+
+    if ($isUnc) {
+        $driveType = [System.IO.DriveType]::Network.ToString()
+    } elseif (-not [string]::IsNullOrWhiteSpace($rootPath)) {
+        try {
+            $driveInfo = New-Object System.IO.DriveInfo($rootPath)
+            $driveType = $driveInfo.DriveType.ToString()
+            $isNetworkDrive = ($driveInfo.DriveType -eq [System.IO.DriveType]::Network)
+        } catch {
+            $driveType = ''
+        }
+    }
+
+    return [pscustomobject]@{
+        NormalizedPath  = $normalizedPath
+        RootPath        = $rootPath
+        IsUnc           = $isUnc
+        DriveType       = $driveType
+        IsNetworkDrive  = $isNetworkDrive
+        IsShared        = ($isUnc -or $isNetworkDrive)
+    }
+}
+
+function ConvertTo-MaskedPathText {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $Path
+    }
+
+    $normalizedPath = try {
+        [System.IO.Path]::GetFullPath($Path)
+    } catch {
+        $Path
+    }
+
+    $trimmedPath = $normalizedPath.TrimEnd('\')
+    $leaf = try {
+        Split-Path -Path $trimmedPath -Leaf
+    } catch {
+        $trimmedPath
+    }
+
+    $parentPath = try {
+        Split-Path -Path $trimmedPath -Parent
+    } catch {
+        ''
+    }
+
+    $parentLeaf = if ([string]::IsNullOrWhiteSpace($parentPath)) {
+        ''
+    } else {
+        try {
+            Split-Path -Path $parentPath -Leaf
+        } catch {
+            ''
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($leaf)) {
+        return '...\'
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($parentLeaf) -and $parentLeaf -ne $leaf) {
+        return ('...\{0}\{1}' -f $parentLeaf, $leaf)
+    }
+
+    return ('...\{0}' -f $leaf)
+}
+
+function Protect-MessagePaths {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [hashtable]$PathMap
+    )
+
+    $protectedMessage = $Message
+    if ($PathMap) {
+        $registeredPaths = @($PathMap.Keys | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object Length -Descending -Unique)
+        foreach ($registeredPath in $registeredPaths) {
+            $replacement = [string]$PathMap[$registeredPath]
+            if ([string]::IsNullOrWhiteSpace($replacement)) {
+                continue
+            }
+
+            $pattern = [System.Text.RegularExpressions.Regex]::Escape($registeredPath)
+            $protectedMessage = [System.Text.RegularExpressions.Regex]::Replace(
+                $protectedMessage,
+                $pattern,
+                [System.Text.RegularExpressions.MatchEvaluator]{ param($match) $replacement },
+                [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+            )
+        }
+    }
+
+    $genericPatterns = @(
+        '(?i)(?:[A-Z]:\\|\\\\)[^\r\n''""]+?\.[A-Za-z0-9]{1,8}',
+        '(?i)(?:[A-Z]:\\|\\\\)[^\r\n''""]+'
+    )
+
+    foreach ($pattern in $genericPatterns) {
+        $protectedMessage = [System.Text.RegularExpressions.Regex]::Replace(
+            $protectedMessage,
+            $pattern,
+            [System.Text.RegularExpressions.MatchEvaluator]{
+                param($match)
+                $rawValue = $match.Value
+                $trimmedValue = $rawValue.TrimEnd(',', ';', '.', ')')
+                $suffix = $rawValue.Substring($trimmedValue.Length)
+                return (ConvertTo-MaskedPathText -Path $trimmedValue) + $suffix
+            }
+        )
+    }
+
+    return $protectedMessage
+}
+
+function Get-WindowProcessId {
+    param([Parameter(Mandatory = $true)][int]$WindowHandle)
+
+    if ($WindowHandle -le 0) {
+        return $null
+    }
+
+    if (-not ('PDF2Excel.NativeMethods' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace PDF2Excel {
+    public static class NativeMethods {
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
+    }
+}
+'@
+    }
+
+    $processId = 0
+    [PDF2Excel.NativeMethods]::GetWindowThreadProcessId([IntPtr]$WindowHandle, [ref]$processId) | Out-Null
+    if ($processId -le 0) {
+        return $null
+    }
+
+    return $processId
+}
+
+function Remove-PathWithRetryCommon {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [int]$MaxAttempts = 5,
+        [int]$DelayMilliseconds = 500
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt += 1) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        } catch [System.IO.DirectoryNotFoundException] {
+            return
+        } catch [System.IO.FileNotFoundException] {
+            return
+        } catch {
+            if ($attempt -ge $MaxAttempts) {
+                throw
+            }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+}
+
 function Reset-Directory {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     if (Test-Path -LiteralPath $Path) {
-        try {
-            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
-        } catch [System.IO.DirectoryNotFoundException] {
-        }
+        Remove-PathWithRetryCommon -Path $Path
     }
 
     New-Item -ItemType Directory -Path $Path -Force | Out-Null
@@ -522,13 +724,13 @@ function Get-ControlSheetStaticCells {
     )
 
     $usageText = if ($VersionMode -eq 'v2') {
-        '1. run_pdf2excel_v2.bat を実行  2. 建設現場向け PDF を選択  3. 実行前チェックを確認  4. Result / Review / Summary / Errors を確認'
+        '1. run_pdf2excel_v2.bat を実行  2. 対象 PDF を選択  3. 実行前チェックを確認  4. Result / Review / Summary / Errors を確認'
     } else {
         '1. run_pdf2excel_v1.bat を実行  2. PDF を選択  3. 実行前チェックを確認  4. Result / Summary / Errors を確認'
     }
 
     $checkText = if ($VersionMode -eq 'v2') {
-        'Summary は全体件数、Result は raw 転記、Review は確認要行、Errors は失敗した PDF と理由です。'
+        'Summary は全体件数、Result は生データ転記結果、Review は確認要行、Errors は失敗した PDF と理由です。'
     } else {
         'Summary は件数の全体像、Result は変換成功データ、Errors は失敗した PDF と理由です。'
     }
@@ -622,6 +824,9 @@ function Resolve-RunErrorInfo {
     param([Parameter(Mandatory = $true)][string]$Message)
 
     $normalizedMessage = $Message.ToLowerInvariant()
+    if ($normalizedMessage.Contains('共有パス上')) {
+        return [pscustomobject]@{ ErrorCode = 'SHARED_EXECUTION_PATH'; ErrorCategory = 'セキュリティ制約' }
+    }
     if ($normalizedMessage.Contains('実行前チェックでキャンセル')) {
         return [pscustomobject]@{ ErrorCode = 'RUN_CANCELLED'; ErrorCategory = '実行キャンセル' }
     }

@@ -586,7 +586,7 @@ function Initialize-TestFixtures {
     if ($needsSampleRebuild) {
         [void](Wait-For-ExcelBaseline -BaselineIds $suiteBaselineExcel -TimeoutSeconds 15)
         for ($attempt = 0; $attempt -lt 2; $attempt += 1) {
-            $buildResult = Invoke-TestProcess -FilePath 'powershell' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $buildSamplesScript) -TimeoutSeconds 240
+            $buildResult = Invoke-TestProcess -FilePath 'powershell' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', $buildSamplesScript) -TimeoutSeconds 240
             if ($buildResult.ExitCode -eq 0) {
                 break
             }
@@ -717,8 +717,8 @@ function Invoke-NamedScenario {
         'テンプレート再生成' {
             $beforeV1 = if (Test-Path -LiteralPath $templatePathV1) { (Get-Item -LiteralPath $templatePathV1).LastWriteTimeUtc } else { $null }
             $beforeV2 = if (Test-Path -LiteralPath $templatePathV2) { (Get-Item -LiteralPath $templatePathV2).LastWriteTimeUtc } else { $null }
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript -TemplatePath $templatePathV1 -TemplateVariant v1
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript -TemplatePath $templatePathV2 -TemplateVariant v2
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $buildTemplateScript -TemplatePath $templatePathV1 -TemplateVariant v1
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $buildTemplateScript -TemplatePath $templatePathV2 -TemplateVariant v2
             Assert-True -Condition (Test-Path -LiteralPath $templatePathV1) -Message 'V1 テンプレートファイルが作成されていません。'
             Assert-True -Condition (Test-Path -LiteralPath $templatePathV2) -Message 'V2 テンプレートファイルが作成されていません。'
             $afterV1 = (Get-Item -LiteralPath $templatePathV1).LastWriteTimeUtc
@@ -729,7 +729,7 @@ function Invoke-NamedScenario {
         }
         'PowerShell 経由の正常変換' {
             $outputPath = Join-Path $resultsRoot 'powershell_success.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'PowerShell 実行の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             Assert-True -Condition ($snapshot.ResultColumns -eq 31) -Message "列数が想定と異なります: $($snapshot.ResultColumns)"
@@ -751,7 +751,7 @@ function Invoke-NamedScenario {
             Reset-Directory -Path $singlePdfDir
             Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join-Path $singlePdfDir 'valid_a.pdf') -Force
             $outputPath = Join-Path $resultsRoot 'single_pdf_success.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $singlePdfDir -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $singlePdfDir -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '単票 PDF の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "単票 PDF の Result 行数が想定と異なります: $($snapshot.ResultRows)"
@@ -761,7 +761,7 @@ function Invoke-NamedScenario {
         'InputFiles 指定の変換' {
             $outputPath = Join-Path $resultsRoot 'inputfiles_success.xlsx'
             $inputFilesArg = @((Join-Path $validPdfDir 'valid_a.pdf'), (Join-Path $validPdfDir 'valid_b.pdf')) -join ','
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFiles $inputFilesArg -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFiles $inputFilesArg -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'InputFiles の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "InputFiles 指定の Result 行数が想定と異なります: $($snapshot.ResultRows)"
@@ -770,7 +770,7 @@ function Invoke-NamedScenario {
         }
         '日本語ファイル名の変換' {
             $outputPath = Join-Path $resultsRoot 'japanese_success.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $japanesePdfDir -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $japanesePdfDir -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '日本語ファイル名テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
@@ -782,7 +782,7 @@ function Invoke-NamedScenario {
         '50件一括変換性能' {
             $outputPath = Join-Path $resultsRoot 'bulk50_success.xlsx'
             $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $bulkPdfDir -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $bulkPdfDir -OutputFile $outputPath -NoConfirm
             $stopwatch.Stop()
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '50件一括変換の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
@@ -801,7 +801,7 @@ function Invoke-NamedScenario {
             Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join-Path $singleKeepDir 'valid_a.pdf') -Force
 
             $outputPath = Join-Path $resultsRoot 'keepinput_isolation.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $singleKeepDir -OutputFile $outputPath -KeepInput -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $singleKeepDir -OutputFile $outputPath -KeepInput -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'KeepInput テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "KeepInput 実行で今回対象外の PDF が混ざっています: $($snapshot.ResultRows)"
@@ -837,7 +837,7 @@ function Invoke-NamedScenario {
 
                 $secondFailed = $false
                 try {
-                    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $validPdfDir -OutputFile $secondOutput -NoConfirm 2>&1 | Out-String
+                    $output = & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $validPdfDir -OutputFile $secondOutput -NoConfirm 2>&1 | Out-String
                 } catch {
                     $secondFailed = $true
                     $output = $_ | Out-String
@@ -870,15 +870,27 @@ function Invoke-NamedScenario {
         }
         'BAT 経由の変換' {
             $outputPath = Join-Path $resultsRoot 'bat_success.xlsx'
-            & cmd /c $batScriptV1 -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
+            $singlePdfDir = Join-Path $fixturesRoot 'construction_single_root_bat'
+            Reset-Directory -Path $singlePdfDir
+            $pocFileName = '2026年02月_作業員勤怠一覧_PoC.pdf'
+            Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir $pocFileName) -Destination (Join-Path $singlePdfDir $pocFileName) -Force
+            & cmd /c $batScript -InputFolder $singlePdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT 実行の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
-            Assert-True -Condition ($snapshot.ResultRows -eq 9) -Message "BAT 実行の Result 行数が想定と異なります: $($snapshot.ResultRows)"
-            return "Result 行数=$($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "BAT 実行の版表示が想定と異なります: $($snapshot.ControlVersion)"
+            Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "BAT 実行の Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ([string]::IsNullOrWhiteSpace($snapshot.ControlStagingInput)) -Message "VER2 Secure の Control 入力欄が空ではありません: $($snapshot.ControlStagingInput)"
+            Assert-True -Condition ([string]::IsNullOrWhiteSpace($snapshot.ControlOutputPath)) -Message "VER2 Secure の Control 出力欄が空ではありません: $($snapshot.ControlOutputPath)"
+            Assert-True -Condition ([string]::IsNullOrWhiteSpace($snapshot.ControlLogPath)) -Message "VER2 Secure の Control ログ欄が空ではありません: $($snapshot.ControlLogPath)"
+            return "VER2 Result 行数=$($snapshot.ResultRows)"
         }
         'BAT 直実行で待機しない' {
             $outputPath = Join-Path $resultsRoot 'bat_direct_no_pause.xlsx'
-            & cmd /c $batScriptV1 -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
+            $singlePdfDir = Join-Path $fixturesRoot 'construction_single_root_bat_direct'
+            Reset-Directory -Path $singlePdfDir
+            $pocFileName = '2026年02月_作業員勤怠一覧_PoC.pdf'
+            Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir $pocFileName) -Destination (Join-Path $singlePdfDir $pocFileName) -Force
+            & cmd /c $batScript -InputFolder $singlePdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT 直実行の出力ブックが作成されていません。'
             return 'BAT 直実行が待機せず終了'
         }
@@ -907,7 +919,7 @@ function Invoke-NamedScenario {
             Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_a.pdf') -Destination (Join-Path $projectRoot 'input\valid_a.pdf') -Force
             Copy-Item -LiteralPath (Join-Path $validPdfDir 'valid_b.pdf') -Destination (Join-Path $projectRoot 'input\valid_b.pdf') -Force
             $outputPath = Join-Path $resultsRoot 'input_self_reference.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder (Join-Path $projectRoot 'input') -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder (Join-Path $projectRoot 'input') -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'input 自己参照の出力ブックが作成されていません。'
             $remainingNames = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'input') -Filter '*.pdf' -File | Select-Object -ExpandProperty Name)
             Assert-True -Condition ($remainingNames -contains 'valid_a.pdf') -Message 'input 自己参照の実行で valid_a.pdf が消えました。'
@@ -924,7 +936,7 @@ function Invoke-NamedScenario {
             $output = ''
             $duplicateFailed = $false
             try {
-                $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFiles $duplicatePaths -OutputFile $outputPath -NoConfirm 2>&1 | Out-String
+                $output = & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFiles $duplicatePaths -OutputFile $outputPath -NoConfirm 2>&1 | Out-String
             } catch {
                 $duplicateFailed = $true
                 $output = $_ | Out-String
@@ -940,7 +952,7 @@ function Invoke-NamedScenario {
         }
         '壊れた PDF の処理' {
             $outputPath = Join-Path $resultsRoot 'mixed_broken.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $mixedPdfDir -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $mixedPdfDir -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '壊れた PDF 混在テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             Assert-True -Condition ($snapshot.ResultRows -eq 5) -Message "壊れた PDF 混在時の Result 行数が想定と異なります: $($snapshot.ResultRows)"
@@ -955,13 +967,13 @@ function Invoke-NamedScenario {
             if (Test-Path -LiteralPath $nestedDir) {
                 Remove-Item -LiteralPath $nestedDir -Recurse -Force
             }
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $validPdfDir -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '深い保存先の出力ブックが作成されていません。'
             return '深い保存先への出力に成功'
         }
         'プロファイル切替変換' {
             $outputPath = Join-Path $resultsRoot 'profile10_success.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $profileFixtureDir -ProfilePath $script:customProfilePath -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $profileFixtureDir -ProfilePath $script:customProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'プロファイル切替の出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             Assert-True -Condition ($snapshot.ResultColumns -eq 11) -Message "10 列プロファイルの列数が想定と異なります: $($snapshot.ResultColumns)"
@@ -971,7 +983,7 @@ function Invoke-NamedScenario {
         }
         '日本語勤怠管理表の変換' {
             $outputPath = Join-Path $resultsRoot 'attendance_monthly_jp.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $sampleAttendancePdfDir -ProfilePath $script:attendanceProfilePath -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $sampleAttendancePdfDir -ProfilePath $script:attendanceProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '日本語勤怠管理表テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
@@ -987,7 +999,7 @@ function Invoke-NamedScenario {
         }
         '日本語売上日報の変換' {
             $outputPath = Join-Path $resultsRoot 'sales_daily_jp.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $sampleSalesPdfDir -ProfilePath $script:salesProfilePath -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $sampleSalesPdfDir -ProfilePath $script:salesProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '日本語売上日報テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
@@ -1003,7 +1015,7 @@ function Invoke-NamedScenario {
         }
         '日本語在庫一覧の変換' {
             $outputPath = Join-Path $resultsRoot 'inventory_list_jp.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $sampleInventoryPdfDir -ProfilePath $script:inventoryProfilePath -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $sampleInventoryPdfDir -ProfilePath $script:inventoryProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '日本語在庫一覧テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
@@ -1019,7 +1031,7 @@ function Invoke-NamedScenario {
         }
         '日本語問い合わせ管理表の変換' {
             $outputPath = Join-Path $resultsRoot 'inquiry_weekly_jp.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript -InputFolder $sampleInquiryPdfDir -ProfilePath $script:inquiryProfilePath -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScript -InputFolder $sampleInquiryPdfDir -ProfilePath $script:inquiryProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '日本語問い合わせ管理表テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
@@ -1039,7 +1051,7 @@ function Invoke-NamedScenario {
             Reset-Directory -Path $singlePdfDir
             $pocFileName = '2026年02月_作業員勤怠一覧_PoC.pdf'
             Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir $pocFileName) -Destination (Join-Path $singlePdfDir $pocFileName) -Force
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $singlePdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -InputFolder $singlePdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '生データ転記PoCテストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $sourceNames = @($snapshot.Sample | Select-Object -Skip 1 | ForEach-Object { $_[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
@@ -1058,7 +1070,9 @@ function Invoke-NamedScenario {
             Assert-True -Condition ($sourceNames -contains $pocFileName) -Message 'PoC PDF 名が保持されていません。'
             Assert-True -Condition ($names -contains '佐藤 花子') -Message 'PoC 帳票の氏名が保持されていません。'
             Assert-True -Condition ((@($sites | Where-Object { $_ -like '*東京駅前再開発*' }).Count) -ge 1) -Message 'PoC 帳票の現場名が保持されていません。'
-            Assert-True -Condition ($snapshot.ControlStagingInput.StartsWith((Join-Path $env:LOCALAPPDATA 'PDF2Excel\runtime\runs'), [System.StringComparison]::OrdinalIgnoreCase)) -Message "V2 Secure の staging 入力先がローカル runtime ではありません: $($snapshot.ControlStagingInput)"
+            Assert-True -Condition ([string]::IsNullOrWhiteSpace($snapshot.ControlStagingInput)) -Message "V2 Secure の Control 入力欄が空ではありません: $($snapshot.ControlStagingInput)"
+            Assert-True -Condition ([string]::IsNullOrWhiteSpace($snapshot.ControlOutputPath)) -Message "V2 Secure の Control 出力欄が空ではありません: $($snapshot.ControlOutputPath)"
+            Assert-True -Condition ([string]::IsNullOrWhiteSpace($snapshot.ControlLogPath)) -Message "V2 Secure の Control ログ欄が空ではありません: $($snapshot.ControlLogPath)"
             Assert-True -Condition (-not ($storedInputNames -contains $pocFileName)) -Message 'V2 Secure なのに input フォルダへ PoC PDF が同期されています。'
             Assert-True -Condition ($snapshot.ResultHeaders -contains '正規化入場1') -Message 'Result に正規化入場1 列がありません。'
             Assert-True -Condition ($snapshot.ResultHeaders -contains '正規化退場1_分') -Message 'Result に正規化退場1_分 列がありません。'
@@ -1073,14 +1087,14 @@ function Invoke-NamedScenario {
             Assert-True -Condition ($normalizedSecondOutTypes -contains 'Double') -Message ('正規化退場2_分 が数値型ではありません: ' + ($normalizedSecondOutTypes -join ','))
             Assert-True -Condition ($normalizationStatuses -contains 'OK') -Message ('時刻正規化状態に OK がありません: ' + ($normalizationStatuses -join ','))
             Assert-True -Condition ($snapshot.ReviewRows -ge 6) -Message "Review シートに行監査結果が十分に出ていません: $($snapshot.ReviewRows)"
-            return "PoCPDF=$($sourceNames -join ','), staging=$($snapshot.ControlStagingInput), Review=$($snapshot.ReviewRows), 正規化退場2分=$($normalizedSecondOutMinutes -join ',')"
+            return "PoCPDF=$($sourceNames -join ','), ControlPathBlank=OK, Review=$($snapshot.ReviewRows), 正規化退場2分=$($normalizedSecondOutMinutes -join ',')"
         }
         'V2 2ページ同一列の変換' {
             $twoPageDir = Join-Path $fixturesRoot 'construction_2page_v2'
             Reset-Directory -Path $twoPageDir
             Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf') -Destination (Join-Path $twoPageDir '2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf') -Force
             $outputPath = Join-Path $resultsRoot 'construction_transfer_poc_2page.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $twoPageDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -InputFolder $twoPageDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '2ページ同一列テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $twoPageNames = @($snapshot.ResultRecords | ForEach-Object { $_.'項目3' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -1096,7 +1110,7 @@ function Invoke-NamedScenario {
             Reset-Directory -Path $sixPageDir
             Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf') -Destination (Join-Path $sixPageDir '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf') -Force
             $outputPath = Join-Path $resultsRoot 'construction_transfer_poc_6page.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $sixPageDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -InputFolder $sixPageDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '6ページ同一列テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $fileNames = @($snapshot.ResultRecords | ForEach-Object { $_.'元ファイル名' } | Select-Object -Unique)
@@ -1113,7 +1127,7 @@ function Invoke-NamedScenario {
             Reset-Directory -Path $headerMismatchDir
             Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf') -Destination (Join-Path $headerMismatchDir '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf') -Force
             $outputPath = Join-Path $resultsRoot 'construction_transfer_poc_header_mismatch.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $headerMismatchDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -InputFolder $headerMismatchDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'ヘッダー不一致負例テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $reviewReasons = @($snapshot.ReviewRecords | ForEach-Object { $_.'Reason' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -1130,7 +1144,7 @@ function Invoke-NamedScenario {
             Reset-Directory -Path $reviewNegativeDir
             Copy-Item -LiteralPath (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf') -Destination (Join-Path $reviewNegativeDir '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf') -Force
             $outputPath = Join-Path $resultsRoot 'construction_transfer_poc_review_negative.xlsx'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $runScriptV2 -InputFolder $reviewNegativeDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -InputFolder $reviewNegativeDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '時刻確認負例テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $reviewStatuses = @($snapshot.ReviewRecords | ForEach-Object { $_.'時刻正規化状態' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)

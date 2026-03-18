@@ -1,6 +1,6 @@
-param(
+﻿param(
     [ValidateSet('all', 'v1', 'v2')]
-    [string]$TargetVersion = 'all'
+    [string]$TargetVersion = 'v2'
 )
 
 Set-StrictMode -Version Latest
@@ -8,6 +8,10 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'pdf2excel.common.ps1')
+
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 function Sync-VbaModuleEncodingMirror {
     param(

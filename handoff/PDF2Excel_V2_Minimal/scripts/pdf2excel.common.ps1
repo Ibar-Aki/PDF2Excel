@@ -75,6 +75,130 @@ function Get-PathLocationInfo {
     }
 }
 
+function ConvertTo-MaskedPathText {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $Path
+    }
+
+    $normalizedPath = try {
+        [System.IO.Path]::GetFullPath($Path)
+    } catch {
+        $Path
+    }
+
+    $trimmedPath = $normalizedPath.TrimEnd('\')
+    $leaf = try {
+        Split-Path -Path $trimmedPath -Leaf
+    } catch {
+        $trimmedPath
+    }
+
+    $parentPath = try {
+        Split-Path -Path $trimmedPath -Parent
+    } catch {
+        ''
+    }
+
+    $parentLeaf = if ([string]::IsNullOrWhiteSpace($parentPath)) {
+        ''
+    } else {
+        try {
+            Split-Path -Path $parentPath -Leaf
+        } catch {
+            ''
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($leaf)) {
+        return '...\'
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($parentLeaf) -and $parentLeaf -ne $leaf) {
+        return ('...\{0}\{1}' -f $parentLeaf, $leaf)
+    }
+
+    return ('...\{0}' -f $leaf)
+}
+
+function Protect-MessagePaths {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [hashtable]$PathMap
+    )
+
+    $protectedMessage = $Message
+    if ($PathMap) {
+        $registeredPaths = @($PathMap.Keys | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object Length -Descending -Unique)
+        foreach ($registeredPath in $registeredPaths) {
+            $replacement = [string]$PathMap[$registeredPath]
+            if ([string]::IsNullOrWhiteSpace($replacement)) {
+                continue
+            }
+
+            $pattern = [System.Text.RegularExpressions.Regex]::Escape($registeredPath)
+            $protectedMessage = [System.Text.RegularExpressions.Regex]::Replace(
+                $protectedMessage,
+                $pattern,
+                [System.Text.RegularExpressions.MatchEvaluator]{ param($match) $replacement },
+                [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+            )
+        }
+    }
+
+    $genericPatterns = @(
+        '(?i)(?:[A-Z]:\\|\\\\)[^\r\n''""]+?\.[A-Za-z0-9]{1,8}',
+        '(?i)(?:[A-Z]:\\|\\\\)[^\r\n''""]+'
+    )
+
+    foreach ($pattern in $genericPatterns) {
+        $protectedMessage = [System.Text.RegularExpressions.Regex]::Replace(
+            $protectedMessage,
+            $pattern,
+            [System.Text.RegularExpressions.MatchEvaluator]{
+                param($match)
+                $rawValue = $match.Value
+                $trimmedValue = $rawValue.TrimEnd(',', ';', '.', ')')
+                $suffix = $rawValue.Substring($trimmedValue.Length)
+                return (ConvertTo-MaskedPathText -Path $trimmedValue) + $suffix
+            }
+        )
+    }
+
+    return $protectedMessage
+}
+
+function Get-WindowProcessId {
+    param([Parameter(Mandatory = $true)][int]$WindowHandle)
+
+    if ($WindowHandle -le 0) {
+        return $null
+    }
+
+    if (-not ('PDF2Excel.NativeMethods' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace PDF2Excel {
+    public static class NativeMethods {
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
+    }
+}
+'@
+    }
+
+    $processId = 0
+    [PDF2Excel.NativeMethods]::GetWindowThreadProcessId([IntPtr]$WindowHandle, [ref]$processId) | Out-Null
+    if ($processId -le 0) {
+        return $null
+    }
+
+    return $processId
+}
+
 function Remove-PathWithRetryCommon {
     param(
         [Parameter(Mandatory = $true)][string]$Path,

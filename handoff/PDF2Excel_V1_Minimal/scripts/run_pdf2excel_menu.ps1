@@ -2,8 +2,13 @@
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ForwardArgs,
     [ValidateSet('v1', 'v2')]
-    [string]$VersionMode = 'v1',
-    [string]$RunScriptPath
+    [string]$VersionMode = 'v2',
+    [string]$RunScriptPath,
+    [switch]$PassCoreDefaults,
+    [ValidateSet('Standard', 'Secure')]
+    [string]$DefaultSecurityMode,
+    [string]$DefaultProfileName,
+    [switch]$ForceMenu
 )
 
 Set-StrictMode -Version Latest
@@ -14,18 +19,84 @@ $ErrorActionPreference = 'Stop'
 $OutputEncoding = [Console]::OutputEncoding
 
 $scriptRoot = $PSScriptRoot
+. (Join-Path $scriptRoot 'pdf2excel.common.ps1')
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptRoot '..'))
 $runScript = if ([string]::IsNullOrWhiteSpace($RunScriptPath)) { Join-Path $scriptRoot ("run_pdf2excel_{0}.ps1" -f $VersionMode) } else { $RunScriptPath }
+$profileScaffoldScript = Join-Path $scriptRoot 'new_profile_scaffold.ps1'
 $manualPath = Join-Path $projectRoot 'docs\user-manual.md'
 $profileDir = Join-Path $projectRoot ("config\profiles\{0}" -f $VersionMode)
 $outputDir = Join-Path $projectRoot 'output'
-$logsDir = Join-Path $projectRoot 'logs'
-$systemLabel = if ($VersionMode -eq 'v2') { 'PDF2Excel VER2 - 建設現場 raw 転記' } else { 'PDF2Excel VER1 - 標準変換' }
+$secureRuntimeDir = Get-LocalAppDataPdf2ExcelPath -ChildPath 'runtime'
+$isSecureDefault = ($VersionMode -eq 'v2' -and $DefaultSecurityMode -eq 'Secure')
+$logsDir = if ($isSecureDefault) {
+    $secureLogsDir = Get-LocalAppDataPdf2ExcelPath -ChildPath 'logs'
+    if ([string]::IsNullOrWhiteSpace($secureLogsDir)) {
+        Join-Path $projectRoot 'logs'
+    } else {
+        $secureLogsDir
+    }
+} else {
+    Join-Path $projectRoot 'logs'
+}
+$script:executionLocation = Get-PathLocationInfo -Path $projectRoot
+$systemLabel = if ($VersionMode -eq 'v2') { 'PDF2Excel VER2 - 生データ転記' } else { 'PDF2Excel VER1 - 開発用標準変換' }
+$completionSheetMessage = if ($VersionMode -eq 'v2') { 'Result / Review / Errors / Summary を確認してください。' } else { 'Result / Errors / Summary を確認してください。' }
+
+function Assert-SecureLocalStorageAvailable {
+    if (-not $isSecureDefault) {
+        return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($secureRuntimeDir) -or [string]::IsNullOrWhiteSpace($secureLogsDir)) {
+        Write-Host ''
+        Write-Host 'VER2 Secure の正式運用では LOCALAPPDATA が必要です。'
+        Write-Host 'この端末ではローカル runtime / logs を確保できないため、実行を停止します。'
+        exit 2
+    }
+}
+
+function Assert-ExecutionLocationAllowed {
+    if (-not $script:executionLocation.IsShared) {
+        return
+    }
+
+    if ($isSecureDefault) {
+        Write-Host ''
+        Write-Host 'VER2 Secure の正式運用では共有パス上から実行できません。ローカルへ展開して再実行してください。'
+        Write-Host ("実行元: {0}" -f $script:executionLocation.NormalizedPath)
+        exit 2
+    }
+
+    Write-Host ''
+    Write-Host '警告: 共有パス上から実行しています。ローカル実行を推奨します。'
+    Write-Host ("実行元: {0}" -f $script:executionLocation.NormalizedPath)
+    Pause
+}
 
 function Invoke-RunScript {
     param([string[]]$Arguments)
 
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $runScript @Arguments
+    $shellArgs = @('-NoProfile', '-ExecutionPolicy', 'RemoteSigned')
+    $effectiveArguments = @()
+    if ($PassCoreDefaults) {
+        if (-not ($Arguments -contains '-VersionMode')) {
+            $effectiveArguments += @('-VersionMode', $VersionMode)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($DefaultSecurityMode) -and -not ($Arguments -contains '-SecurityMode')) {
+            $effectiveArguments += @('-SecurityMode', $DefaultSecurityMode)
+        }
+        if (
+            -not [string]::IsNullOrWhiteSpace($DefaultProfileName) -and
+            -not ($Arguments -contains '-ProfileName') -and
+            -not ($Arguments -contains '-ProfilePath')
+        ) {
+            $effectiveArguments += @('-ProfileName', $DefaultProfileName)
+        }
+    }
+
+    $effectiveArguments += $Arguments
+    $shellArgs += @('-File', $runScript)
+    & powershell @shellArgs @effectiveArguments
     return $LASTEXITCODE
 }
 
@@ -45,8 +116,17 @@ function Open-PathIfExists {
     Pause
 }
 
+function Invoke-ProfileScaffoldScript {
+    $shellArgs = @('-NoProfile', '-ExecutionPolicy', 'RemoteSigned')
+    $shellArgs += @('-File', $profileScaffoldScript, '-VersionMode', $VersionMode)
+    & powershell @shellArgs
+    return $LASTEXITCODE
+}
+
 $remainingArgs = @($ForwardArgs)
-if ($remainingArgs.Count -gt 0) {
+Assert-SecureLocalStorageAvailable
+Assert-ExecutionLocationAllowed
+if (-not $ForceMenu -and $remainingArgs.Count -gt 0) {
     exit (Invoke-RunScript -Arguments $remainingArgs)
 }
 
@@ -57,10 +137,12 @@ while ($true) {
     Write-Host '=========================================='
     Write-Host ''
     if ($VersionMode -eq 'v2') {
-        Write-Host ' 建設現場向けの raw 転記を行います。'
+        Write-Host ' 生データ転記を行います。'
+        Write-Host ' 曖昧な候補は Review へ分離し、確認しながら扱います。'
+        Write-Host ' 正式運用はローカル展開した VER2 Secure のみです。'
         Write-Host ' 保存先を指定しない場合は output フォルダに保存します。'
     } else {
-        Write-Host ' PDF の表をまとめて Excel に変換します。'
+        Write-Host ' 開発・検証用の標準変換です。'
         Write-Host ' 保存先を指定しない場合は output フォルダに保存します。'
     }
     Write-Host ''
@@ -69,8 +151,9 @@ while ($true) {
     Write-Host ' [3] 使い方マニュアルを開く'
     Write-Host ' [4] 出力フォルダを開く'
     Write-Host ' [5] プロファイルフォルダを開く'
-    Write-Host ' [6] ログフォルダを開く'
-    Write-Host ' [7] 終了'
+    Write-Host ' [6] プロファイル雛形を作成'
+    Write-Host ' [7] ログフォルダを開く'
+    Write-Host ' [8] 終了'
     Write-Host ''
 
     $selection = Read-Host '番号を選んでください'
@@ -85,6 +168,9 @@ while ($true) {
             } else {
                 Write-Host ''
                 Write-Host '変換が完了しました。'
+                Write-Host "出力先: $outputDir"
+                Write-Host "ログ先: $logsDir"
+                Write-Host $completionSheetMessage
                 Write-Host '必要に応じて output と logs の内容を確認してください。'
                 Pause
             }
@@ -99,6 +185,9 @@ while ($true) {
             } else {
                 Write-Host ''
                 Write-Host '変換が完了しました。'
+                Write-Host "出力先: $outputDir"
+                Write-Host "ログ先: $logsDir"
+                Write-Host $completionSheetMessage
                 Write-Host '必要に応じて output と logs の内容を確認してください。'
                 Pause
             }
@@ -113,14 +202,27 @@ while ($true) {
             Open-PathIfExists -Path $profileDir -MissingMessage "プロファイルフォルダが見つかりません: $profileDir"
         }
         '6' {
-            Open-PathIfExists -Path $logsDir -MissingMessage "ログフォルダが見つかりません: $logsDir"
+            $exitCode = Invoke-ProfileScaffoldScript
+            if ($exitCode -ne 0) {
+                Write-Host ''
+                Write-Host "プロファイル雛形の作成に失敗しました。終了コード: $exitCode"
+                Pause
+            } else {
+                Write-Host ''
+                Write-Host 'プロファイル雛形を作成しました。'
+                Write-Host "保存先: $profileDir"
+                Pause
+            }
         }
         '7' {
+            Open-PathIfExists -Path $logsDir -MissingMessage "ログフォルダが見つかりません: $logsDir"
+        }
+        '8' {
             exit 0
         }
         default {
             Write-Host ''
-            Write-Host '1 から 7 の番号を入力してください。'
+            Write-Host '1 から 8 の番号を入力してください。'
             Pause
         }
     }

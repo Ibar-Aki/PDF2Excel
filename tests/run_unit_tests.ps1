@@ -153,6 +153,19 @@ $testResults += Invoke-UnitTest -Name 'Get-LocalAppDataPdf2ExcelPath は PDF2Exc
     }
 }
 
+$testResults += Invoke-UnitTest -Name 'Protect-MessagePaths は登録済みパスをマスクできる' -Body {
+    $pathMap = [ordered]@{
+        'C:\Users\TestUser\AppData\Local\PDF2Excel\logs\run_001.log' = '...\logs\run_001.log'
+        'C:\Users\TestUser\AppData\Local\PDF2Excel\runtime\runs\run_001\staging\a.pdf' = '...\staging\a.pdf'
+    }
+    $message = '出力先=C:\Users\TestUser\AppData\Local\PDF2Excel\logs\run_001.log / staging=C:\Users\TestUser\AppData\Local\PDF2Excel\runtime\runs\run_001\staging\a.pdf'
+    $protected = Protect-MessagePaths -Message $message -PathMap $pathMap
+    Assert-True -Condition (-not $protected.Contains('C:\Users\TestUser\AppData\Local\PDF2Excel')) -Message "フルパスが残っています: $protected"
+    Assert-True -Condition ($protected.Contains('...\logs\run_001.log')) -Message "ログパスのマスクが見つかりません: $protected"
+    Assert-True -Condition ($protected.Contains('...\staging\a.pdf')) -Message "staging パスのマスクが見つかりません: $protected"
+    return $protected
+}
+
 $testResults += Invoke-UnitTest -Name 'Get-ProfileOutputColumnNames は接頭辞と元ファイル列を並べる' -Body {
     $profile = [pscustomobject]@{
         SourceFileColumnName = 'SourceFile'
@@ -257,9 +270,7 @@ $testResults += Invoke-UnitTest -Name 'テンプレート再作成手順は配�
     $readmeText = Get-Content -LiteralPath $readmePath -Raw -Encoding UTF8
     $manualText = Get-Content -LiteralPath $manualPath -Raw -Encoding UTF8
     $handoffReadmeText = Get-Content -LiteralPath $handoffReadmePath -Raw -Encoding UTF8
-    Assert-True -Condition ($readmeText.Contains('template/PDF2Excel_V1_Converter.xlsm')) -Message 'README に V1 テンプレート配置先がありません。'
     Assert-True -Condition ($readmeText.Contains('template/PDF2Excel_V2_Converter.xlsm')) -Message 'README に V2 テンプレート配置先がありません。'
-    Assert-True -Condition ($manualText.Contains('template/PDF2Excel_V1_Converter.xlsm')) -Message 'ユーザーマニュアルに V1 テンプレート配置先がありません。'
     Assert-True -Condition ($manualText.Contains('template/PDF2Excel_V2_Converter.xlsm')) -Message 'ユーザーマニュアルに V2 テンプレート配置先がありません。'
     Assert-True -Condition ($handoffReadmeText.Contains('template/PDF2Excel_V2_Converter.xlsm')) -Message 'handoff README に V2 テンプレート配置先がありません。'
     return 'README / user-manual / handoff README の配置先明記を確認'
@@ -268,10 +279,16 @@ $testResults += Invoke-UnitTest -Name 'テンプレート再作成手順は配�
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel.ps1 は Secure モードでローカル runtime を使う' -Body {
     $scriptText = Get-Content -LiteralPath $runScript -Raw -Encoding UTF8
     Assert-True -Condition ($scriptText.Contains("[ValidateSet('Standard', 'Secure')]")) -Message 'SecurityMode の ValidateSet が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains("[ValidateSet('INFO', 'DEBUG')]")) -Message 'LogLevel の ValidateSet が見つかりません。'
     Assert-True -Condition ($scriptText.Contains("Get-LocalAppDataPdf2ExcelPath -ChildPath 'runtime'")) -Message 'LOCALAPPDATA 配下の runtime ルート解決が見つかりません。'
     Assert-True -Condition ($scriptText.Contains("Get-LocalAppDataPdf2ExcelPath -ChildPath 'logs'")) -Message 'LOCALAPPDATA 配下の logs ルート解決が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('Protect-MessagePaths -Message $Message -PathMap $script:sensitivePathMap')) -Message 'Secure ログのパスマスクが見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('if ($Level -eq ''DEBUG'' -and $LogLevel -ne ''DEBUG'')')) -Message 'DEBUG ログ抑制の分岐が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('Stop-Process -Id $ProcessId -Force -ErrorAction Stop')) -Message 'Excel 強制終了の実装が見つかりません。'
+    Assert-True -Condition (-not $scriptText.Contains('& powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript')) -Message 'テンプレート生成で Bypass が残っています。'
     Assert-True -Condition ($scriptText.Contains("VER2 Secure では -KeepInput は無効")) -Message 'KeepInput 無効化メッセージが見つかりません。'
-    return 'SecurityMode / LOCALAPPDATA runtime/logs / KeepInput 無効化を確認'
+    Assert-True -Condition ($scriptText.Contains('Clear-ControlPathsForSecureOutput')) -Message 'Secure 出力向け Control パス空欄化が見つかりません。'
+    return 'SecurityMode / LogLevel / LOCALAPPDATA runtime/logs / path mask / force stop / KeepInput 無効化を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'V2 ラッパーは Secure モードを渡し RemoteSigned で起動する' -Body {
@@ -280,9 +297,7 @@ $testResults += Invoke-UnitTest -Name 'V2 ラッパーは Secure モードを渡
     $scriptText = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
     $menuText = Get-Content -LiteralPath $menuPath -Raw -Encoding UTF8
     Assert-True -Condition ($scriptText.Contains("'-SecurityMode', 'Secure'")) -Message 'V2 ラッパーが SecurityMode Secure を渡していません。'
-    Assert-True -Condition (-not $scriptText.Contains('ExecutionPolicy Bypass')) -Message 'V2 ラッパーに ExecutionPolicy Bypass が残っています。'
     Assert-True -Condition ($scriptText.Contains('ExecutionPolicy RemoteSigned')) -Message 'V2 ラッパーに ExecutionPolicy RemoteSigned がありません。'
-    Assert-True -Condition (-not $menuText.Contains('ExecutionPolicy Bypass')) -Message 'V2 メニューラッパーに ExecutionPolicy Bypass が残っています。'
     Assert-True -Condition ($menuText.Contains('ExecutionPolicy RemoteSigned')) -Message 'V2 メニューラッパーに ExecutionPolicy RemoteSigned がありません。'
     return 'SecurityMode Secure / RemoteSigned / Bypass 除去を確認'
 }
@@ -299,9 +314,33 @@ $testResults += Invoke-UnitTest -Name 'V2 BAT は ASCII かつ RemoteSigned で�
     }
     $batText = [System.Text.Encoding]::ASCII.GetString($batBytes)
     Assert-True -Condition (-not $hasNonAscii) -Message 'V2 BAT に非 ASCII 文字が含まれています。'
-    Assert-True -Condition (-not $batText.Contains('ExecutionPolicy Bypass')) -Message 'V2 BAT に ExecutionPolicy Bypass が残っています。'
     Assert-True -Condition ($batText.Contains('ExecutionPolicy RemoteSigned')) -Message 'V2 BAT に ExecutionPolicy RemoteSigned がありません。'
     return 'ASCII / RemoteSigned / Bypass 除去を確認'
+}
+
+$testResults += Invoke-UnitTest -Name '正式運用 BAT は V2 Secure を起動し RemoteSigned に統一されている' -Body {
+    $batText = Get-Content -LiteralPath (Join-Path $projectRoot 'run_pdf2excel.bat') -Raw -Encoding ASCII
+    $v1Bat = Get-Content -LiteralPath (Join-Path $projectRoot 'run_pdf2excel_v1.bat') -Raw -Encoding ASCII
+    $v1Script = Get-Content -LiteralPath (Join-Path $projectRoot 'scripts\run_pdf2excel_v1.ps1') -Raw -Encoding UTF8
+    $v1Menu = Get-Content -LiteralPath (Join-Path $projectRoot 'scripts\run_pdf2excel_menu_v1.ps1') -Raw -Encoding UTF8
+    Assert-True -Condition ($batText.Contains('ExecutionPolicy RemoteSigned')) -Message '正式運用 BAT に RemoteSigned がありません。'
+    Assert-True -Condition ($batText.Contains('-VersionMode v2')) -Message '正式運用 BAT が V2 を起動していません。'
+    Assert-True -Condition ($batText.Contains('-DefaultSecurityMode Secure')) -Message '正式運用 BAT が Secure を既定化していません。'
+    Assert-True -Condition ($batText.Contains('-DefaultProfileName construction_transfer_poc')) -Message '正式運用 BAT の既定プロファイルが見つかりません。'
+    foreach ($text in @($v1Bat, $v1Script, $v1Menu)) {
+        Assert-True -Condition ($text.Contains('ExecutionPolicy RemoteSigned')) -Message 'V1 導線に RemoteSigned がありません。'
+        Assert-True -Condition (-not $text.Contains('ExecutionPolicy Bypass')) -Message 'V1 導線に Bypass が残っています。'
+    }
+    return 'run_pdf2excel.bat は V2 Secure、開発導線も RemoteSigned を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'テストとビルド導線に Bypass が残っていない' -Body {
+    $integrationText = Get-Content -LiteralPath (Join-Path $projectRoot 'tests\run_integration_tests.ps1') -Raw -Encoding UTF8
+    $scriptText = Get-Content -LiteralPath $runScript -Raw -Encoding UTF8
+    Assert-True -Condition (-not $integrationText.Contains('-ExecutionPolicy Bypass')) -Message 'run_integration_tests.ps1 に Bypass が残っています。'
+    Assert-True -Condition (-not $scriptText.Contains('-ExecutionPolicy Bypass')) -Message 'run_pdf2excel.ps1 に Bypass が残っています。'
+    Assert-True -Condition ($integrationText.Contains('ExecutionPolicy RemoteSigned')) -Message 'run_integration_tests.ps1 に RemoteSigned が見つかりません。'
+    return 'tests / build 呼び出しの Bypass 除去を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'V2 BAT とメニューは ForceMenu 導線を持つ' -Body {
@@ -321,12 +360,15 @@ $testResults += Invoke-UnitTest -Name 'V2 BAT とメニューは ForceMenu 導�
 $testResults += Invoke-UnitTest -Name '共通メニューは共有パス制約とプロファイル雛形導線を持つ' -Body {
     $menuPath = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
     $menuText = Get-Content -LiteralPath $menuPath -Raw -Encoding UTF8
+    Assert-True -Condition ($menuText.Contains('[string]$VersionMode = ''v2''')) -Message '共通メニューの既定 VersionMode が v2 ではありません。'
     Assert-True -Condition ($menuText.Contains('Assert-ExecutionLocationAllowed')) -Message '共有パス制約の呼び出しが見つかりません。'
-    Assert-True -Condition ($menuText.Contains('Secure モードでは共有パス上から実行できません')) -Message '共有パス拒否メッセージが見つかりません。'
+    Assert-True -Condition ($menuText.Contains('Assert-SecureLocalStorageAvailable')) -Message 'LOCALAPPDATA 必須チェックが見つかりません。'
+    Assert-True -Condition ($menuText.Contains('VER2 Secure の正式運用では共有パス上から実行できません')) -Message '共有パス拒否メッセージが見つかりません。'
     Assert-True -Condition ($menuText.Contains('Invoke-ProfileScaffoldScript')) -Message 'プロファイル雛形生成の呼び出しが見つかりません。'
     Assert-True -Condition ($menuText.Contains('[6] プロファイル雛形を作成')) -Message 'メニュー項目 6 が見つかりません。'
     Assert-True -Condition ($menuText.Contains('[8] 終了')) -Message '終了メニュー番号の更新が見つかりません。'
-    return '共有パス制約 / プロファイル雛形 / メニュー番号を確認'
+    Assert-True -Condition (-not $menuText.Contains('ExecutionPolicy'', ''Bypass')) -Message '共通メニューに Bypass が残っています。'
+    return '共有パス制約 / LOCALAPPDATA 必須 / プロファイル雛形 / メニュー番号を確認'
 }
 
 $testResults += Invoke-UnitTest -Name '共通メニューは完了メッセージを版別に分ける' -Body {
@@ -361,9 +403,9 @@ $testResults += Invoke-UnitTest -Name 'new_profile_scaffold は v1/v2 雛形を�
         }
     }
 
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $scaffoldScript -VersionMode v1 -ProfileName sample_v1 -DisplayName 'テストV1' -OutputPath $v1Path
+    & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $scaffoldScript -VersionMode v1 -ProfileName sample_v1 -DisplayName 'テストV1' -OutputPath $v1Path
     Assert-True -Condition ($LASTEXITCODE -eq 0) -Message "v1 雛形生成が失敗しました: $LASTEXITCODE"
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $scaffoldScript -VersionMode v2 -ProfileName sample_v2 -DisplayName 'テストV2' -OutputPath $v2Path
+    & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $scaffoldScript -VersionMode v2 -ProfileName sample_v2 -DisplayName 'テストV2' -OutputPath $v2Path
     Assert-True -Condition ($LASTEXITCODE -eq 0) -Message "v2 雛形生成が失敗しました: $LASTEXITCODE"
 
     $v1 = Get-Content -LiteralPath $v1Path -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -380,8 +422,39 @@ $testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 限定再生
     $scriptPath = Join-Path $projectRoot 'scripts\build_handoff_package.ps1'
     $scriptText = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
     Assert-True -Condition ($scriptText.Contains("[ValidateSet('all', 'v1', 'v2')]")) -Message 'TargetVersion の ValidateSet が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('[string]$TargetVersion = ''v2''')) -Message 'TargetVersion の既定値が v2 ではありません。'
     Assert-True -Condition ($scriptText.Contains('$TargetVersion -ne ''all''')) -Message 'TargetVersion のフィルタ分岐が見つかりません。'
     return 'TargetVersion フィルタを確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'run.lock は匿名化され、Secure cleanup 失敗時の警告を持つ' -Body {
+    $scriptText = Get-Content -LiteralPath $runScript -Raw -Encoding UTF8
+    Assert-True -Condition (-not $scriptText.Contains('machineName')) -Message 'run.lock に machineName が残っています。'
+    Assert-True -Condition (-not $scriptText.Contains('userName')) -Message 'run.lock に userName が残っています。'
+    Assert-True -Condition ($scriptText.Contains('端末再起動または管理者確認が必要')) -Message 'cleanup 失敗時の警告文が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('throw $script:cleanupFailureMessage')) -Message 'cleanup 失敗時の非ゼロ終了分岐が見つかりません。'
+    return 'run.lock 匿名化 / cleanup 警告強化を確認'
+}
+
+$testResults += Invoke-UnitTest -Name '日本語コンソール出力スクリプトは UTF-8 初期化と保存形式を持つ' -Body {
+    $scriptPaths = @(
+        (Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'),
+        (Join-Path $projectRoot 'scripts\build_handoff_package.ps1'),
+        (Join-Path $projectRoot 'scripts\build_excel_template.ps1'),
+        (Join-Path $projectRoot 'scripts\new_profile_scaffold.ps1')
+    )
+
+    foreach ($scriptPath in $scriptPaths) {
+        $scriptText = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
+        Assert-True -Condition ($scriptText.Contains('[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)')) -Message "$scriptPath に InputEncoding 初期化がありません。"
+        Assert-True -Condition ($scriptText.Contains('[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)')) -Message "$scriptPath に OutputEncoding 初期化がありません。"
+        Assert-True -Condition ($scriptText.Contains('$OutputEncoding = [Console]::OutputEncoding')) -Message "$scriptPath に OutputEncoding 反映がありません。"
+    }
+
+    $buildHandoffBytes = [System.IO.File]::ReadAllBytes((Join-Path $projectRoot 'scripts\build_handoff_package.ps1'))
+    Assert-True -Condition ($buildHandoffBytes.Length -ge 3) -Message 'build_handoff_package.ps1 が空です。'
+    Assert-True -Condition ($buildHandoffBytes[0] -eq 0xEF -and $buildHandoffBytes[1] -eq 0xBB -and $buildHandoffBytes[2] -eq 0xBF) -Message 'build_handoff_package.ps1 が UTF-8 BOM ではありません。'
+    return 'run/build/scaffold scripts の UTF-8 初期化と build_handoff_package.ps1 の BOM を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel.ps1 は待機メッセージを表示する' -Body {

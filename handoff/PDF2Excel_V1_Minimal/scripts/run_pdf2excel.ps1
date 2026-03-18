@@ -6,6 +6,10 @@
     [string]$ProfilePath,
     [ValidateSet('v1', 'v2')]
     [string]$VersionMode = 'v1',
+    [ValidateSet('Standard', 'Secure')]
+    [string]$SecurityMode = 'Standard',
+    [ValidateSet('INFO', 'DEBUG')]
+    [string]$LogLevel = 'INFO',
     [switch]$KeepInput,
     [switch]$RebuildTemplate,
     [switch]$OpenOutput,
@@ -30,9 +34,23 @@ $configDir = Join-Path $baseDir 'config'
 $profilesDir = Join-Path $configDir "profiles\$VersionMode"
 $inputDir = Join-Path $baseDir 'input'
 $outputDir = Join-Path $baseDir 'output'
-$runtimeRootDir = Join-Path $outputDir 'runtime'
+$script:isSecureMode = ($VersionMode -eq 'v2' -and $SecurityMode -eq 'Secure')
+$secureRuntimeRootDir = Get-LocalAppDataPdf2ExcelPath -ChildPath 'runtime'
+$secureLogsDir = Get-LocalAppDataPdf2ExcelPath -ChildPath 'logs'
+$script:runtimeUsesProjectFallback = ($script:isSecureMode -and [string]::IsNullOrWhiteSpace($secureRuntimeRootDir))
+$script:logsUseProjectFallback = ($script:isSecureMode -and [string]::IsNullOrWhiteSpace($secureLogsDir))
+$runtimeRootDir = if ($script:isSecureMode -and -not $script:runtimeUsesProjectFallback) {
+    $secureRuntimeRootDir
+} else {
+    Join-Path $outputDir 'runtime'
+}
 $runtimeRunsDir = Join-Path $runtimeRootDir 'runs'
-$logsDir = Join-Path $baseDir 'logs'
+$logsDir = if ($script:isSecureMode -and -not $script:logsUseProjectFallback) {
+    $secureLogsDir
+} else {
+    Join-Path $baseDir 'logs'
+}
+$script:executionLocation = Get-PathLocationInfo -Path $baseDir
 $script:versionDisplayName = Get-VersionDisplayName -VersionMode $VersionMode
 $templatePath = Join-Path $templateDir $(if ($VersionMode -eq 'v2') { 'PDF2Excel_V2_Converter.xlsm' } else { 'PDF2Excel_V1_Converter.xlsm' })
 $buildTemplateScript = Join-Path $scriptDir 'build_excel_template.ps1'
@@ -45,6 +63,8 @@ $script:runRuntimeDir = Join-Path $script:runWorkspaceDir 'runtime'
 $script:lockFilePath = Join-Path $runtimeRootDir 'run.lock'
 $script:runMutex = $null
 $script:logPath = Join-Path $logsDir "run_$timestamp.log"
+$script:sensitivePathMap = [ordered]@{}
+$script:cleanupFailureMessage = $null
 
 # ============================================================
 # Section: User-Facing Console Output
@@ -55,22 +75,23 @@ function Show-Usage {
         "PDF2Excel $script:versionDisplayName 使い方",
         '',
         '1. かんたん操作:',
-        '   run_pdf2excel.bat をダブルクリックします。',
+        '   正式運用では run_pdf2excel.bat をダブルクリックします。',
         '',
         '2. PowerShell から直接実行:',
         '',
-        '   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1',
-        '   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Path\To\PdfFolder',
-        '   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Path\To\PdfFolder -OutputFile C:\Path\To\result.xlsx',
-        '   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_pdf2excel.ps1 -SelectInputFolder -PromptForOutputFile',
+        '   powershell -NoProfile -File .\scripts\run_pdf2excel.ps1',
+        '   powershell -NoProfile -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Path\To\PdfFolder',
+        '   powershell -NoProfile -File .\scripts\run_pdf2excel.ps1 -InputFolder C:\Path\To\PdfFolder -OutputFile C:\Path\To\result.xlsx',
+        '   powershell -NoProfile -File .\scripts\run_pdf2excel.ps1 -SelectInputFolder -PromptForOutputFile',
         '',
         'オプション',
         '  -InputFolder         PDF が入っているフォルダを指定します。',
         '  -InputFiles          変換対象の PDF ファイルを個別指定します。',
         '  -OutputFile          出力する xlsx の保存先を指定します。',
-        '  -ProfileName         使用する帳票プロファイル名を指定します。既定値は default です。',
+        '  -ProfileName         使用する帳票プロファイル名を指定します。ラッパー経由では版ごとの既定値が使われます。',
         '  -ProfilePath         使用する帳票プロファイル JSON のフルパスを指定します。',
-        '  -KeepInput           input 内の過去PDFを保持します。実際の変換は今回分だけ別 staging で実行します。',
+        '  -LogLevel           ログの詳細度を INFO または DEBUG で指定します。既定値は INFO です。',
+        '  -KeepInput           input 内の過去PDFを保持します。実際の変換は今回分だけ別 staging で実行します。VER2 Secure では無効です。',
         '  -RebuildTemplate     xlsm テンプレートを再生成します。',
         '  -OpenOutput          完成した xlsx を自動で開きます。',
         '  -OpenOutputFolder    完成後に保存先フォルダを開きます。',
@@ -89,12 +110,80 @@ if ($Help) {
 function Write-Log {
     param(
         [Parameter(Mandatory = $true)][string]$Message,
-        [ValidateSet('INFO', 'WARN', 'ERROR')][string]$Level = 'INFO'
+        [ValidateSet('DEBUG', 'INFO', 'WARN', 'ERROR')][string]$Level = 'INFO'
     )
 
-    $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
+    if ($Level -eq 'DEBUG' -and $LogLevel -ne 'DEBUG') {
+        return
+    }
+
+    $effectiveMessage = if ($script:isSecureMode -and $LogLevel -ne 'DEBUG') {
+        Protect-MessagePaths -Message $Message -PathMap $script:sensitivePathMap
+    } else {
+        $Message
+    }
+
+    $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $effectiveMessage
     Add-Content -LiteralPath $script:logPath -Value $line -Encoding UTF8
     Write-Host $line
+}
+
+function Register-SensitivePaths {
+    param([string[]]$Paths)
+
+    foreach ($path in @($Paths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $normalizedPath = try {
+            [System.IO.Path]::GetFullPath($path)
+        } catch {
+            $path
+        }
+
+        if (-not $script:sensitivePathMap.Contains($normalizedPath)) {
+            $script:sensitivePathMap[$normalizedPath] = ConvertTo-MaskedPathText -Path $normalizedPath
+        }
+    }
+}
+
+function Get-ExcelProcessId {
+    param($ExcelApplication)
+
+    if ($null -eq $ExcelApplication) {
+        return $null
+    }
+
+    try {
+        $windowHandle = [int]$ExcelApplication.Hwnd
+    } catch {
+        return $null
+    }
+
+    return Get-WindowProcessId -WindowHandle $windowHandle
+}
+
+function Stop-ExcelProcessForCleanup {
+    param(
+        [Nullable[int]]$ProcessId,
+        [string]$Reason = 'Secure クリーンアップのため'
+    )
+
+    if ($null -eq $ProcessId -or $ProcessId -le 0) {
+        return $false
+    }
+
+    $excelProcess = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if ($null -eq $excelProcess -or $excelProcess.ProcessName -ne 'EXCEL') {
+        return $false
+    }
+
+    try {
+        Stop-Process -Id $ProcessId -Force -ErrorAction Stop
+        Write-Log ("Excel プロセスを強制終了しました (PID={0}): {1}" -f $ProcessId, $Reason) 'WARN'
+        Start-Sleep -Milliseconds 500
+        return $true
+    } catch {
+        Write-Log ("Excel プロセスの強制終了に失敗しました (PID={0}): {1}" -f $ProcessId, $_.Exception.Message) 'WARN'
+        return $false
+    }
 }
 
 function Write-Banner {
@@ -133,6 +222,16 @@ function Show-RunSummary {
     Write-Host ('  出力ファイル     : {0}' -f $OutputPath)
     Write-Host ('  ログファイル     : {0}' -f $script:logPath)
     Write-Host ''
+    Write-Host $(if ($VersionMode -eq 'v2') { '変換が完了しました。Result / Review / Errors / Summary を確認してください。' } else { '変換が完了しました。Result / Errors / Summary を確認してください。' }) -ForegroundColor Green
+    Write-Host ''
+}
+
+function Show-ProcessingNotice {
+    $message = 'PDF取り込みに時間がかかります。しばらくお待ちください....'
+    Write-Host ''
+    Write-Host $message -ForegroundColor Yellow
+    Write-Host ''
+    Write-Log $message
 }
 
 function Ensure-UiAssembliesLoaded {
@@ -191,6 +290,28 @@ function Ensure-Workspace {
     )) {
         Ensure-Directory -Path $path
     }
+}
+
+function Write-EnvironmentWarnings {
+    if ($script:isSecureMode -and $script:runtimeUsesProjectFallback) {
+        throw 'VER2 Secure の正式運用では LOCALAPPDATA が必要です。runtime をローカルへ作成できないため停止します。'
+    }
+
+    if ($script:isSecureMode -and $script:logsUseProjectFallback) {
+        throw 'VER2 Secure の正式運用では LOCALAPPDATA が必要です。ログ保存先をローカルへ作成できないため停止します。'
+    }
+}
+
+function Assert-ExecutionLocationAllowed {
+    if (-not $script:executionLocation.IsShared) {
+        return
+    }
+
+    if ($script:isSecureMode) {
+        throw 'VER2 Secure の正式運用では共有パス上から実行できません。ローカルへ展開して再実行してください。'
+    }
+
+    Write-Log ("共有パス上から実行しています。ローカル実行を推奨します: {0}" -f $script:executionLocation.NormalizedPath) 'WARN'
 }
 
 function Rotate-LogFiles {
@@ -261,7 +382,7 @@ function Acquire-RunLock {
         if (Test-Path -LiteralPath $script:lockFilePath) {
             try {
                 $lockInfo = Get-Content -LiteralPath $script:lockFilePath -Raw -Encoding UTF8 | ConvertFrom-Json
-                $lockSummary = " 実行中情報: 開始=$($lockInfo.startedAt), PID=$($lockInfo.pid), User=$($lockInfo.userName)"
+                $lockSummary = " 実行中情報: 開始=$($lockInfo.startedAt), PID=$($lockInfo.pid)"
             } catch {
                 $lockSummary = ' 実行中情報: run.lock は存在しますが内容を読めませんでした。'
             }
@@ -274,8 +395,6 @@ function Acquire-RunLock {
         runInstanceId = $script:runInstanceId
         pid           = $PID
         startedAt     = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-        machineName   = $env:COMPUTERNAME
-        userName      = $env:USERNAME
     } | ConvertTo-Json
 
     Set-Content -LiteralPath $script:lockFilePath -Value $lockPayload -Encoding UTF8
@@ -647,10 +766,7 @@ function Ensure-Template {
 
     if ($ForceRebuild -or -not (Test-Path -LiteralPath $templatePath)) {
         Write-Log "Excel テンプレートを生成しています: $templatePath"
-        & powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript -TemplatePath $templatePath -TemplateVariant $VersionMode
-        if ($LASTEXITCODE -ne 0) {
-            throw "テンプレート生成スクリプトが失敗しました。終了コード: $LASTEXITCODE"
-        }
+        & $buildTemplateScript -TemplatePath $templatePath -TemplateVariant $VersionMode
     }
 
     if (-not (Test-Path -LiteralPath $templatePath)) {
@@ -662,6 +778,7 @@ function Copy-TemplateToRuntime {
     Ensure-Directory -Path $script:runRuntimeDir
     $runtimePath = Join-Path $script:runRuntimeDir "PDF2Excel_runtime_$timestamp.xlsm"
     Copy-Item -LiteralPath $templatePath -Destination $runtimePath -Force
+    Register-SensitivePaths -Paths @($runtimePath)
     return $runtimePath
 }
 
@@ -2097,6 +2214,20 @@ function Set-ControlValues {
     $Worksheet.Range('B15').Value2 = Get-VersionDisplayName -VersionMode $VersionMode
 }
 
+function Clear-ControlPathsForSecureOutput {
+    param(
+        [Parameter(Mandatory = $true)]$Worksheet,
+        [ValidateSet('v1', 'v2')]
+        [string]$VersionMode = 'v1'
+    )
+
+    if ($VersionMode -ne 'v2' -or -not $script:isSecureMode) {
+        return
+    }
+
+    $Worksheet.Range('B2:B4').Value2 = ''
+}
+
 function Set-ControlMetrics {
     param(
         [Parameter(Mandatory = $true)]$Worksheet,
@@ -2259,6 +2390,7 @@ function Export-WorkbookDirectly {
         Remove-Item -LiteralPath $OutputPath -Force
     }
 
+    Clear-ControlPathsForSecureOutput -Worksheet $Workbook.Worksheets.Item('Control') -VersionMode $VersionMode
     $Workbook.SaveAs($OutputPath, 51)
 }
 
@@ -2333,6 +2465,7 @@ function Resolve-ExecutionPlan {
     Write-Log ("対象 PDF 数: {0}" -f $sourceFiles.Count)
 
     $profile = Get-ProfileConfiguration -RequestedProfileName $ProfileName -RequestedProfilePath $ProfilePath
+    Register-SensitivePaths -Paths @($profile.ProfilePath)
     Write-Log ("使用プロファイル: {0} ({1})" -f $profile.DisplayName, $profile.ProfilePath)
 
     $defaultOutputPath = Join-Path $outputDir "PDF2Excel_$timestamp.xlsx"
@@ -2347,6 +2480,7 @@ function Resolve-ExecutionPlan {
 
     $outputParent = Split-Path -Path $effectiveOutputPath -Parent
     Ensure-Directory -Path $outputParent
+    Register-SensitivePaths -Paths @($sourceFiles + @($effectiveOutputPath, $outputParent))
 
     $preflightState = Get-PreflightState -SourceFiles $sourceFiles -OutputPath $effectiveOutputPath -Profile $profile
     Confirm-Preflight -PreflightState $preflightState
@@ -2362,6 +2496,25 @@ function Resolve-ExecutionPlan {
 
 function Initialize-RunWorkspace {
     Ensure-Workspace
+    Register-SensitivePaths -Paths @(
+        $baseDir,
+        $scriptDir,
+        $templateDir,
+        $configDir,
+        $profilesDir,
+        $inputDir,
+        $outputDir,
+        $runtimeRootDir,
+        $runtimeRunsDir,
+        $logsDir,
+        $script:runWorkspaceDir,
+        $script:runStagingDir,
+        $script:runRuntimeDir,
+        $script:lockFilePath,
+        $script:logPath,
+        $templatePath,
+        $buildTemplateScript
+    )
     $rotation = Rotate-LogFiles
     Set-Content -LiteralPath $script:logPath -Value "PDF2Excel run started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Encoding UTF8
     if ($rotation.RemovedByAge -gt 0 -or $rotation.RemovedByCount -gt 0) {
@@ -2380,9 +2533,23 @@ function Prepare-RunInputs {
     )
 
     $stagedFiles = Stage-PdfFiles -Files $SourceFiles -StagingDirectory $script:runStagingDir
-    $storedFiles = Sync-InputStorage -Files $SourceFiles -KeepExisting:$KeepInput
+    $storedFiles = @()
+    if ($script:isSecureMode) {
+        if ($KeepInput) {
+            Write-Log 'VER2 Secure では -KeepInput は無効です。input フォルダ同期を行いません。' 'WARN'
+        } else {
+            Write-Log 'VER2 Secure のため input フォルダ同期を行いません。'
+        }
+    } else {
+        $storedFiles = Sync-InputStorage -Files $SourceFiles -KeepExisting:$KeepInput
+    }
+    Register-SensitivePaths -Paths @($stagedFiles + $storedFiles)
     Write-Log ("今回実行分の staging が完了しました: {0}" -f ($stagedFiles -join ', '))
-    Write-Log ("input フォルダ同期が完了しました: {0}" -f ($storedFiles -join ', '))
+    if ($script:isSecureMode) {
+        Write-Log 'VER2 Secure のため input フォルダへの PDF 複製は作成していません。'
+    } else {
+        Write-Log ("input フォルダ同期が完了しました: {0}" -f ($storedFiles -join ', '))
+    }
     # Give Excel's PDF connector a brief moment to observe freshly staged files on disk.
     Start-Sleep -Seconds 1
 
@@ -2405,6 +2572,7 @@ function Open-ExcelRuntimeContext {
     $excel.DisplayAlerts = $false
     $excel.AskToUpdateLinks = $false
     $excel.AutomationSecurity = 1
+    $excelProcessId = Get-ExcelProcessId -ExcelApplication $excel
 
     $workbook = $excel.Workbooks.Open($RuntimeWorkbookPath)
     $controlSheet = Get-OrCreateWorksheet -Workbook $workbook -WorksheetName 'Control'
@@ -2422,10 +2590,11 @@ function Open-ExcelRuntimeContext {
     Initialize-SummarySheet -Worksheet $summarySheet -VersionMode $VersionMode
 
     return [pscustomobject]@{
-        Excel        = $excel
-        Workbook     = $workbook
-        ControlSheet = $controlSheet
-        SummarySheet = $summarySheet
+        Excel          = $excel
+        ExcelProcessId = $excelProcessId
+        Workbook       = $workbook
+        ControlSheet   = $controlSheet
+        SummarySheet   = $summarySheet
     }
 }
 
@@ -2732,6 +2901,12 @@ function Publish-WorkbookOutput {
         [Parameter(Mandatory = $true)][string]$OutputPath
     )
 
+    if ($script:isSecureMode) {
+        Write-Log 'VER2 Secure のため、PowerShell 側で xlsx を保存しています。'
+        Export-WorkbookDirectly -Workbook $Workbook -OutputPath $OutputPath
+        return
+    }
+
     $usedMacro = $false
     try {
         Write-Log 'Excel 出力処理を実行しています。'
@@ -2748,17 +2923,29 @@ function Publish-WorkbookOutput {
 }
 
 function Finalize-RunWorkspace {
+    param([Nullable[int]]$ExcelProcessId)
+
     if (Test-Path -LiteralPath $script:runWorkspaceDir) {
         $deleted = Remove-PathWithRetry -Path $script:runWorkspaceDir
+        if (-not $deleted -and $script:isSecureMode) {
+            $stopped = Stop-ExcelProcessForCleanup -ProcessId $ExcelProcessId -Reason 'Secure finally で一時領域を削除するため'
+            if ($stopped) {
+                $deleted = Remove-PathWithRetry -Path $script:runWorkspaceDir -MaxAttempts 5
+            }
+        }
         if (-not $deleted) {
-            Write-Log "実行ワークスペースを削除できませんでした: $script:runWorkspaceDir" 'WARN'
+            $script:cleanupFailureMessage = '一時領域の削除に失敗しました。端末再起動または管理者確認が必要です。'
+            Write-Log ("{0} 対象: {1}" -f $script:cleanupFailureMessage, $script:runWorkspaceDir) 'ERROR'
+            Write-Host ''
+            Write-Host $script:cleanupFailureMessage -ForegroundColor Red
         }
     }
 }
 
 function Close-ExcelRuntimeContext {
     param(
-        $RuntimeContext
+        $RuntimeContext,
+        [switch]$ForceStopProcess
     )
 
     if ($null -eq $RuntimeContext) {
@@ -2784,6 +2971,13 @@ function Close-ExcelRuntimeContext {
         } catch {
         }
     }
+
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
+
+    if ($ForceStopProcess) {
+        Stop-ExcelProcessForCleanup -ProcessId $RuntimeContext.ExcelProcessId -Reason 'Excel COM 終了後もプロセスが残存したため' | Out-Null
+    }
 }
 
 if ($SkipMain) {
@@ -2799,12 +2993,21 @@ $reviewRowCount = 0
 $successPdfCount = 0
 $failedPdfCount = 0
 $elapsedSeconds = 0
+$runFailed = $false
 
 try {
     Initialize-RunWorkspace
+    Write-EnvironmentWarnings
     Write-Banner
+    Assert-ExecutionLocationAllowed
+    if ($script:isSecureMode) {
+        Write-Log ("VER2 Secure モードで実行します。runtime はローカル領域を使用します: {0}" -f $runtimeRootDir)
+        Write-Log ("VER2 Secure のログ出力先: {0}" -f $logsDir)
+        Write-Log ("DEBUG ログは保守者向けにのみ有効です。現在のログレベル: {0}" -f $LogLevel) 'DEBUG'
+    }
     Write-Log '入力 PDF を確認しています。'
     $runPlan = Resolve-ExecutionPlan
+    Show-ProcessingNotice
     Prepare-RunInputs -SourceFiles $runPlan.SourceFiles | Out-Null
 
     Ensure-Template -ForceRebuild:$RebuildTemplate
@@ -2838,6 +3041,7 @@ try {
         Invoke-Item -LiteralPath $runPlan.OutputParent
     }
 } catch {
+    $runFailed = $true
     $runError = Resolve-RunErrorInfo -Message $_.Exception.Message
     Write-Log ("処理に失敗しました: [{0}] [{1}] {2}" -f $runError.ErrorCategory, $runError.ErrorCode, $_.Exception.Message) 'ERROR'
     if ($runtimeContext -and $runtimeContext.ControlSheet) {
@@ -2849,9 +3053,15 @@ try {
     }
     throw
 } finally {
-    Close-ExcelRuntimeContext -RuntimeContext $runtimeContext
-    Finalize-RunWorkspace
+    Close-ExcelRuntimeContext -RuntimeContext $runtimeContext -ForceStopProcess:$script:isSecureMode
+    if ($script:isSecureMode) {
+        Write-Log $(if ($runFailed) { 'VER2 Secure のため、finally で失敗時の一時領域を即時削除します。' } else { 'VER2 Secure のため、finally で一時領域を即時削除します。' })
+    }
+    Finalize-RunWorkspace -ExcelProcessId $(if ($runtimeContext) { $runtimeContext.ExcelProcessId } else { $null })
     Release-RunLock
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
+    if ($script:cleanupFailureMessage -and -not $runFailed) {
+        throw $script:cleanupFailureMessage
+    }
 }
