@@ -317,112 +317,19 @@ function Assert-TemplateIntegrity {
     }
 }
 
-function Convert-RangeValueToMatrix {
+function Get-WorksheetCellText {
     param(
-        $RangeValue,
-        [Parameter(Mandatory = $true)][int]$RowCount,
-        [Parameter(Mandatory = $true)][int]$ColumnCount
-    )
-
-    $matrix = New-Object 'object[,]' $RowCount, $ColumnCount
-    if ($RowCount -le 0 -or $ColumnCount -le 0) {
-        Write-Output -NoEnumerate $matrix
-        return
-    }
-
-    if ($RowCount -eq 1 -and $ColumnCount -eq 1) {
-        $matrix[0, 0] = $RangeValue
-        Write-Output -NoEnumerate $matrix
-        return
-    }
-
-    if ($RangeValue -is [System.Array]) {
-        if ($RangeValue.Rank -eq 1) {
-            if ($RowCount -eq 1) {
-                for ($columnIndex = 0; $columnIndex -lt $ColumnCount; $columnIndex += 1) {
-                    $matrix[0, $columnIndex] = $RangeValue.GetValue($columnIndex)
-                }
-                Write-Output -NoEnumerate $matrix
-                return
-            }
-
-            if ($ColumnCount -eq 1) {
-                for ($rowIndex = 0; $rowIndex -lt $RowCount; $rowIndex += 1) {
-                    $matrix[$rowIndex, 0] = $RangeValue.GetValue($rowIndex)
-                }
-                Write-Output -NoEnumerate $matrix
-                return
-            }
-        }
-
-        if ($RangeValue.Rank -eq 2) {
-            for ($rowIndex = 0; $rowIndex -lt $RowCount; $rowIndex += 1) {
-                for ($columnIndex = 0; $columnIndex -lt $ColumnCount; $columnIndex += 1) {
-                    $matrix[$rowIndex, $columnIndex] = $RangeValue.GetValue($rowIndex + 1, $columnIndex + 1)
-                }
-            }
-            Write-Output -NoEnumerate $matrix
-            return
-        }
-    }
-
-    for ($rowIndex = 0; $rowIndex -lt $RowCount; $rowIndex += 1) {
-        $oneBasedRow = $rowIndex + 1
-        for ($columnIndex = 0; $columnIndex -lt $ColumnCount; $columnIndex += 1) {
-            $oneBasedColumn = $columnIndex + 1
-            $matrix[$rowIndex, $columnIndex] = $RangeValue[$oneBasedRow, $oneBasedColumn]
-        }
-    }
-
-    Write-Output -NoEnumerate $matrix
-}
-
-function Expand-MatrixColumns {
-    param(
-        [Parameter(Mandatory = $true)][object[,]]$Matrix,
-        [Parameter(Mandatory = $true)][int]$RowCount,
-        [Parameter(Mandatory = $true)][int]$SourceColumnCount,
-        [Parameter(Mandatory = $true)][int]$TargetColumnCount
-    )
-
-    $expanded = New-Object 'object[,]' $RowCount, $TargetColumnCount
-    for ($row = 0; $row -lt $RowCount; $row += 1) {
-        for ($column = 0; $column -lt $SourceColumnCount; $column += 1) {
-            $expanded[$row, $column] = $Matrix[$row, $column]
-        }
-    }
-
-    Write-Output -NoEnumerate $expanded
-}
-
-function Get-MatrixCellText {
-    param(
-        [Parameter(Mandatory = $true)][object[,]]$Matrix,
+        [Parameter(Mandatory = $true)]$Worksheet,
         [Parameter(Mandatory = $true)][int]$RowIndex,
         [Parameter(Mandatory = $true)][int]$ColumnIndex
     )
 
-    $rowOffset = [int]$RowIndex - 1
-    $columnOffset = [int]$ColumnIndex - 1
-    $value = $Matrix.GetValue($rowOffset, $columnOffset)
+    $value = $Worksheet.Cells.Item($RowIndex, $ColumnIndex).Value2
     if ($null -eq $value) {
         return ''
     }
 
     return [string]$value
-}
-
-function Set-MatrixCellValue {
-    param(
-        [Parameter(Mandatory = $true)][object[,]]$Matrix,
-        [Parameter(Mandatory = $true)][int]$RowIndex,
-        [Parameter(Mandatory = $true)][int]$ColumnIndex,
-        $Value
-    )
-
-    $rowOffset = [int]$RowIndex - 1
-    $columnOffset = [int]$ColumnIndex - 1
-    $Matrix.SetValue($Value, $rowOffset, $columnOffset)
 }
 
 function Get-PathListLogSummary {
@@ -3316,12 +3223,10 @@ function Add-V2ResultNormalizedColumns {
     $usedRange = $Worksheet.UsedRange
     $rowCount = [int]$usedRange.Rows.Count
     $columnCount = [int]$usedRange.Columns.Count
-    $sourceColumnCount = $columnCount
     $headerMap = @{}
-    $sourceValues = Convert-RangeValueToMatrix -RangeValue $usedRange.Value2 -RowCount $rowCount -ColumnCount $columnCount
 
     for ($column = 1; $column -le $columnCount; $column += 1) {
-        $header = Get-MatrixCellText -Matrix $sourceValues -RowIndex 1 -ColumnIndex $column
+        $header = Get-WorksheetCellText -Worksheet $Worksheet -RowIndex 1 -ColumnIndex $column
         if (-not [string]::IsNullOrWhiteSpace($header)) {
             $headerMap[$header] = $column
         }
@@ -3340,12 +3245,20 @@ function Add-V2ResultNormalizedColumns {
         if (-not $headerMap.ContainsKey($headerName)) {
             $columnCount += 1
             $headerMap[$headerName] = $columnCount
+            $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
         }
     }
-
-    $allValues = Expand-MatrixColumns -Matrix $sourceValues -RowCount $rowCount -SourceColumnCount $sourceColumnCount -TargetColumnCount $columnCount
     foreach ($entry in $headerMap.GetEnumerator()) {
-        Set-MatrixCellValue -Matrix $allValues -RowIndex 1 -ColumnIndex ([int]$entry.Value) -Value $entry.Key
+        $Worksheet.Cells.Item(1, [int]$entry.Value).Value2 = $entry.Key
+    }
+
+    foreach ($definition in $definitions) {
+        try {
+            $Worksheet.Cells.Item(1, [int]$headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
+            $Worksheet.Cells.Item(1, [int]$headerMap[$definition.MinutesColumnName]).EntireColumn.NumberFormat = '0'
+        } catch {
+            throw "Result 正規化列 '$($definition.DisplayName)' の表示形式設定に失敗しました: $($_.Exception.Message)"
+        }
     }
 
     for ($row = 2; $row -le $rowCount; $row += 1) {
@@ -3353,7 +3266,7 @@ function Add-V2ResultNormalizedColumns {
         foreach ($definition in $definitions) {
             $rawValuesByDisplayName[$definition.DisplayName] =
                 if ($headerMap.ContainsKey($definition.SourceColumnName)) {
-                    Get-MatrixCellText -Matrix $allValues -RowIndex $row -ColumnIndex $headerMap[$definition.SourceColumnName]
+                    Get-WorksheetCellText -Worksheet $Worksheet -RowIndex $row -ColumnIndex ([int]$headerMap[$definition.SourceColumnName])
                 } else {
                     ''
                 }
@@ -3364,32 +3277,21 @@ function Add-V2ResultNormalizedColumns {
         foreach ($definition in $definitions) {
             try {
                 $normalized = $audit.Results[$definition.DisplayName]
-                Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap[$definition.DisplayName]) -Value $normalized.NormalizedText
+                $Worksheet.Cells.Item($row, [int]$headerMap[$definition.DisplayName]).Value2 = $normalized.NormalizedText
                 if ($null -eq $normalized.MinutesFromMidnight) {
-                    Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap[$definition.MinutesColumnName]) -Value $null
+                    $Worksheet.Cells.Item($row, [int]$headerMap[$definition.MinutesColumnName]).Value2 = $null
                 } else {
-                    Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap[$definition.MinutesColumnName]) -Value ([double]$normalized.MinutesFromMidnight)
+                    $Worksheet.Cells.Item($row, [int]$headerMap[$definition.MinutesColumnName]).Value2 = [double]$normalized.MinutesFromMidnight
                 }
             } catch {
                 throw "Result 正規化列 '$($definition.DisplayName)' の書き込みに失敗しました (row=$row): $($_.Exception.Message)"
             }
         }
 
-        Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap['時刻正規化状態']) -Value $audit.Status
-        Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap['時刻確認メモ']) -Value $audit.Note
+        $Worksheet.Cells.Item($row, [int]$headerMap['時刻正規化状態']).Value2 = $audit.Status
+        $Worksheet.Cells.Item($row, [int]$headerMap['時刻確認メモ']).Value2 = $audit.Note
     }
 
-    $targetRange = $Worksheet.Range($Worksheet.Cells.Item(1, 1), $Worksheet.Cells.Item($rowCount, $columnCount))
-    $targetRange.Value2 = $allValues
-
-    foreach ($definition in $definitions) {
-        try {
-            $Worksheet.Cells.Item(1, $headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
-            $Worksheet.Cells.Item(1, $headerMap[$definition.MinutesColumnName]).EntireColumn.NumberFormat = '0'
-        } catch {
-            throw "Result 正規化列 '$($definition.DisplayName)' の表示形式設定に失敗しました: $($_.Exception.Message)"
-        }
-    }
     $Worksheet.Range('A1').EntireRow.Font.Bold = $true
     $Worksheet.Columns.AutoFit() | Out-Null
 }
@@ -3403,17 +3305,14 @@ function Add-V2ReviewNormalizedColumns {
     $usedRange = $Worksheet.UsedRange
     $rowCount = [int]$usedRange.Rows.Count
     $columnCount = [int]$usedRange.Columns.Count
-    $sourceColumnCount = $columnCount
     $headerMap = @{}
     $definitions = @(Get-NormalizedTimeColumnDefinitions -Profile $Profile -VersionMode 'v2')
     if ($definitions.Count -eq 0) {
         return
     }
 
-    $sourceValues = Convert-RangeValueToMatrix -RangeValue $usedRange.Value2 -RowCount $rowCount -ColumnCount $columnCount
-
     for ($column = 1; $column -le $columnCount; $column += 1) {
-        $header = Get-MatrixCellText -Matrix $sourceValues -RowIndex 1 -ColumnIndex $column
+        $header = Get-WorksheetCellText -Worksheet $Worksheet -RowIndex 1 -ColumnIndex $column
         if (-not [string]::IsNullOrWhiteSpace($header)) {
             $headerMap[$header] = $column
         }
@@ -3432,12 +3331,20 @@ function Add-V2ReviewNormalizedColumns {
         if (-not $headerMap.ContainsKey($headerName)) {
             $columnCount += 1
             $headerMap[$headerName] = $columnCount
+            $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
         }
     }
-
-    $allValues = Expand-MatrixColumns -Matrix $sourceValues -RowCount $rowCount -SourceColumnCount $sourceColumnCount -TargetColumnCount $columnCount
     foreach ($entry in $headerMap.GetEnumerator()) {
-        Set-MatrixCellValue -Matrix $allValues -RowIndex 1 -ColumnIndex ([int]$entry.Value) -Value $entry.Key
+        $Worksheet.Cells.Item(1, [int]$entry.Value).Value2 = $entry.Key
+    }
+
+    foreach ($definition in $definitions) {
+        try {
+            $Worksheet.Cells.Item(1, [int]$headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
+            $Worksheet.Cells.Item(1, [int]$headerMap[$definition.MinutesColumnName]).EntireColumn.NumberFormat = '0'
+        } catch {
+            throw "Review 正規化列 '$($definition.DisplayName)' の表示形式設定に失敗しました: $($_.Exception.Message)"
+        }
     }
 
     for ($row = 2; $row -le $rowCount; $row += 1) {
@@ -3445,47 +3352,36 @@ function Add-V2ReviewNormalizedColumns {
         foreach ($definition in $definitions) {
             $rawValuesByDisplayName[$definition.DisplayName] =
                 if ($headerMap.ContainsKey($definition.ReviewRawColumnName)) {
-                    Get-MatrixCellText -Matrix $allValues -RowIndex $row -ColumnIndex $headerMap[$definition.ReviewRawColumnName]
+                    Get-WorksheetCellText -Worksheet $Worksheet -RowIndex $row -ColumnIndex ([int]$headerMap[$definition.ReviewRawColumnName])
                 } else {
                     ''
                 }
         }
 
-        $existingReason = if ($headerMap.ContainsKey('Reason')) { Get-MatrixCellText -Matrix $allValues -RowIndex $row -ColumnIndex $headerMap['Reason'] } else { '' }
-        $existingReasonCategory = if ($headerMap.ContainsKey('ReasonCategory')) { Get-MatrixCellText -Matrix $allValues -RowIndex $row -ColumnIndex $headerMap['ReasonCategory'] } else { '' }
+        $existingReason = if ($headerMap.ContainsKey('Reason')) { Get-WorksheetCellText -Worksheet $Worksheet -RowIndex $row -ColumnIndex ([int]$headerMap['Reason']) } else { '' }
+        $existingReasonCategory = if ($headerMap.ContainsKey('ReasonCategory')) { Get-WorksheetCellText -Worksheet $Worksheet -RowIndex $row -ColumnIndex ([int]$headerMap['ReasonCategory']) } else { '' }
         $audit = Get-TimeNormalizationAudit -Definitions $definitions -RawValuesByDisplayName $rawValuesByDisplayName -ExistingReason $existingReason
         $reasonCategory = Get-ReviewReasonCategories -Definitions $definitions -RawValuesByDisplayName $rawValuesByDisplayName -ExistingReason $existingReason -ExistingCategoryCsv $existingReasonCategory -Audit $audit
 
         try {
             foreach ($definition in $definitions) {
                 $normalized = $audit.Results[$definition.DisplayName]
-                Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap[$definition.DisplayName]) -Value $normalized.NormalizedText
+                $Worksheet.Cells.Item($row, [int]$headerMap[$definition.DisplayName]).Value2 = $normalized.NormalizedText
                 if ($null -eq $normalized.MinutesFromMidnight) {
-                    Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap[$definition.MinutesColumnName]) -Value $null
+                    $Worksheet.Cells.Item($row, [int]$headerMap[$definition.MinutesColumnName]).Value2 = $null
                 } else {
-                    Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap[$definition.MinutesColumnName]) -Value ([double]$normalized.MinutesFromMidnight)
+                    $Worksheet.Cells.Item($row, [int]$headerMap[$definition.MinutesColumnName]).Value2 = [double]$normalized.MinutesFromMidnight
                 }
             }
         } catch {
             throw "Review 正規化列の書き込みに失敗しました (row=$row): $($_.Exception.Message)"
         }
 
-        Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap['ReasonCategory']) -Value $reasonCategory
-        Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap['時刻正規化状態']) -Value $audit.Status
-        Set-MatrixCellValue -Matrix $allValues -RowIndex $row -ColumnIndex ([int]$headerMap['時刻確認メモ']) -Value $audit.Note
+        $Worksheet.Cells.Item($row, [int]$headerMap['ReasonCategory']).Value2 = $reasonCategory
+        $Worksheet.Cells.Item($row, [int]$headerMap['時刻正規化状態']).Value2 = $audit.Status
+        $Worksheet.Cells.Item($row, [int]$headerMap['時刻確認メモ']).Value2 = $audit.Note
     }
 
-    $targetRange = $Worksheet.Range($Worksheet.Cells.Item(1, 1), $Worksheet.Cells.Item($rowCount, $columnCount))
-    $targetRange.Value2 = $allValues
-
-    foreach ($definition in $definitions) {
-        try {
-            $Worksheet.Cells.Item(1, $headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
-            $Worksheet.Cells.Item(1, $headerMap[$definition.MinutesColumnName]).EntireColumn.NumberFormat = '0'
-        } catch {
-            throw "Review 正規化列 '$($definition.DisplayName)' の表示形式設定に失敗しました: $($_.Exception.Message)"
-        }
-    }
     $Worksheet.Columns.AutoFit() | Out-Null
 }
 
@@ -3503,17 +3399,9 @@ function Apply-VersionSpecificWorkbookEnrichments {
     $reviewSheet = $null
     try {
         $resultSheet = $Workbook.Worksheets.Item('Result')
-        try {
-            Add-V2ResultNormalizedColumns -Worksheet $resultSheet -Profile $Profile
-        } catch {
-            Write-Log ("Result 正規化列の追加をスキップしました: {0}" -f $_.Exception.Message) 'WARN'
-        }
+        Add-V2ResultNormalizedColumns -Worksheet $resultSheet -Profile $Profile
         $reviewSheet = $Workbook.Worksheets.Item('Review')
-        try {
-            Add-V2ReviewNormalizedColumns -Worksheet $reviewSheet -Profile $Profile
-        } catch {
-            Write-Log ("Review 正規化列の追加をスキップしました: {0}" -f $_.Exception.Message) 'WARN'
-        }
+        Add-V2ReviewNormalizedColumns -Worksheet $reviewSheet -Profile $Profile
     } finally {
         $reviewSheet | Release-ComObject
         $resultSheet | Release-ComObject
