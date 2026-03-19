@@ -17,6 +17,8 @@
     [switch]$SelectInputFolder,
     [switch]$PromptForOutputFile,
     [switch]$NoConfirm,
+    [switch]$CheckEnvironment,
+    [string]$RunReportPath,
     [switch]$SkipMain,
     [Alias('h')][switch]$Help
 )
@@ -26,6 +28,10 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'pdf2excel.common.ps1')
 
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
+
 $script:runStartedAt = Get-Date
 $baseDir = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $scriptDir = Join-Path $baseDir 'scripts'
@@ -34,6 +40,7 @@ $configDir = Join-Path $baseDir 'config'
 $profilesDir = Join-Path $configDir "profiles\$VersionMode"
 $inputDir = Join-Path $baseDir 'input'
 $outputDir = Join-Path $baseDir 'output'
+$reportsDir = Join-Path $baseDir 'reports'
 $script:isSecureMode = ($VersionMode -eq 'v2' -and $SecurityMode -eq 'Secure')
 $secureRuntimeRootDir = Get-LocalAppDataPdf2ExcelPath -ChildPath 'runtime'
 $secureLogsDir = Get-LocalAppDataPdf2ExcelPath -ChildPath 'logs'
@@ -53,6 +60,7 @@ $logsDir = if ($script:isSecureMode -and -not $script:logsUseProjectFallback) {
 $script:executionLocation = Get-PathLocationInfo -Path $baseDir
 $script:versionDisplayName = Get-VersionDisplayName -VersionMode $VersionMode
 $templatePath = Join-Path $templateDir $(if ($VersionMode -eq 'v2') { 'PDF2Excel_V2_Converter.xlsm' } else { 'PDF2Excel_V1_Converter.xlsm' })
+$templateIntegrityPath = Join-Path $configDir 'template-integrity.json'
 $buildTemplateScript = Join-Path $scriptDir 'build_excel_template.ps1'
 
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss_fff'
@@ -63,8 +71,11 @@ $script:runRuntimeDir = Join-Path $script:runWorkspaceDir 'runtime'
 $script:lockFilePath = Join-Path $runtimeRootDir 'run.lock'
 $script:runMutex = $null
 $script:logPath = Join-Path $logsDir "run_$timestamp.log"
+$script:runHistoryPath = Join-Path $reportsDir 'run-history.csv'
+$script:environmentReportPath = Join-Path $reportsDir 'environment-check.md'
 $script:sensitivePathMap = [ordered]@{}
 $script:cleanupFailureMessage = $null
+$script:currentStage = ''
 
 # ============================================================
 # Section: User-Facing Console Output
@@ -98,6 +109,8 @@ function Show-Usage {
         '  -SelectInputFolder   フォルダ選択ダイアログを開いて入力フォルダを選びます。',
         '  -PromptForOutputFile 保存先の xlsx をダイアログで選びます。',
         '  -NoConfirm           実行前チェック画面を表示後、確認入力を求めずそのまま続行します。',
+        '  -CheckEnvironment    Excel、テンプレート、保存先、プロファイル状態を診断します。',
+        '  -RunReportPath       呼び出し元へ返す実行レポート JSON の保存先を指定します。',
         '  -Help                このヘルプを表示します。'
     ) | Write-Host
 }
@@ -128,6 +141,79 @@ function Write-Log {
     Write-Host $line
 }
 
+function Set-RunStage {
+    param(
+        [Parameter(Mandatory = $true)][string]$StageName,
+        [string]$ConsoleMessage
+    )
+
+    $script:currentStage = $StageName
+    if (-not [string]::IsNullOrWhiteSpace($ConsoleMessage)) {
+        Write-Host ('[{0}] {1}' -f $StageName, $ConsoleMessage) -ForegroundColor Cyan
+        if (Test-Path -LiteralPath $script:logPath) {
+            Write-Log ("[{0}] {1}" -f $StageName, $ConsoleMessage)
+        }
+    }
+}
+
+function Write-RunReport {
+    param(
+        [Parameter(Mandatory = $true)][string]$Status,
+        [string]$OutputPath,
+        [string]$OutputParent,
+        $Profile,
+        [int]$SourcePdfCount = 0,
+        [int]$ResultRows = 0,
+        [int]$ErrorRows = 0,
+        [int]$ReviewRows = 0,
+        [int]$SuccessPdfCount = 0,
+        [int]$FailedPdfCount = 0,
+        [int]$ElapsedSeconds = 0,
+        [string]$ErrorMessage,
+        $ErrorInfo,
+        [string]$ActionHint,
+        [string]$EnvironmentReportPath,
+        [string]$RunHistoryPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RunReportPath)) {
+        return
+    }
+
+    $reportDir = Split-Path -Path $RunReportPath -Parent
+    if (-not [string]::IsNullOrWhiteSpace($reportDir)) {
+        Ensure-Directory -Path $reportDir
+    }
+
+    $report = [ordered]@{
+        GeneratedAt         = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+        Status              = $Status
+        VersionMode         = $VersionMode
+        SecurityMode        = $SecurityMode
+        CurrentStage        = $script:currentStage
+        LogPath             = if (Test-Path -LiteralPath $script:logPath) { $script:logPath } else { $null }
+        OutputPath          = $OutputPath
+        OutputParent        = $OutputParent
+        ProfileName         = if ($Profile) { $Profile.Name } else { $null }
+        ProfileDisplayName  = if ($Profile) { $Profile.DisplayName } else { $null }
+        SourcePdfCount      = $SourcePdfCount
+        ResultRows          = $ResultRows
+        ErrorRows           = $ErrorRows
+        ReviewRows          = $ReviewRows
+        SuccessPdfCount     = $SuccessPdfCount
+        FailedPdfCount      = $FailedPdfCount
+        ElapsedSeconds      = $ElapsedSeconds
+        ErrorCode           = if ($ErrorInfo) { $ErrorInfo.ErrorCode } else { $null }
+        ErrorCategory       = if ($ErrorInfo) { $ErrorInfo.ErrorCategory } else { $null }
+        ErrorMessage        = $ErrorMessage
+        ActionHint          = $ActionHint
+        EnvironmentReportPath = $EnvironmentReportPath
+        RunHistoryPath      = $RunHistoryPath
+    }
+
+    $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $RunReportPath -Encoding UTF8
+}
+
 function Register-SensitivePaths {
     param([string[]]$Paths)
 
@@ -142,6 +228,124 @@ function Register-SensitivePaths {
             $script:sensitivePathMap[$normalizedPath] = ConvertTo-MaskedPathText -Path $normalizedPath
         }
     }
+}
+
+function Get-RelativePathFromBase {
+    param(
+        [Parameter(Mandatory = $true)][string]$BasePath,
+        [Parameter(Mandatory = $true)][string]$TargetPath
+    )
+
+    $normalizedBase = [System.IO.Path]::GetFullPath($BasePath)
+    $normalizedTarget = [System.IO.Path]::GetFullPath($TargetPath)
+    $baseUri = New-Object System.Uri(($normalizedBase.TrimEnd('\') + '\'))
+    $targetUri = New-Object System.Uri($normalizedTarget)
+    $relativeUri = $baseUri.MakeRelativeUri($targetUri)
+    return [System.Uri]::UnescapeDataString($relativeUri.ToString()).Replace('/', '\')
+}
+
+function Get-TemplateIntegrityTargetRelativePaths {
+    $relativePaths = @(
+        (Get-RelativePathFromBase -BasePath $baseDir -TargetPath $templatePath),
+        'template\vba\PDF2ExcelMacros.bas',
+        'template\vba\PDF2ExcelMacros.sjis.bas',
+        'template\vba\PDF2ExcelTemplateBuilder.bas',
+        'template\vba\PDF2ExcelTemplateBuilder.sjis.bas'
+    )
+
+    return @($relativePaths | Select-Object -Unique)
+}
+
+function Get-TemplateIntegrityManifest {
+    if (-not (Test-Path -LiteralPath $templateIntegrityPath)) {
+        throw "テンプレート整合性マニフェストが見つかりません: $templateIntegrityPath"
+    }
+
+    try {
+        $manifest = Get-Content -LiteralPath $templateIntegrityPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        throw "テンプレート整合性マニフェストを読み取れません: $templateIntegrityPath"
+    }
+
+    if ($null -eq $manifest -or $null -eq $manifest.Files) {
+        throw "テンプレート整合性マニフェストの形式が不正です: $templateIntegrityPath"
+    }
+
+    $lookup = @{}
+    foreach ($entry in @($manifest.Files)) {
+        $relativePath = [string]$entry.RelativePath
+        $hashValue = [string]$entry.Sha256
+        if ([string]::IsNullOrWhiteSpace($relativePath) -or [string]::IsNullOrWhiteSpace($hashValue)) {
+            continue
+        }
+
+        $lookup[$relativePath.ToLowerInvariant()] = [pscustomobject]@{
+            RelativePath = $relativePath
+            Sha256       = $hashValue.ToUpperInvariant()
+        }
+    }
+
+    return $lookup
+}
+
+function Assert-TemplateIntegrity {
+    $manifestLookup = Get-TemplateIntegrityManifest
+    $targetRelativePaths = @(Get-TemplateIntegrityTargetRelativePaths)
+    $failures = @()
+
+    foreach ($relativePath in $targetRelativePaths) {
+        $normalizedKey = $relativePath.ToLowerInvariant()
+        if (-not $manifestLookup.ContainsKey($normalizedKey)) {
+            $failures += "マニフェスト未登録: $relativePath"
+            continue
+        }
+
+        $fullPath = Join-Path $baseDir $relativePath
+        if (-not (Test-Path -LiteralPath $fullPath)) {
+            $failures += "ファイル欠落: $relativePath"
+            continue
+        }
+
+        $actualHash = (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash.ToUpperInvariant()
+        if ($actualHash -ne $manifestLookup[$normalizedKey].Sha256) {
+            $failures += "ハッシュ不一致: $relativePath"
+        }
+    }
+
+    if ($failures.Count -gt 0) {
+        throw ('テンプレートまたは VBA モジュールの整合性確認に失敗しました。再配布または再生成を行ってください。詳細: ' + ($failures -join ', '))
+    }
+}
+
+function Get-WorksheetCellText {
+    param(
+        [Parameter(Mandatory = $true)]$Worksheet,
+        [Parameter(Mandatory = $true)][int]$RowIndex,
+        [Parameter(Mandatory = $true)][int]$ColumnIndex
+    )
+
+    $value = $Worksheet.Cells.Item($RowIndex, $ColumnIndex).Value2
+    if ($null -eq $value) {
+        return ''
+    }
+
+    return [string]$value
+}
+
+function Get-PathListLogSummary {
+    param(
+        [string[]]$Paths,
+        [int]$SampleCount = 3
+    )
+
+    $items = @($Paths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($items.Count -eq 0) {
+        return '0 件'
+    }
+
+    $sample = @($items | Select-Object -First $SampleCount | ForEach-Object { [System.IO.Path]::GetFileName($_) })
+    $suffix = if ($items.Count -gt $SampleCount) { " ほか $($items.Count - $SampleCount) 件" } else { '' }
+    return ('{0} 件 ({1}{2})' -f $items.Count, ($sample -join ', '), $suffix)
 }
 
 function Get-ExcelProcessId {
@@ -221,6 +425,7 @@ function Show-RunSummary {
     Write-Host ('  使用プロファイル : {0}' -f $Profile.DisplayName)
     Write-Host ('  出力ファイル     : {0}' -f $OutputPath)
     Write-Host ('  ログファイル     : {0}' -f $script:logPath)
+    Write-Host ('  実行履歴台帳     : {0}' -f $script:runHistoryPath)
     Write-Host ''
     Write-Host $(if ($VersionMode -eq 'v2') { '変換が完了しました。Result / Review / Errors / Summary を確認してください。' } else { '変換が完了しました。Result / Errors / Summary を確認してください。' }) -ForegroundColor Green
     Write-Host ''
@@ -272,6 +477,251 @@ function Remove-PathWithRetry {
     return $false
 }
 
+function Test-DirectoryWritable {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    Ensure-Directory -Path $Path
+    $probePath = Join-Path $Path ("write_test_{0}.tmp" -f ([guid]::NewGuid().ToString('N')))
+    try {
+        Set-Content -LiteralPath $probePath -Value 'ok' -Encoding UTF8
+        Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
+        return $true
+    } catch {
+        if (Test-Path -LiteralPath $probePath) {
+            Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
+        }
+        return $false
+    }
+}
+
+function Append-RunHistory {
+    param(
+        [string]$Status,
+        $RunPlan,
+        [int]$ResultRows = 0,
+        [int]$ErrorRows = 0,
+        [int]$ReviewRows = 0,
+        [int]$SuccessPdfCount = 0,
+        [int]$FailedPdfCount = 0,
+        [int]$ElapsedSeconds = 0,
+        $ErrorInfo
+    )
+
+    Ensure-Directory -Path $reportsDir
+    $record = [pscustomobject]@{
+        ExecutedAt         = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+        VersionMode        = $VersionMode
+        SecurityMode       = $SecurityMode
+        Status             = $Status
+        ProfileName        = if ($RunPlan -and $RunPlan.Profile) { $RunPlan.Profile.Name } else { $null }
+        ProfileDisplayName = if ($RunPlan -and $RunPlan.Profile) { $RunPlan.Profile.DisplayName } else { $null }
+        SourcePdfCount     = if ($RunPlan) { $RunPlan.SourceFiles.Count } else { 0 }
+        OutputPath         = if ($RunPlan) { $RunPlan.OutputPath } else { $OutputFile }
+        ResultRows         = $ResultRows
+        ErrorRows          = $ErrorRows
+        ReviewRows         = $ReviewRows
+        SuccessPdfCount    = $SuccessPdfCount
+        FailedPdfCount     = $FailedPdfCount
+        ElapsedSeconds     = $ElapsedSeconds
+        ErrorCode          = if ($ErrorInfo) { $ErrorInfo.ErrorCode } else { $null }
+        ErrorCategory      = if ($ErrorInfo) { $ErrorInfo.ErrorCategory } else { $null }
+    }
+
+    $csvLine = $record | ConvertTo-Csv -NoTypeInformation
+    if (-not (Test-Path -LiteralPath $script:runHistoryPath)) {
+        Set-Content -LiteralPath $script:runHistoryPath -Value ($csvLine -join [Environment]::NewLine) -Encoding UTF8
+    } else {
+        Add-Content -LiteralPath $script:runHistoryPath -Value $csvLine[1] -Encoding UTF8
+    }
+}
+
+function New-EnvironmentCheckItem {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][ValidateSet('OK', 'WARN', 'FAIL')][string]$Status,
+        [Parameter(Mandatory = $true)][string]$Detail,
+        [string]$SuggestedAction = ''
+    )
+
+    return [pscustomobject]@{
+        Name            = $Name
+        Status          = $Status
+        Detail          = $Detail
+        SuggestedAction = $SuggestedAction
+    }
+}
+
+function Write-EnvironmentCheckReport {
+    param([Parameter(Mandatory = $true)]$EnvironmentResult)
+
+    Ensure-Directory -Path $reportsDir
+    $now = Get-Date
+    $lines = @(
+        '# PDF2Excel 環境チェックレポート',
+        '',
+        ('- 作成日: {0} JST' -f $now.ToString('yyyy-MM-dd HH:mm')),
+        '- 作成者: Codex (GPT-5)',
+        ('- 更新日: {0}' -f $now.ToString('yyyy-MM-dd')),
+        '',
+        '## 結果概要',
+        '',
+        ('- 実施日時: {0} JST' -f $now.ToString('yyyy-MM-dd HH:mm:ss')),
+        ('- 対象環境: Windows / PowerShell {0}' -f $PSVersionTable.PSVersion),
+        ('- 対象機能: {0}' -f $script:versionDisplayName),
+        ('- 結果概要: {0}' -f $EnvironmentResult.Summary),
+        ("- エラー有無: {0}" -f $(if ($EnvironmentResult.HasFailures) { 'あり' } else { 'なし' })),
+        '',
+        '## 判定一覧',
+        '',
+        '| 項目 | 結果 | 詳細 | 対処 |',
+        '| --- | --- | --- | --- |'
+    )
+
+    foreach ($item in $EnvironmentResult.Items) {
+        $statusLabel = switch ($item.Status) {
+            'OK' { '成功' }
+            'WARN' { '注意' }
+            default { '失敗' }
+        }
+        $lines += ('| {0} | {1} | {2} | {3} |' -f $item.Name, $statusLabel, $item.Detail, $item.SuggestedAction)
+    }
+
+    Set-Content -LiteralPath $script:environmentReportPath -Value ($lines -join [Environment]::NewLine) -Encoding UTF8
+}
+
+function Invoke-EnvironmentCheck {
+    param(
+        [string]$SelectedProfileName,
+        [string]$SelectedProfilePath
+    )
+
+    Set-RunStage -StageName '診断' -ConsoleMessage '実行環境を確認しています。'
+    Ensure-Workspace
+    $items = @()
+
+    if ($script:isSecureMode) {
+        if ($script:executionLocation.IsShared) {
+            $items += New-EnvironmentCheckItem -Name '実行場所' -Status 'FAIL' -Detail ("共有パスです: {0}" -f $script:executionLocation.NormalizedPath) -SuggestedAction 'ZIP をローカルへ展開して再実行してください。'
+        } else {
+            $items += New-EnvironmentCheckItem -Name '実行場所' -Status 'OK' -Detail ("ローカル実行です: {0}" -f $script:executionLocation.NormalizedPath)
+        }
+    } else {
+        $items += New-EnvironmentCheckItem -Name '実行場所' -Status $(if ($script:executionLocation.IsShared) { 'WARN' } else { 'OK' }) -Detail $script:executionLocation.NormalizedPath -SuggestedAction $(if ($script:executionLocation.IsShared) { 'ローカル実行を推奨します。' } else { '' })
+    }
+
+    if ($script:isSecureMode) {
+        $runtimeOk = -not [string]::IsNullOrWhiteSpace($secureRuntimeRootDir)
+        $logsOk = -not [string]::IsNullOrWhiteSpace($secureLogsDir)
+        $items += New-EnvironmentCheckItem -Name 'LOCALAPPDATA runtime' -Status $(if ($runtimeOk) { 'OK' } else { 'FAIL' }) -Detail $(if ($runtimeOk) { $secureRuntimeRootDir } else { 'LOCALAPPDATA が取得できません。' }) -SuggestedAction $(if ($runtimeOk) { '' } else { 'Windows の通常ユーザー環境で実行してください。' })
+        $items += New-EnvironmentCheckItem -Name 'LOCALAPPDATA logs' -Status $(if ($logsOk) { 'OK' } else { 'FAIL' }) -Detail $(if ($logsOk) { $secureLogsDir } else { 'LOCALAPPDATA が取得できません。' }) -SuggestedAction $(if ($logsOk) { '' } else { 'Windows の通常ユーザー環境で実行してください。' })
+    }
+
+    $templateExists = Test-Path -LiteralPath $templatePath
+    $items += New-EnvironmentCheckItem -Name 'テンプレート' -Status $(if ($templateExists) { 'OK' } else { 'FAIL' }) -Detail $(if ($templateExists) { $templatePath } else { "見つかりません: $templatePath" }) -SuggestedAction $(if ($templateExists) { '' } else { 'テンプレートを再生成するか handoff パッケージを確認してください。' })
+    $buildTemplateScriptExists = Test-Path -LiteralPath $buildTemplateScript
+    $items += New-EnvironmentCheckItem -Name 'テンプレート再生成導線' -Status $(if ($buildTemplateScriptExists) { 'OK' } else { 'FAIL' }) -Detail $(if ($buildTemplateScriptExists) { $buildTemplateScript } else { "見つかりません: $buildTemplateScript" }) -SuggestedAction $(if ($buildTemplateScriptExists) { '' } else { 'scripts/build_excel_template.ps1 の配置を確認してください。' })
+    if ($templateExists) {
+        try {
+            Assert-TemplateIntegrity
+            $items += New-EnvironmentCheckItem -Name 'テンプレート整合性' -Status 'OK' -Detail 'テンプレートと VBA モジュールの SHA256 を確認しました。'
+        } catch {
+            $items += New-EnvironmentCheckItem -Name 'テンプレート整合性' -Status 'FAIL' -Detail $_.Exception.Message -SuggestedAction 'テンプレートを再生成するか、正しい配布物へ置き換えてください。'
+        }
+    }
+
+    $profileDetail = ''
+    $profileStatus = 'OK'
+    $profileAction = ''
+    try {
+        $resolvedProfile = Get-ProfileConfiguration -RequestedProfileName $SelectedProfileName -RequestedProfilePath $SelectedProfilePath
+        $profileDetail = "{0} ({1})" -f $resolvedProfile.DisplayName, $resolvedProfile.ProfilePath
+    } catch {
+        $profileStatus = 'FAIL'
+        $profileDetail = $_.Exception.Message
+        $profileAction = 'プロファイルを選び直すか、雛形作成から再作成してください。'
+    }
+    $items += New-EnvironmentCheckItem -Name 'プロファイル' -Status $profileStatus -Detail $profileDetail -SuggestedAction $profileAction
+
+    $outputWritable = Test-DirectoryWritable -Path $outputDir
+    $items += New-EnvironmentCheckItem -Name 'output 書き込み' -Status $(if ($outputWritable) { 'OK' } else { 'FAIL' }) -Detail $outputDir -SuggestedAction $(if ($outputWritable) { '' } else { '出力フォルダの権限を確認してください。' })
+
+    $logsWritable = Test-DirectoryWritable -Path $logsDir
+    $items += New-EnvironmentCheckItem -Name 'logs 書き込み' -Status $(if ($logsWritable) { 'OK' } else { 'FAIL' }) -Detail $logsDir -SuggestedAction $(if ($logsWritable) { '' } else { 'ログフォルダの権限を確認してください。' })
+
+    $lockStatus = 'OK'
+    $lockDetail = 'run.lock はありません。'
+    $lockAction = ''
+    if (Test-Path -LiteralPath $script:lockFilePath) {
+        $lockStatus = 'WARN'
+        $lockDetail = 'run.lock が存在します。'
+        $lockAction = '別の実行中の可能性があります。完了を待ってから再実行し、不要な lock の場合は保守担当へ確認してください。'
+        try {
+            $lockInfo = Get-Content -LiteralPath $script:lockFilePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $lockDetail = "run.lock が存在します: 開始=$($lockInfo.startedAt), PID=$($lockInfo.pid)"
+        } catch {
+            $lockDetail = 'run.lock が存在しますが内容を読めませんでした。'
+        }
+    }
+    $items += New-EnvironmentCheckItem -Name '実行競合状態' -Status $lockStatus -Detail $lockDetail -SuggestedAction $lockAction
+
+    $excel = $null
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        $items += New-EnvironmentCheckItem -Name 'Excel COM' -Status 'OK' -Detail 'Excel.Application を起動できました。'
+    } catch {
+        $items += New-EnvironmentCheckItem -Name 'Excel COM' -Status 'FAIL' -Detail $_.Exception.Message -SuggestedAction 'Excel(M365) デスクトップ版が利用可能か確認してください。'
+    } finally {
+        if ($excel) {
+            try {
+                $excel.Quit()
+            } catch {
+            }
+            try {
+                $excel | Release-ComObject
+            } catch {
+            }
+            [GC]::Collect()
+            [GC]::WaitForPendingFinalizers()
+        }
+    }
+
+    $hasFailures = @($items | Where-Object Status -eq 'FAIL').Count -gt 0
+    $warningCount = @($items | Where-Object Status -eq 'WARN').Count
+    $summary = if ($hasFailures) {
+        '失敗があります。環境チェックレポートの対処欄を確認してください。'
+    } elseif ($warningCount -gt 0) {
+        '注意事項があります。運用前に確認してください。'
+    } else {
+        '主要な前提条件は満たしています。'
+    }
+
+    $result = [pscustomobject]@{
+        Items       = $items
+        HasFailures = $hasFailures
+        Summary     = $summary
+    }
+
+    Write-EnvironmentCheckReport -EnvironmentResult $result
+
+    Write-Host ''
+    Write-Host '環境チェック結果' -ForegroundColor Yellow
+    foreach ($item in $items) {
+        $statusLabel = switch ($item.Status) {
+            'OK' { 'OK  ' }
+            'WARN' { 'WARN' }
+            default { 'FAIL' }
+        }
+        Write-Host ('  [{0}] {1}: {2}' -f $statusLabel, $item.Name, $item.Detail)
+        if (-not [string]::IsNullOrWhiteSpace($item.SuggestedAction)) {
+            Write-Host ('       対処: {0}' -f $item.SuggestedAction)
+        }
+    }
+    Write-Host ''
+    Write-Host ('レポート: {0}' -f $script:environmentReportPath)
+
+    return $result
+}
+
 # ============================================================
 # Section: Workspace and Run Lifecycle
 # ============================================================
@@ -280,13 +730,15 @@ function Ensure-Workspace {
     foreach ($path in @(
         $inputDir,
         $outputDir,
+        $reportsDir,
         $runtimeRootDir,
         $runtimeRunsDir,
         $logsDir,
         $templateDir,
         (Join-Path $templateDir 'vba'),
         $configDir,
-        $profilesDir
+        $profilesDir,
+        $reportsDir
     )) {
         Ensure-Directory -Path $path
     }
@@ -765,18 +1217,22 @@ function Ensure-Template {
     param([switch]$ForceRebuild)
 
     if ($ForceRebuild -or -not (Test-Path -LiteralPath $templatePath)) {
-        Write-Log "Excel テンプレートを生成しています: $templatePath"
+        Write-Log 'Excel テンプレートを生成しています。'
+        Write-Log ("生成対象テンプレート: {0}" -f $templatePath) 'DEBUG'
         & $buildTemplateScript -TemplatePath $templatePath -TemplateVariant $VersionMode
     }
 
     if (-not (Test-Path -LiteralPath $templatePath)) {
         throw "テンプレートの作成に失敗しました: $templatePath"
     }
+
+    Assert-TemplateIntegrity
 }
 
 function Copy-TemplateToRuntime {
     Ensure-Directory -Path $script:runRuntimeDir
     $runtimePath = Join-Path $script:runRuntimeDir "PDF2Excel_runtime_$timestamp.xlsm"
+    Assert-TemplateIntegrity
     Copy-Item -LiteralPath $templatePath -Destination $runtimePath -Force
     Register-SensitivePaths -Paths @($runtimePath)
     return $runtimePath
@@ -2394,11 +2850,102 @@ function Export-WorkbookDirectly {
     $Workbook.SaveAs($OutputPath, 51)
 }
 
+function Get-PdfPreviewQueryFormula {
+    param([Parameter(Mandatory = $true)][string]$PdfPath)
+
+    $pdfLiteral = ConvertTo-MTextLiteral -Value $PdfPath
+@"
+let
+    Source = Pdf.Tables(File.Contents($pdfLiteral)),
+    WithColumnCount = Table.AddColumn(Source, "DetectedColumns", each try Table.ColumnCount([Data]) otherwise null, Int64.Type),
+    WithRowCount = Table.AddColumn(WithColumnCount, "DetectedRows", each try Table.RowCount([Data]) otherwise null, Int64.Type),
+    Selected = Table.SelectColumns(WithRowCount, {"Id", "Kind", "Name", "DetectedColumns", "DetectedRows"}),
+    Sorted = Table.Sort(Selected, {{"DetectedColumns", Order.Descending}, {"DetectedRows", Order.Descending}, {"Id", Order.Ascending}})
+in
+    Sorted
+"@
+}
+
+function Get-PdfPreviewSummary {
+    param([Parameter(Mandatory = $true)][string]$PdfPath)
+
+    $excel = $null
+    $workbook = $null
+    $previewSheet = $null
+
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+        $excel.AskToUpdateLinks = $false
+        $workbook = $excel.Workbooks.Add()
+        Add-OrReplaceWorkbookQuery -Workbook $workbook -QueryName 'PDF2Excel_Preview' -Formula (Get-PdfPreviewQueryFormula -PdfPath $PdfPath)
+        Load-WorkbookQueryToWorksheet -Workbook $workbook -WorksheetName 'Preview' -QueryName 'PDF2Excel_Preview' -TableName 'tblPreview'
+        $previewSheet = $workbook.Worksheets.Item('Preview')
+        $usedRange = $previewSheet.UsedRange
+        $rowCount = [int]$usedRange.Rows.Count
+
+        $candidates = @()
+        for ($row = 2; $row -le [Math]::Min($rowCount, 4); $row += 1) {
+            $candidate = [ordered]@{
+                Id      = [string]$previewSheet.Cells.Item($row, 1).Value2
+                Kind    = [string]$previewSheet.Cells.Item($row, 2).Value2
+                Name    = [string]$previewSheet.Cells.Item($row, 3).Value2
+                Columns = [string]$previewSheet.Cells.Item($row, 4).Value2
+                Rows    = [string]$previewSheet.Cells.Item($row, 5).Value2
+            }
+            if (-not [string]::IsNullOrWhiteSpace($candidate.Id) -or -not [string]::IsNullOrWhiteSpace($candidate.Kind)) {
+                $candidates += [pscustomobject]$candidate
+            }
+        }
+
+        return [pscustomobject]@{
+            Available     = $true
+            SourceFile    = [System.IO.Path]::GetFileName($PdfPath)
+            CandidateCount = [Math]::Max($rowCount - 1, 0)
+            Candidates    = $candidates
+            Message       = if ($candidates.Count -gt 0) { '' } else { '候補表を取得できませんでした。' }
+        }
+    } catch {
+        return [pscustomobject]@{
+            Available      = $false
+            SourceFile     = [System.IO.Path]::GetFileName($PdfPath)
+            CandidateCount = 0
+            Candidates     = @()
+            Message        = $_.Exception.Message
+        }
+    } finally {
+        if ($workbook) {
+            try {
+                $workbook.Close($false)
+            } catch {
+            }
+        }
+        if ($excel) {
+            try {
+                $excel.Quit()
+            } catch {
+            }
+        }
+
+        foreach ($comObject in @($previewSheet, $workbook, $excel)) {
+            try {
+                $comObject | Release-ComObject
+            } catch {
+            }
+        }
+
+        [GC]::Collect()
+        [GC]::WaitForPendingFinalizers()
+    }
+}
+
 function Get-PreflightState {
     param(
         [Parameter(Mandatory = $true)][string[]]$SourceFiles,
         [Parameter(Mandatory = $true)][string]$OutputPath,
-        [Parameter(Mandatory = $true)]$Profile
+        [Parameter(Mandatory = $true)]$Profile,
+        [object]$PreviewSummary = $null
     )
 
     return [pscustomobject]@{
@@ -2407,6 +2954,7 @@ function Get-PreflightState {
         OutputExists = Test-Path -LiteralPath $OutputPath
         Profile = $Profile
         SampleFiles = @($SourceFiles | Select-Object -First 5 | ForEach-Object { [System.IO.Path]::GetFileName($_) })
+        PreviewSummary = $PreviewSummary
     }
 }
 
@@ -2429,6 +2977,19 @@ function Show-PreflightCheck {
     }
     if ($PreflightState.SourceFileCount -gt $PreflightState.SampleFiles.Count) {
         Write-Host ('    ... 他 {0} 件' -f ($PreflightState.SourceFileCount - $PreflightState.SampleFiles.Count))
+    }
+    if ($PreflightState.PreviewSummary) {
+        Write-Host '  簡易プレビュー   :'
+        if ($PreflightState.PreviewSummary.Available -and $PreflightState.PreviewSummary.CandidateCount -gt 0) {
+            Write-Host ('    - 対象: {0}' -f $PreflightState.PreviewSummary.SourceFile)
+            Write-Host ('    - 候補表数: {0}' -f $PreflightState.PreviewSummary.CandidateCount)
+            foreach ($candidate in $PreflightState.PreviewSummary.Candidates) {
+                $displayName = if ([string]::IsNullOrWhiteSpace($candidate.Name)) { '(名称なし)' } else { $candidate.Name }
+                Write-Host ('    - {0} / {1} / 列={2} / 行={3}' -f $candidate.Kind, $displayName, $candidate.Columns, $candidate.Rows)
+            }
+        } else {
+            Write-Host ('    - 取得できませんでした: {0}' -f $PreflightState.PreviewSummary.Message)
+        }
     }
     Write-Host ''
 }
@@ -2466,7 +3027,8 @@ function Resolve-ExecutionPlan {
 
     $profile = Get-ProfileConfiguration -RequestedProfileName $ProfileName -RequestedProfilePath $ProfilePath
     Register-SensitivePaths -Paths @($profile.ProfilePath)
-    Write-Log ("使用プロファイル: {0} ({1})" -f $profile.DisplayName, $profile.ProfilePath)
+    Write-Log ("使用プロファイル: {0}" -f $profile.DisplayName)
+    Write-Log ("使用プロファイル JSON: {0}" -f $profile.ProfilePath) 'DEBUG'
 
     $defaultOutputPath = Join-Path $outputDir "PDF2Excel_$timestamp.xlsx"
     $effectiveOutputPath = $OutputFile
@@ -2482,7 +3044,18 @@ function Resolve-ExecutionPlan {
     Ensure-Directory -Path $outputParent
     Register-SensitivePaths -Paths @($sourceFiles + @($effectiveOutputPath, $outputParent))
 
-    $preflightState = Get-PreflightState -SourceFiles $sourceFiles -OutputPath $effectiveOutputPath -Profile $profile
+    $previewSummary = $null
+    if (-not $NoConfirm -and $sourceFiles.Count -gt 0) {
+        Set-RunStage -StageName '事前確認' -ConsoleMessage '先頭 PDF の簡易プレビューを取得しています。'
+        $previewSummary = Get-PdfPreviewSummary -PdfPath $sourceFiles[0]
+        if ($previewSummary.Available) {
+            Write-Log ("簡易プレビューを取得しました: 候補表数={0}, 対象={1}" -f $previewSummary.CandidateCount, $previewSummary.SourceFile)
+        } else {
+            Write-Log ("簡易プレビューを取得できませんでした: {0}" -f $previewSummary.Message) 'WARN'
+        }
+    }
+
+    $preflightState = Get-PreflightState -SourceFiles $sourceFiles -OutputPath $effectiveOutputPath -Profile $profile -PreviewSummary $previewSummary
     Confirm-Preflight -PreflightState $preflightState
 
     return [pscustomobject]@{
@@ -2512,6 +3085,8 @@ function Initialize-RunWorkspace {
         $script:runRuntimeDir,
         $script:lockFilePath,
         $script:logPath,
+        $script:runHistoryPath,
+        $script:environmentReportPath,
         $templatePath,
         $buildTemplateScript
     )
@@ -2532,7 +3107,7 @@ function Prepare-RunInputs {
         [Parameter(Mandatory = $true)][string[]]$SourceFiles
     )
 
-    $stagedFiles = Stage-PdfFiles -Files $SourceFiles -StagingDirectory $script:runStagingDir
+    $stagedFiles = @(Stage-PdfFiles -Files $SourceFiles -StagingDirectory $script:runStagingDir)
     $storedFiles = @()
     if ($script:isSecureMode) {
         if ($KeepInput) {
@@ -2541,14 +3116,16 @@ function Prepare-RunInputs {
             Write-Log 'VER2 Secure のため input フォルダ同期を行いません。'
         }
     } else {
-        $storedFiles = Sync-InputStorage -Files $SourceFiles -KeepExisting:$KeepInput
+        $storedFiles = @(Sync-InputStorage -Files $SourceFiles -KeepExisting:$KeepInput)
     }
     Register-SensitivePaths -Paths @($stagedFiles + $storedFiles)
-    Write-Log ("今回実行分の staging が完了しました: {0}" -f ($stagedFiles -join ', '))
+    Write-Log ("今回実行分の staging が完了しました: {0} 件" -f $stagedFiles.Count)
+    Write-Log ("staging 内の PDF 要約: {0}" -f (Get-PathListLogSummary -Paths $stagedFiles)) 'DEBUG'
     if ($script:isSecureMode) {
         Write-Log 'VER2 Secure のため input フォルダへの PDF 複製は作成していません。'
     } else {
-        Write-Log ("input フォルダ同期が完了しました: {0}" -f ($storedFiles -join ', '))
+        Write-Log ("input フォルダ同期が完了しました: {0} 件" -f $storedFiles.Count)
+        Write-Log ("input フォルダ同期要約: {0}" -f (Get-PathListLogSummary -Paths $storedFiles)) 'DEBUG'
     }
     # Give Excel's PDF connector a brief moment to observe freshly staged files on disk.
     Start-Sleep -Seconds 1
@@ -2649,7 +3226,7 @@ function Add-V2ResultNormalizedColumns {
     $headerMap = @{}
 
     for ($column = 1; $column -le $columnCount; $column += 1) {
-        $header = [string]$Worksheet.Cells.Item(1, $column).Value2
+        $header = Get-WorksheetCellText -Worksheet $Worksheet -RowIndex 1 -ColumnIndex $column
         if (-not [string]::IsNullOrWhiteSpace($header)) {
             $headerMap[$header] = $column
         }
@@ -2659,7 +3236,6 @@ function Add-V2ResultNormalizedColumns {
         foreach ($headerName in @($definition.DisplayName, $definition.MinutesColumnName)) {
             if (-not $headerMap.ContainsKey($headerName)) {
                 $columnCount += 1
-                $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
                 $headerMap[$headerName] = $columnCount
             }
         }
@@ -2668,14 +3244,21 @@ function Add-V2ResultNormalizedColumns {
     foreach ($headerName in @('ReasonCategory', '時刻正規化状態', '時刻確認メモ')) {
         if (-not $headerMap.ContainsKey($headerName)) {
             $columnCount += 1
-            $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
             $headerMap[$headerName] = $columnCount
+            $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
         }
+    }
+    foreach ($entry in $headerMap.GetEnumerator()) {
+        $Worksheet.Cells.Item(1, [int]$entry.Value).Value2 = $entry.Key
     }
 
     foreach ($definition in $definitions) {
-        $Worksheet.Cells.Item(1, $headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
-        $Worksheet.Cells.Item(1, $headerMap[$definition.MinutesColumnName]).EntireColumn.NumberFormat = '0'
+        try {
+            $Worksheet.Cells.Item(1, [int]$headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
+            $Worksheet.Cells.Item(1, [int]$headerMap[$definition.MinutesColumnName]).EntireColumn.NumberFormat = '0'
+        } catch {
+            throw "Result 正規化列 '$($definition.DisplayName)' の表示形式設定に失敗しました: $($_.Exception.Message)"
+        }
     }
 
     for ($row = 2; $row -le $rowCount; $row += 1) {
@@ -2683,7 +3266,7 @@ function Add-V2ResultNormalizedColumns {
         foreach ($definition in $definitions) {
             $rawValuesByDisplayName[$definition.DisplayName] =
                 if ($headerMap.ContainsKey($definition.SourceColumnName)) {
-                    [string]$Worksheet.Cells.Item($row, $headerMap[$definition.SourceColumnName]).Text
+                    Get-WorksheetCellText -Worksheet $Worksheet -RowIndex $row -ColumnIndex ([int]$headerMap[$definition.SourceColumnName])
                 } else {
                     ''
                 }
@@ -2694,32 +3277,21 @@ function Add-V2ResultNormalizedColumns {
         foreach ($definition in $definitions) {
             try {
                 $normalized = $audit.Results[$definition.DisplayName]
-                $displayCell = $Worksheet.Cells.Item($row, $headerMap[$definition.DisplayName])
-                $minutesCell = $Worksheet.Cells.Item($row, $headerMap[$definition.MinutesColumnName])
-
-                $displayCell.Value2 = $normalized.NormalizedText
+                $Worksheet.Cells.Item($row, [int]$headerMap[$definition.DisplayName]).Value2 = $normalized.NormalizedText
                 if ($null -eq $normalized.MinutesFromMidnight) {
-                    $minutesCell.ClearContents()
+                    $Worksheet.Cells.Item($row, [int]$headerMap[$definition.MinutesColumnName]).Value2 = $null
                 } else {
-                    $minutesCell.Value2 = [double]$normalized.MinutesFromMidnight
+                    $Worksheet.Cells.Item($row, [int]$headerMap[$definition.MinutesColumnName]).Value2 = [double]$normalized.MinutesFromMidnight
                 }
             } catch {
                 throw "Result 正規化列 '$($definition.DisplayName)' の書き込みに失敗しました (row=$row): $($_.Exception.Message)"
             }
         }
 
-        $Worksheet.Cells.Item($row, $headerMap['時刻正規化状態']).Value2 = $audit.Status
-        $Worksheet.Cells.Item($row, $headerMap['時刻確認メモ']).Value2 = $audit.Note
+        $Worksheet.Cells.Item($row, [int]$headerMap['時刻正規化状態']).Value2 = $audit.Status
+        $Worksheet.Cells.Item($row, [int]$headerMap['時刻確認メモ']).Value2 = $audit.Note
     }
 
-    foreach ($definition in $definitions) {
-        try {
-            $Worksheet.Cells.Item(1, $headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
-            $Worksheet.Cells.Item(1, $headerMap[$definition.MinutesColumnName]).EntireColumn.NumberFormat = '0'
-        } catch {
-            throw "Result 正規化列 '$($definition.DisplayName)' の表示形式設定に失敗しました: $($_.Exception.Message)"
-        }
-    }
     $Worksheet.Range('A1').EntireRow.Font.Bold = $true
     $Worksheet.Columns.AutoFit() | Out-Null
 }
@@ -2740,7 +3312,7 @@ function Add-V2ReviewNormalizedColumns {
     }
 
     for ($column = 1; $column -le $columnCount; $column += 1) {
-        $header = [string]$Worksheet.Cells.Item(1, $column).Value2
+        $header = Get-WorksheetCellText -Worksheet $Worksheet -RowIndex 1 -ColumnIndex $column
         if (-not [string]::IsNullOrWhiteSpace($header)) {
             $headerMap[$header] = $column
         }
@@ -2750,7 +3322,6 @@ function Add-V2ReviewNormalizedColumns {
         foreach ($headerName in @($definition.DisplayName, $definition.MinutesColumnName)) {
             if (-not $headerMap.ContainsKey($headerName)) {
                 $columnCount += 1
-                $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
                 $headerMap[$headerName] = $columnCount
             }
         }
@@ -2759,14 +3330,21 @@ function Add-V2ReviewNormalizedColumns {
     foreach ($headerName in @('時刻正規化状態', '時刻確認メモ')) {
         if (-not $headerMap.ContainsKey($headerName)) {
             $columnCount += 1
-            $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
             $headerMap[$headerName] = $columnCount
+            $Worksheet.Cells.Item(1, $columnCount).Value2 = $headerName
         }
+    }
+    foreach ($entry in $headerMap.GetEnumerator()) {
+        $Worksheet.Cells.Item(1, [int]$entry.Value).Value2 = $entry.Key
     }
 
     foreach ($definition in $definitions) {
-        $Worksheet.Cells.Item(1, $headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
-        $Worksheet.Cells.Item(1, $headerMap[$definition.MinutesColumnName]).EntireColumn.NumberFormat = '0'
+        try {
+            $Worksheet.Cells.Item(1, [int]$headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
+            $Worksheet.Cells.Item(1, [int]$headerMap[$definition.MinutesColumnName]).EntireColumn.NumberFormat = '0'
+        } catch {
+            throw "Review 正規化列 '$($definition.DisplayName)' の表示形式設定に失敗しました: $($_.Exception.Message)"
+        }
     }
 
     for ($row = 2; $row -le $rowCount; $row += 1) {
@@ -2774,47 +3352,36 @@ function Add-V2ReviewNormalizedColumns {
         foreach ($definition in $definitions) {
             $rawValuesByDisplayName[$definition.DisplayName] =
                 if ($headerMap.ContainsKey($definition.ReviewRawColumnName)) {
-                    [string]$Worksheet.Cells.Item($row, $headerMap[$definition.ReviewRawColumnName]).Text
+                    Get-WorksheetCellText -Worksheet $Worksheet -RowIndex $row -ColumnIndex ([int]$headerMap[$definition.ReviewRawColumnName])
                 } else {
                     ''
                 }
         }
 
-        $existingReason = if ($headerMap.ContainsKey('Reason')) { [string]$Worksheet.Cells.Item($row, $headerMap['Reason']).Text } else { '' }
-        $existingReasonCategory = if ($headerMap.ContainsKey('ReasonCategory')) { [string]$Worksheet.Cells.Item($row, $headerMap['ReasonCategory']).Text } else { '' }
+        $existingReason = if ($headerMap.ContainsKey('Reason')) { Get-WorksheetCellText -Worksheet $Worksheet -RowIndex $row -ColumnIndex ([int]$headerMap['Reason']) } else { '' }
+        $existingReasonCategory = if ($headerMap.ContainsKey('ReasonCategory')) { Get-WorksheetCellText -Worksheet $Worksheet -RowIndex $row -ColumnIndex ([int]$headerMap['ReasonCategory']) } else { '' }
         $audit = Get-TimeNormalizationAudit -Definitions $definitions -RawValuesByDisplayName $rawValuesByDisplayName -ExistingReason $existingReason
         $reasonCategory = Get-ReviewReasonCategories -Definitions $definitions -RawValuesByDisplayName $rawValuesByDisplayName -ExistingReason $existingReason -ExistingCategoryCsv $existingReasonCategory -Audit $audit
 
         try {
             foreach ($definition in $definitions) {
                 $normalized = $audit.Results[$definition.DisplayName]
-                $displayCell = $Worksheet.Cells.Item($row, $headerMap[$definition.DisplayName])
-                $minutesCell = $Worksheet.Cells.Item($row, $headerMap[$definition.MinutesColumnName])
-
-                $displayCell.Value2 = $normalized.NormalizedText
+                $Worksheet.Cells.Item($row, [int]$headerMap[$definition.DisplayName]).Value2 = $normalized.NormalizedText
                 if ($null -eq $normalized.MinutesFromMidnight) {
-                    $minutesCell.ClearContents()
+                    $Worksheet.Cells.Item($row, [int]$headerMap[$definition.MinutesColumnName]).Value2 = $null
                 } else {
-                    $minutesCell.Value2 = [double]$normalized.MinutesFromMidnight
+                    $Worksheet.Cells.Item($row, [int]$headerMap[$definition.MinutesColumnName]).Value2 = [double]$normalized.MinutesFromMidnight
                 }
             }
         } catch {
             throw "Review 正規化列の書き込みに失敗しました (row=$row): $($_.Exception.Message)"
         }
 
-        $Worksheet.Cells.Item($row, $headerMap['ReasonCategory']).Value2 = $reasonCategory
-        $Worksheet.Cells.Item($row, $headerMap['時刻正規化状態']).Value2 = $audit.Status
-        $Worksheet.Cells.Item($row, $headerMap['時刻確認メモ']).Value2 = $audit.Note
+        $Worksheet.Cells.Item($row, [int]$headerMap['ReasonCategory']).Value2 = $reasonCategory
+        $Worksheet.Cells.Item($row, [int]$headerMap['時刻正規化状態']).Value2 = $audit.Status
+        $Worksheet.Cells.Item($row, [int]$headerMap['時刻確認メモ']).Value2 = $audit.Note
     }
 
-    foreach ($definition in $definitions) {
-        try {
-            $Worksheet.Cells.Item(1, $headerMap[$definition.DisplayName]).EntireColumn.NumberFormat = '@'
-            $Worksheet.Cells.Item(1, $headerMap[$definition.MinutesColumnName]).EntireColumn.NumberFormat = '0'
-        } catch {
-            throw "Review 正規化列 '$($definition.DisplayName)' の表示形式設定に失敗しました: $($_.Exception.Message)"
-        }
-    }
     $Worksheet.Columns.AutoFit() | Out-Null
 }
 
@@ -2891,6 +3458,7 @@ function Update-WorkbookSummaryState {
     Set-ControlMetrics -Worksheet $ControlSheet -SourcePdfCount $RunPlan.SourceFiles.Count -ResultRowCount $Outcome.ResultRowCount -ErrorRowCount $Outcome.ErrorRowCount -SuccessPdfCount $Outcome.SuccessPdfCount -FailedPdfCount $Outcome.FailedPdfCount -ElapsedSeconds $Outcome.ElapsedSeconds
     Set-SummaryMetrics -Worksheet $SummarySheet -SourcePdfCount $RunPlan.SourceFiles.Count -SuccessPdfCount $Outcome.SuccessPdfCount -FailedPdfCount $Outcome.FailedPdfCount -ResultRowCount $Outcome.ResultRowCount -ErrorRowCount $Outcome.ErrorRowCount -ReviewRowCount $Outcome.ReviewRowCount -ElapsedSeconds $Outcome.ElapsedSeconds -Profile $RunPlan.Profile -OutputPath $RunPlan.OutputPath -VersionMode $VersionMode
     $ControlSheet.Range('B6').Value2 = '出力準備完了'
+    Clear-ControlPathsForSecureOutput -Worksheet $ControlSheet -VersionMode $VersionMode
 }
 
 function Publish-WorkbookOutput {
@@ -2994,56 +3562,91 @@ $successPdfCount = 0
 $failedPdfCount = 0
 $elapsedSeconds = 0
 $runFailed = $false
+$runErrorInfo = $null
 
 try {
-    Initialize-RunWorkspace
-    Write-EnvironmentWarnings
     Write-Banner
-    Assert-ExecutionLocationAllowed
-    if ($script:isSecureMode) {
-        Write-Log ("VER2 Secure モードで実行します。runtime はローカル領域を使用します: {0}" -f $runtimeRootDir)
-        Write-Log ("VER2 Secure のログ出力先: {0}" -f $logsDir)
-        Write-Log ("DEBUG ログは保守者向けにのみ有効です。現在のログレベル: {0}" -f $LogLevel) 'DEBUG'
-    }
-    Write-Log '入力 PDF を確認しています。'
-    $runPlan = Resolve-ExecutionPlan
-    Show-ProcessingNotice
-    Prepare-RunInputs -SourceFiles $runPlan.SourceFiles | Out-Null
+    if ($CheckEnvironment) {
+        $environmentResult = Invoke-EnvironmentCheck -SelectedProfileName $ProfileName -SelectedProfilePath $ProfilePath
+        Write-RunReport -Status $(if ($environmentResult.HasFailures) { 'EnvironmentCheckFailed' } else { 'EnvironmentCheckSuccess' }) -Profile $null -ErrorMessage $(if ($environmentResult.HasFailures) { $environmentResult.Summary } else { $null }) -ActionHint $(if ($environmentResult.HasFailures) { '環境チェックレポートの対処欄を確認してください。' } else { '診断は正常終了しました。' }) -EnvironmentReportPath $script:environmentReportPath -RunHistoryPath $script:runHistoryPath
+        if ($environmentResult.HasFailures) {
+            throw '環境チェックで失敗項目が見つかりました。'
+        }
+    } else {
+        Initialize-RunWorkspace
+        Write-EnvironmentWarnings
+        Assert-ExecutionLocationAllowed
+        if ($script:isSecureMode) {
+            Write-Log 'VER2 Secure モードで実行します。runtime と logs はローカル領域を使用します。'
+            Write-Log ("VER2 Secure の runtime ルート: {0}" -f $runtimeRootDir) 'DEBUG'
+            Write-Log ("VER2 Secure のログ出力先: {0}" -f $logsDir) 'DEBUG'
+            Write-Log ("現在のログレベル: {0}" -f $LogLevel)
+            Write-Log 'DEBUG ログは保守者向けにのみ有効です。' 'DEBUG'
+        }
+        Set-RunStage -StageName '入力確認' -ConsoleMessage '入力 PDF とプロファイルを確認しています。'
+        $runPlan = Resolve-ExecutionPlan
+        Show-ProcessingNotice
 
-    Ensure-Template -ForceRebuild:$RebuildTemplate
-    $runtimeWorkbookPath = Copy-TemplateToRuntime
-    $runtimeContext = Open-ExcelRuntimeContext -RuntimeWorkbookPath $runtimeWorkbookPath -OutputPath $runPlan.OutputPath -Profile $runPlan.Profile
-    Configure-WorkbookQueries -Workbook $runtimeContext.Workbook -Profile $runPlan.Profile
-    Load-WorkbookOutputSheets -Workbook $runtimeContext.Workbook
-    Apply-VersionSpecificWorkbookEnrichments -Workbook $runtimeContext.Workbook -Profile $runPlan.Profile
-    $runtimeContext.SummarySheet = $runtimeContext.Workbook.Worksheets.Item('Summary')
+        Set-RunStage -StageName 'PDF準備' -ConsoleMessage 'PDF を staging へ準備しています。'
+        Prepare-RunInputs -SourceFiles $runPlan.SourceFiles | Out-Null
 
-    $outcome = Measure-WorkbookOutcome -Workbook $runtimeContext.Workbook -SourcePdfCount $runPlan.SourceFiles.Count
-    $resultRowCount = $outcome.ResultRowCount
-    $errorRowCount = $outcome.ErrorRowCount
-    $reviewRowCount = $outcome.ReviewRowCount
-    $successPdfCount = $outcome.SuccessPdfCount
-    $failedPdfCount = $outcome.FailedPdfCount
-    $elapsedSeconds = $outcome.ElapsedSeconds
+        Set-RunStage -StageName 'テンプレート準備' -ConsoleMessage 'テンプレートと実行用ブックを準備しています。'
+        Ensure-Template -ForceRebuild:$RebuildTemplate
+        $runtimeWorkbookPath = Copy-TemplateToRuntime
 
-    Update-WorkbookSummaryState -ControlSheet $runtimeContext.ControlSheet -SummarySheet $runtimeContext.SummarySheet -RunPlan $runPlan -Outcome $outcome
-    $runtimeContext.Workbook.Save()
-    Publish-WorkbookOutput -Excel $runtimeContext.Excel -Workbook $runtimeContext.Workbook -RuntimeWorkbookPath $runtimeWorkbookPath -OutputPath $runPlan.OutputPath
+        Set-RunStage -StageName 'Excel起動' -ConsoleMessage 'Excel を起動しています。'
+        $runtimeContext = Open-ExcelRuntimeContext -RuntimeWorkbookPath $runtimeWorkbookPath -OutputPath $runPlan.OutputPath -Profile $runPlan.Profile
 
-    Write-Log "処理が完了しました: $($runPlan.OutputPath)"
-    Show-RunSummary -SourceFiles $runPlan.SourceFiles -OutputPath $runPlan.OutputPath -Profile $runPlan.Profile -ResultRows $resultRowCount -ErrorRows $errorRowCount -ReviewRows $reviewRowCount -SuccessPdfCount $successPdfCount -FailedPdfCount $failedPdfCount -ElapsedSeconds $elapsedSeconds
+        Set-RunStage -StageName 'Power Query設定' -ConsoleMessage 'Power Query を設定しています。'
+        Configure-WorkbookQueries -Workbook $runtimeContext.Workbook -Profile $runPlan.Profile
 
-    if ($OpenOutput) {
-        Invoke-Item -LiteralPath $runPlan.OutputPath
-    }
+        Set-RunStage -StageName 'データ取込' -ConsoleMessage 'Result / Errors / Summary へ読み込んでいます。'
+        Load-WorkbookOutputSheets -Workbook $runtimeContext.Workbook
 
-    if ($OpenOutputFolder) {
-        Invoke-Item -LiteralPath $runPlan.OutputParent
+        Set-RunStage -StageName '結果整形' -ConsoleMessage '出力シートを整形しています。'
+        Apply-VersionSpecificWorkbookEnrichments -Workbook $runtimeContext.Workbook -Profile $runPlan.Profile
+        $runtimeContext.SummarySheet = $runtimeContext.Workbook.Worksheets.Item('Summary')
+
+        $outcome = Measure-WorkbookOutcome -Workbook $runtimeContext.Workbook -SourcePdfCount $runPlan.SourceFiles.Count
+        $resultRowCount = $outcome.ResultRowCount
+        $errorRowCount = $outcome.ErrorRowCount
+        $reviewRowCount = $outcome.ReviewRowCount
+        $successPdfCount = $outcome.SuccessPdfCount
+        $failedPdfCount = $outcome.FailedPdfCount
+        $elapsedSeconds = $outcome.ElapsedSeconds
+
+        Update-WorkbookSummaryState -ControlSheet $runtimeContext.ControlSheet -SummarySheet $runtimeContext.SummarySheet -RunPlan $runPlan -Outcome $outcome
+        $runtimeContext.Workbook.Save()
+
+        Set-RunStage -StageName '保存' -ConsoleMessage '最終 xlsx を保存しています。'
+        Publish-WorkbookOutput -Excel $runtimeContext.Excel -Workbook $runtimeContext.Workbook -RuntimeWorkbookPath $runtimeWorkbookPath -OutputPath $runPlan.OutputPath
+
+        Write-Log '処理が完了しました。'
+        Write-Log ("出力ファイル: {0}" -f $runPlan.OutputPath) 'DEBUG'
+        Append-RunHistory -Status 'SUCCESS' -RunPlan $runPlan -ResultRows $resultRowCount -ErrorRows $errorRowCount -ReviewRows $reviewRowCount -SuccessPdfCount $successPdfCount -FailedPdfCount $failedPdfCount -ElapsedSeconds $elapsedSeconds -ErrorInfo $null
+        Write-RunReport -Status 'Success' -OutputPath $runPlan.OutputPath -OutputParent $runPlan.OutputParent -Profile $runPlan.Profile -SourcePdfCount $runPlan.SourceFiles.Count -ResultRows $resultRowCount -ErrorRows $errorRowCount -ReviewRows $reviewRowCount -SuccessPdfCount $successPdfCount -FailedPdfCount $failedPdfCount -ElapsedSeconds $elapsedSeconds -RunHistoryPath $script:runHistoryPath
+        Show-RunSummary -SourceFiles $runPlan.SourceFiles -OutputPath $runPlan.OutputPath -Profile $runPlan.Profile -ResultRows $resultRowCount -ErrorRows $errorRowCount -ReviewRows $reviewRowCount -SuccessPdfCount $successPdfCount -FailedPdfCount $failedPdfCount -ElapsedSeconds $elapsedSeconds
+
+        if ($OpenOutput) {
+            Invoke-Item -LiteralPath $runPlan.OutputPath
+        }
+
+        if ($OpenOutputFolder) {
+            Invoke-Item -LiteralPath $runPlan.OutputParent
+        }
     }
 } catch {
     $runFailed = $true
     $runError = Resolve-RunErrorInfo -Message $_.Exception.Message
-    Write-Log ("処理に失敗しました: [{0}] [{1}] {2}" -f $runError.ErrorCategory, $runError.ErrorCode, $_.Exception.Message) 'ERROR'
+    $runErrorInfo = $runError
+    $actionHint = Get-RunErrorGuidance -ErrorInfo $runError
+    if (Test-Path -LiteralPath $script:logPath) {
+        Write-Log ("処理に失敗しました: [{0}] [{1}] {2}" -f $runError.ErrorCategory, $runError.ErrorCode, $_.Exception.Message) 'ERROR'
+    }
+    if (-not $CheckEnvironment) {
+        Append-RunHistory -Status 'FAILED' -RunPlan $runPlan -ResultRows $resultRowCount -ErrorRows $errorRowCount -ReviewRows $reviewRowCount -SuccessPdfCount $successPdfCount -FailedPdfCount $failedPdfCount -ElapsedSeconds $elapsedSeconds -ErrorInfo $runError
+    }
+    Write-RunReport -Status $(if ($CheckEnvironment) { 'EnvironmentCheckFailed' } else { 'Failed' }) -OutputPath $(if ($runPlan) { $runPlan.OutputPath } else { $OutputFile }) -OutputParent $(if ($runPlan) { $runPlan.OutputParent } else { '' }) -Profile $(if ($runPlan) { $runPlan.Profile } else { $null }) -SourcePdfCount $(if ($runPlan) { $runPlan.SourceFiles.Count } else { 0 }) -ResultRows $resultRowCount -ErrorRows $errorRowCount -ReviewRows $reviewRowCount -SuccessPdfCount $successPdfCount -FailedPdfCount $failedPdfCount -ElapsedSeconds $elapsedSeconds -ErrorMessage $_.Exception.Message -ErrorInfo $runError -ActionHint $actionHint -EnvironmentReportPath $(if ($CheckEnvironment) { $script:environmentReportPath } else { $null }) -RunHistoryPath $script:runHistoryPath
     if ($runtimeContext -and $runtimeContext.ControlSheet) {
         try {
             $runtimeContext.ControlSheet.Range('B6').Value2 = '失敗'
@@ -3054,11 +3657,13 @@ try {
     throw
 } finally {
     Close-ExcelRuntimeContext -RuntimeContext $runtimeContext -ForceStopProcess:$script:isSecureMode
-    if ($script:isSecureMode) {
+    if (-not $CheckEnvironment -and $script:isSecureMode) {
         Write-Log $(if ($runFailed) { 'VER2 Secure のため、finally で失敗時の一時領域を即時削除します。' } else { 'VER2 Secure のため、finally で一時領域を即時削除します。' })
     }
-    Finalize-RunWorkspace -ExcelProcessId $(if ($runtimeContext) { $runtimeContext.ExcelProcessId } else { $null })
-    Release-RunLock
+    if (-not $CheckEnvironment) {
+        Finalize-RunWorkspace -ExcelProcessId $(if ($runtimeContext) { $runtimeContext.ExcelProcessId } else { $null })
+        Release-RunLock
+    }
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
     if ($script:cleanupFailureMessage -and -not $runFailed) {

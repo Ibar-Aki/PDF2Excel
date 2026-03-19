@@ -2,6 +2,12 @@
 
 - 作成日: 2026-03-13 22:25 JST
 - 作成者: Codex (GPT-5)
+- 更新日: 2026-03-20
+
+## 注記
+
+- 本文は実装委任の進め方メモです。現行の製品仕様そのものではありません。
+- 具体的な現行構成は [README.md](../README.md)、[user-manual.md](user-manual.md)、[technical-description.md](technical-description.md) を参照してください。
 
 ## 目的
 

@@ -2,8 +2,12 @@
 
 - 作成日: 2026-03-15 20:58 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-16
+- 更新日: 2026-03-20
 - ステータス: **承認済み・未着手**
+
+## 注記
+
+- 本文は当時の残課題計画です。現状の完了状況は [CHANGELOG.md](../CHANGELOG.md) と [technical-description.md](technical-description.md) を優先してください。
 
 ## 1. 概要
 

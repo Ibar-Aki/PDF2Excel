@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-13 00:51 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-14
+- 更新日: 2026-03-20
 
 ## 目的
 
@@ -16,6 +16,10 @@
   - 共通関数
 - [build_excel_template.ps1](../scripts/build_excel_template.ps1)
   - `xlsm` テンプレートの再生成
+- [new_profile_scaffold.ps1](../scripts/new_profile_scaffold.ps1)
+  - `VER2` 設定ウィザード付きのプロファイル雛形生成
+- [template-integrity.json](../config/template-integrity.json)
+  - テンプレート整合性確認用マニフェスト
 - [PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas)
   - Excel マクロ
 - [PDF2ExcelMacros.sjis.bas](../template/vba/PDF2ExcelMacros.sjis.bas)
@@ -28,14 +32,16 @@
   - 統合テスト
 - [run_unit_tests.ps1](../tests/run_unit_tests.ps1)
   - ユニットテスト
+- [README.md](../reports/README.md)
+  - `reports/` 配下の運用ルール
 
 ## 保守の基本方針
 
-- 利用者の入口は `run_pdf2excel.bat` を維持する
-- 実行時生成物は `input`、`output`、`logs`、`tests/results` に閉じ込める
+- 利用者の正式入口は `run_pdf2excel.bat` (`VER2 Secure`) を維持する
+- 実行時生成物は `output`、`%LOCALAPPDATA%\PDF2Excel\logs`、`reports`、`tests/results` に閉じ込める
 - ドキュメント更新をコード変更と同じタイミングで行う
 - 帳票認識精度の変更は、実PDFを使った目視確認まで行う
-- `logs` は 30 日超または 200 件超で自動整理される前提で運用する
+- handoff 配布物はコード変更後に必ず再同期する
 
 ## よくある改修と見るべき場所
 
@@ -44,6 +50,7 @@
 見るべき場所:
 
 - [run_pdf2excel.bat](../run_pdf2excel.bat)
+- [run_pdf2excel_menu.ps1](../scripts/run_pdf2excel_menu.ps1)
 - [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
 - [README.md](../README.md)
 - [user-manual.md](user-manual.md)
@@ -58,6 +65,7 @@
 見るべき場所:
 
 - [build_excel_template.ps1](../scripts/build_excel_template.ps1)
+- [template-integrity.json](../config/template-integrity.json)
 - [PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas)
 - [PDF2ExcelMacros.sjis.bas](../template/vba/PDF2ExcelMacros.sjis.bas)
 - [PDF2ExcelTemplateBuilder.bas](../template/vba/PDF2ExcelTemplateBuilder.bas)
@@ -67,15 +75,16 @@
 
 1. `build_excel_template.ps1` または VBA を修正する
 2. テンプレートを再生成する
-3. `template/PDF2Excel_Converter.xlsm` と `template/vba/*.sjis.bas` の更新を確認する
-4. ユニットテストと統合テストを実行する
+3. `template/PDF2Excel_V1_Converter.xlsm` / `template/PDF2Excel_V2_Converter.xlsm` と `config/template-integrity.json` の更新を確認する
+4. handoff を再生成する
+5. ユニットテストと統合テストを実行する
 
 空ブックから手動で起こす場合:
 
 1. マクロ有効ブック (`.xlsm`) を新規作成する
 2. VBA エディタで `PDF2ExcelTemplateBuilder.sjis.bas` をインポートする
 3. `BuildPDF2ExcelTemplateInActiveWorkbook` を実行する
-4. 必要に応じて `template/PDF2Excel_Converter.xlsm` として保存する
+4. 必要に応じて `template/PDF2Excel_V2_Converter.xlsm` として保存する
 
 注意:
 
@@ -85,6 +94,7 @@
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_excel_template.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_handoff_package.ps1 -TargetVersion v2
 ```
 
 ### 3. PDF 抽出ルールを変えたい
@@ -100,6 +110,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_excel_templa
 
 - 30列固定仕様を崩すと、`Result` シートの形もテストも崩れる
 - `Errors` に逃がす条件を弱めすぎると、列ズレのまま成功扱いになる
+
+### 4. プロファイル追加導線を変えたい
+
+見るべき場所:
+
+- [new_profile_scaffold.ps1](../scripts/new_profile_scaffold.ps1)
+- [run_pdf2excel_menu.ps1](../scripts/run_pdf2excel_menu.ps1)
+- [README.md](../README.md)
+- [user-manual.md](user-manual.md)
+
+注意:
+
+- `VER2` の `[6]` は設定ウィザード前提です。
+- 非対話 CLI 互換を壊さないことを優先してください。
 
 ## テスト手順
 
@@ -123,6 +147,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_unit_tests.ps1
 - 日本語ファイル名
 - 50件一括変換
 - BAT 実行
+- `環境チェック`
+- `V2 プロファイル Wizard 生成`
 - `input` 自己参照
 - 同名PDF拒否
 - 壊れた PDF 混在
@@ -138,7 +164,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_unit_tests.ps1
 2. ユニットテストと統合テストが成功する
 3. `reports/test-report.md` と `reports/unit-test-report.md` が更新される
 4. README と関連ドキュメントが更新されている
-5. `input`、`logs`、`tests/results` に不要な生成物が残っていない
+5. `reports/run-history.csv` や `reports/environment-check.md` をコミット対象へ混ぜていない
+6. `input`、`logs`、`tests/results` に不要な生成物が残っていない
 
 ## リリース前の確認
 

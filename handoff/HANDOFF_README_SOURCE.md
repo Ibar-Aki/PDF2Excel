@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-14 00:05 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-19
+- 更新日: 2026-03-20
 
 ## これは何か
 
@@ -22,7 +22,7 @@
 - `scripts/run_pdf2excel_v1.ps1`
   - `VER1` 用の実行ラッパーです。
 - `scripts/new_profile_scaffold.ps1`
-  - `VER1` / `VER2` のプロファイル雛形を作る保守者向けスクリプトです。
+  - `VER1` / `VER2` のプロファイル雛形を作る保守者向けスクリプトです。`VER2` は設定ウィザードにも対応しています。
 - `template/PDF2Excel_V1_Converter.xlsm`
   - 実行に使う Excel テンプレートです。
 - `template/vba/PDF2ExcelMacros.bas`
@@ -39,6 +39,11 @@
   - 出力された Excel の保存先です。
 - `logs`
   - 実行ログの保存先です。
+
+## 文書位置づけ
+
+- この配布説明は `VER1` の保守・検証用途向けです。
+- 正式運用の最新手順は `VER2 Secure` 側の `HANDOFF_README_V2_SOURCE.md` と repo 直下の `README.md` を優先してください。
 
 ## 使う前の条件
 

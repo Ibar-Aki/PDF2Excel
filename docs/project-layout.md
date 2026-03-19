@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-13 00:49 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-16
+- 更新日: 2026-03-20
 
 ## 目的
 
@@ -12,31 +12,33 @@
 
 ```text
 PDF2Excel
-├─ run_pdf2excel.bat        互換入口 (VER1)
+├─ run_pdf2excel.bat        正式運用入口 (VER2 Secure)
 ├─ run_pdf2excel_v1.bat     VER1 の入口
-├─ run_pdf2excel_v2.bat     VER2 の入口
+├─ run_pdf2excel_v2.bat     VER2 を明示起動する入口
 ├─ README.md                最初に読む概要
 ├─ docs/                    マニュアルと構成説明
-├─ config/profiles/         帳票プロファイル
+├─ config/                  帳票プロファイルと整合性マニフェスト
 ├─ samples/v1/              VER1 サンプル
 ├─ samples/v2/              VER2 サンプル
 ├─ scripts/                 PowerShell 本体と共通関数
 ├─ template/                Excel テンプレートと VBA
 ├─ tests/                   統合テストとユニットテスト
-├─ reports/                 テスト結果レポート
+├─ reports/                 テスト結果と運用レポート
 ├─ input/                   保管用 PDF
 ├─ output/                  実行結果の xlsx
-└─ logs/                    実行ログ
+└─ logs/                    開発・検証導線の実行ログ
 ```
 
 ## 利用者が主に触る場所
 
 - [index.md](index.md)
   - 文書の入口です。
-- [run_pdf2excel_v1.bat](../run_pdf2excel_v1.bat)
-  - 標準変換の入口です。
+- [run_pdf2excel.bat](../run_pdf2excel.bat)
+  - 正式運用で使う `VER2 Secure` の入口です。
 - [run_pdf2excel_v2.bat](../run_pdf2excel_v2.bat)
-  - 生データ転記の入口です。
+  - `VER2 Secure` を明示して起動したいときの入口です。
+- [run_pdf2excel_v1.bat](../run_pdf2excel_v1.bat)
+  - `VER1` の開発・検証用入口です。
 - [README.md](../README.md)
   - 全体概要を短く確認できます。
 - [user-manual.md](user-manual.md)
@@ -51,8 +53,10 @@ PDF2Excel
   - `VER2` の生データ転記サンプルです。
 - `output`
   - 変換後の Excel が出ます。
-- `logs`
-  - エラー調査時に見ます。
+- `%LOCALAPPDATA%\PDF2Excel\logs`
+  - `VER2 Secure` の既定ログ保存先です。
+- `reports`
+  - `run-history.csv` や `environment-check.md` などのレポートが出ます。
 
 ## 保守時に触る場所
 
@@ -63,15 +67,17 @@ PDF2Excel
 - [run_pdf2excel_v2.ps1](../scripts/run_pdf2excel_v2.ps1)
   - `VER2` ラッパーです。
 - [run_pdf2excel_menu.ps1](../scripts/run_pdf2excel_menu.ps1)
-  - 日本語の対話メニューを表示する起動補助です。
+  - 日本語の共通対話メニューです。`[9] プロファイル選択` と `[0] 環境チェック` を含みます。
 - [run_pdf2excel_menu_v1.ps1](../scripts/run_pdf2excel_menu_v1.ps1)
   - `VER1` のメニュー入口です。
 - [run_pdf2excel_menu_v2.ps1](../scripts/run_pdf2excel_menu_v2.ps1)
-  - `VER2` のメニュー入口です。
+  - `VER2` 用ラッパーです。内部では共通メニューを呼び出します。
+- [new_profile_scaffold.ps1](../scripts/new_profile_scaffold.ps1)
+  - プロファイル雛形生成スクリプトです。`VER2` では設定ウィザードを使えます。
 - [pdf2excel.common.ps1](../scripts/pdf2excel.common.ps1)
   - 共通関数です。
 - [build_excel_template.ps1](../scripts/build_excel_template.ps1)
-  - `xlsm` テンプレートを再生成します。
+  - `xlsm` テンプレートと `config/template-integrity.json` を再生成します。
 - [build_sample_pdfs.ps1](../scripts/build_sample_pdfs.ps1)
   - 日本語勤怠管理表のサンプル Excel / PDF を再生成します。
 - [PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas)
@@ -90,13 +96,17 @@ PDF2Excel
   - 最新のテスト結果です。
 - [unit-test-report.md](../reports/unit-test-report.md)
   - 最新のユニットテスト結果です。
+- [README.md](../reports/README.md)
+  - `reports/` 配下の追跡対象と生成物を説明します。
 
 ## 運用ルール
 
-- `input` は保管置き場です。実行時の抽出対象は `output/runtime/runs/<run-id>/staging` に分離されます。
+- `input` は保管置き場です。`VER2 Secure` の正式導線では今回 PDF を `input` へ同期しません。
 - `output` は成果物置き場です。必要なものだけ残してください。
-- `logs` は実行ごとに増えますが、30日超または200件超の古いログは自動整理されます。
+- `logs` は主に開発・検証導線で使います。`VER2 Secure` の既定ログは `%LOCALAPPDATA%\PDF2Excel\logs` に出ます。
 - `config/profiles` は帳票ごとの設定置き場です。新しい帳票を増やすときはここへ JSON を追加します。
+- `config/template-integrity.json` はテンプレートと VBA モジュールの整合性確認に使います。
+- `reports/run-history.csv` と `reports/environment-check.md` は運用レポートです。追跡対象にしない前提で扱います。
 - `tests/results` と `tests/work` はテストの生成物です。通常は空で問題ありません。
 
 ## おすすめの見方
@@ -104,4 +114,4 @@ PDF2Excel
 1. まず [README.md](../README.md) を読む
 2. 次に [user-manual.md](user-manual.md) を読む
 3. 実行は [run_pdf2excel.bat](../run_pdf2excel.bat) から始める
-4. 問題が出たら `logs` と [test-report.md](../reports/test-report.md) を確認する
+4. 問題が出たら [troubleshooting.md](troubleshooting.md)、[README.md](../reports/README.md)、[test-report.md](../reports/test-report.md) を確認する

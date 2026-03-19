@@ -17,3 +17,6 @@ output/runtime/*
 tests/work/*
 tests/results/*
 !tests/results/.gitkeep
+
+reports/run-history.csv
+reports/environment-check.md

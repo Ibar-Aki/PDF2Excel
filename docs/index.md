@@ -2,12 +2,30 @@
 
 - 作成日: 2026-03-13 00:51 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-16
+- 更新日: 2026-03-20
 
 ## はじめに
 
 このページは、PDF2Excel の文書を目的別にたどれるようにした案内ページです。  
 最初にどこを読めばよいか迷ったときは、このページから入ってください。
+
+## まず見る最新版
+
+- [README.md](../README.md)
+  - 正式運用の入口、現在の機能、主要な注意点をまとめた最新版です。
+- [user-manual.md](user-manual.md)
+  - 現在のメニュー操作、`[0] 環境チェック`、`[6] VER2 設定ウィザード` を含む利用手順の最新版です。
+- [project-layout.md](project-layout.md)
+  - フォルダ構成、生成物の置き場所、`reports/` の扱いを含む構成案内の最新版です。
+- [technical-description.md](technical-description.md)
+  - 現在の `VER2 Secure` 構成、環境チェック、実行履歴、テンプレート整合性チェックを含む技術説明の最新版です。
+- [troubleshooting.md](troubleshooting.md)
+  - 現在の障害切り分け手順です。環境チェックと実行履歴の見方も含みます。
+
+補足:
+
+- 監査レポート、実装報告、計画書は「作成日時点の記録」です。
+- 現行運用の正解は、原則として上の最新版 5 文書を優先してください。
 
 ## 利用者向け
 
@@ -40,12 +58,25 @@
 
 ## 障害対応向け
 
+- [reports/README.md](../reports/README.md)
+  - `reports/` 配下の追跡対象と生成物の扱いを説明します。
 - [troubleshooting.md](troubleshooting.md)
   - 症状別の確認方法と対処方法をまとめています。
 - [test-report.md](../reports/test-report.md)
   - 最新の統合テスト結果です。
 - [unit-test-report.md](../reports/unit-test-report.md)
   - 共通関数とクエリ生成のユニットテスト結果です。
+
+## 監査・評価
+
+- [security-risk-response-report.md](security-risk-response-report.md)
+  - セキュリティ上の論点と、採用済み対策の整理です。
+- [system-risk-evaluation.md](system-risk-evaluation.md)
+  - システム全体のリスク評価です。
+- [security-audit-report.md](security-audit-report.md)
+  - セキュリティ監査の詳細所見です。
+- [strict-security-audit-report.md](strict-security-audit-report.md)
+  - 厳しめ評価での監査所見です。
 
 ## 保守・改修向け
 

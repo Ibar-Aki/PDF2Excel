@@ -2,7 +2,11 @@
 
 - 作成日: 2026-03-15 22:45 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-16
+- 更新日: 2026-03-20
+
+## 注記
+
+- 本文は安定化実装時点の報告書です。現行の正式導線は `run_pdf2excel.bat` = `VER2 Secure` であり、最新仕様は [README.md](../README.md) と [technical-description.md](technical-description.md) を優先してください。
 
 ## 1. 目的
 

@@ -76,6 +76,8 @@ function Assert-ExecutionLocationAllowed {
 function Invoke-RunScript {
     param([string[]]$Arguments)
 
+    $reportPath = Get-RunReportTempPath
+
     $shellArgs = @('-NoProfile', '-ExecutionPolicy', 'RemoteSigned')
     $effectiveArguments = @()
     if ($PassCoreDefaults) {
@@ -86,18 +88,31 @@ function Invoke-RunScript {
             $effectiveArguments += @('-SecurityMode', $DefaultSecurityMode)
         }
         if (
-            -not [string]::IsNullOrWhiteSpace($DefaultProfileName) -and
+            -not [string]::IsNullOrWhiteSpace($script:currentProfileName) -and
             -not ($Arguments -contains '-ProfileName') -and
             -not ($Arguments -contains '-ProfilePath')
         ) {
-            $effectiveArguments += @('-ProfileName', $DefaultProfileName)
+            $effectiveArguments += @('-ProfileName', $script:currentProfileName)
         }
     }
 
-    $effectiveArguments += $Arguments
+    $effectiveArguments += @($Arguments + @('-RunReportPath', $reportPath))
     $shellArgs += @('-File', $runScript)
-    & powershell @shellArgs @effectiveArguments
-    return $LASTEXITCODE
+    & powershell @shellArgs @effectiveArguments | Out-Host
+    $exitCode = $LASTEXITCODE
+    $report = $null
+    if (Test-Path -LiteralPath $reportPath) {
+        try {
+            $report = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        } catch {
+        }
+        Remove-Item -LiteralPath $reportPath -Force -ErrorAction SilentlyContinue
+    }
+
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Report   = $report
+    }
 }
 
 function Open-PathIfExists {
@@ -119,18 +134,280 @@ function Open-PathIfExists {
 function Invoke-ProfileScaffoldScript {
     $shellArgs = @('-NoProfile', '-ExecutionPolicy', 'RemoteSigned')
     $shellArgs += @('-File', $profileScaffoldScript, '-VersionMode', $VersionMode)
+    if ($VersionMode -eq 'v2') {
+        $shellArgs += '-Wizard'
+    }
     & powershell @shellArgs
     return $LASTEXITCODE
+}
+
+function Get-MenuStorageRoot {
+    if ($isSecureDefault) {
+        return Join-Path $secureRuntimeDir 'menu'
+    }
+
+    return Join-Path $projectRoot 'logs\menu'
+}
+
+function Get-MenuStatePath {
+    $stateRoot = Get-MenuStorageRoot
+    Ensure-Directory -Path $stateRoot
+    return Join-Path $stateRoot ("menu_state_{0}.json" -f $VersionMode)
+}
+
+function Get-RunReportTempPath {
+    $stateRoot = Get-MenuStorageRoot
+    Ensure-Directory -Path $stateRoot
+    return Join-Path $stateRoot ("run_report_{0}.json" -f ([guid]::NewGuid().ToString('N')))
+}
+
+function Get-AvailableProfiles {
+    if (-not (Test-Path -LiteralPath $profileDir)) {
+        return @()
+    }
+
+    $profiles = @()
+    foreach ($file in @(Get-ChildItem -LiteralPath $profileDir -Filter '*.json' -File | Sort-Object Name)) {
+        try {
+            $raw = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+            $profileName = if ([string]::IsNullOrWhiteSpace([string]$raw.name)) { [System.IO.Path]::GetFileNameWithoutExtension($file.Name) } else { [string]$raw.name }
+            $displayName = if ([string]::IsNullOrWhiteSpace([string]$raw.displayName)) { $profileName } else { [string]$raw.displayName }
+            $profiles += [pscustomobject]@{
+                Name        = $profileName
+                DisplayName = $displayName
+                Path        = $file.FullName
+                Description = [string]$raw.description
+            }
+        } catch {
+        }
+    }
+
+    return @($profiles)
+}
+
+function Load-MenuState {
+    $statePath = Get-MenuStatePath
+    if (-not (Test-Path -LiteralPath $statePath)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+function Save-MenuState {
+    param([string]$SelectedProfileName)
+
+    $statePath = Get-MenuStatePath
+    $payload = [ordered]@{
+        versionMode         = $VersionMode
+        selectedProfileName = $SelectedProfileName
+        updatedAt           = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    } | ConvertTo-Json
+    Set-Content -LiteralPath $statePath -Value $payload -Encoding UTF8
+}
+
+function Resolve-CurrentProfileName {
+    param([object[]]$Profiles)
+
+    $profileNames = @($Profiles | ForEach-Object { $_.Name })
+    if (-not $profileNames) {
+        return $null
+    }
+
+    $state = Load-MenuState
+    if ($state -and $profileNames -contains [string]$state.selectedProfileName) {
+        return [string]$state.selectedProfileName
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($DefaultProfileName) -and $profileNames -contains $DefaultProfileName) {
+        return $DefaultProfileName
+    }
+
+    return $Profiles[0].Name
+}
+
+function Get-CurrentProfileDisplay {
+    param([object[]]$Profiles)
+
+    if ([string]::IsNullOrWhiteSpace($script:currentProfileName)) {
+        return '未選択'
+    }
+
+    $profile = @($Profiles | Where-Object Name -eq $script:currentProfileName | Select-Object -First 1)
+    if ($profile.Count -eq 0) {
+        return $script:currentProfileName
+    }
+
+    return ("{0} ({1})" -f $profile[0].DisplayName, $profile[0].Name)
+}
+
+function Select-ProfileFromMenu {
+    param([object[]]$Profiles)
+
+    if ($Profiles.Count -eq 0) {
+        Write-Host ''
+        Write-Host '利用可能なプロファイルがありません。先に雛形を作成してください。'
+        Pause
+        return
+    }
+
+    Write-Host ''
+    Write-Host '利用可能なプロファイル'
+    for ($index = 0; $index -lt $Profiles.Count; $index += 1) {
+        $profile = $Profiles[$index]
+        $currentMark = if ($profile.Name -eq $script:currentProfileName) { ' (現在)' } else { '' }
+        Write-Host (" [{0}] {1}{2}" -f ($index + 1), $profile.DisplayName, $currentMark)
+        if (-not [string]::IsNullOrWhiteSpace($profile.Description)) {
+            Write-Host ("      {0}" -f $profile.Description)
+        }
+    }
+    Write-Host ''
+    $selection = Read-Host '使うプロファイル番号を選んでください (Enter で戻る)'
+    if ([string]::IsNullOrWhiteSpace($selection)) {
+        return
+    }
+
+    $selectedIndex = 0
+    if (-not [int]::TryParse($selection, [ref]$selectedIndex) -or $selectedIndex -lt 1 -or $selectedIndex -gt $Profiles.Count) {
+        Write-Host ''
+        Write-Host '有効な番号を入力してください。'
+        Pause
+        return
+    }
+
+    $script:currentProfileName = $Profiles[$selectedIndex - 1].Name
+    Save-MenuState -SelectedProfileName $script:currentProfileName
+    Write-Host ''
+    Write-Host ("現在のプロファイルを '{0}' に変更しました。" -f $Profiles[$selectedIndex - 1].DisplayName)
+    Pause
+}
+
+function Prompt-PostRunAction {
+    param($Report)
+
+    if ($null -eq $Report) {
+        Pause
+        return
+    }
+
+    Write-Host ''
+    $selection = Read-Host 'O=出力ファイルを開く / F=保存先を開く / Enter=メニューへ戻る'
+    switch ($selection.Trim().ToUpperInvariant()) {
+        'O' {
+            if (-not [string]::IsNullOrWhiteSpace($Report.OutputPath) -and (Test-Path -LiteralPath $Report.OutputPath)) {
+                Start-Process -FilePath $Report.OutputPath | Out-Null
+            }
+        }
+        'F' {
+            if (-not [string]::IsNullOrWhiteSpace($Report.OutputParent) -and (Test-Path -LiteralPath $Report.OutputParent)) {
+                Start-Process -FilePath $Report.OutputParent | Out-Null
+            }
+        }
+    }
+}
+
+function Show-RunFailure {
+    param($RunResult)
+
+    Write-Host ''
+    Write-Host ("PDF2Excel の処理に失敗しました。終了コード: {0}" -f $RunResult.ExitCode)
+    if ($RunResult.Report) {
+        if (-not [string]::IsNullOrWhiteSpace($RunResult.Report.ErrorCategory) -or -not [string]::IsNullOrWhiteSpace($RunResult.Report.ErrorCode)) {
+            Write-Host ("分類: {0} / {1}" -f $RunResult.Report.ErrorCategory, $RunResult.Report.ErrorCode)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($RunResult.Report.ActionHint)) {
+            Write-Host ("対処: {0}" -f $RunResult.Report.ActionHint)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($RunResult.Report.LogPath)) {
+            Write-Host ("ログ: {0}" -f $RunResult.Report.LogPath)
+        } else {
+            Write-Host ("ログ: {0}" -f $logsDir)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($RunResult.Report.EnvironmentReportPath)) {
+            Write-Host ("環境チェックレポート: {0}" -f $RunResult.Report.EnvironmentReportPath)
+        }
+    } else {
+        Write-Host ("詳細は '{0}' のログを確認してください。" -f $logsDir)
+    }
+    Pause
+}
+
+function Show-RunSuccess {
+    param($RunResult)
+
+    Write-Host ''
+    Write-Host '変換が完了しました。'
+    if ($RunResult.Report) {
+        Write-Host ("出力ファイル: {0}" -f $RunResult.Report.OutputPath)
+        if (-not [string]::IsNullOrWhiteSpace($RunResult.Report.LogPath)) {
+            Write-Host ("ログ先: {0}" -f $RunResult.Report.LogPath)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($RunResult.Report.RunHistoryPath)) {
+            Write-Host ("実行履歴: {0}" -f $RunResult.Report.RunHistoryPath)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($RunResult.Report.ProfileDisplayName)) {
+            Write-Host ("使用プロファイル: {0}" -f $RunResult.Report.ProfileDisplayName)
+        }
+    } else {
+        Write-Host ("出力先: {0}" -f $outputDir)
+        Write-Host ("ログ先: {0}" -f $logsDir)
+    }
+    Write-Host $completionSheetMessage
+    Prompt-PostRunAction -Report $RunResult.Report
+}
+
+function Invoke-MenuRun {
+    param([string[]]$Arguments)
+
+    $runResult = Invoke-RunScript -Arguments $Arguments
+    if ($runResult.ExitCode -ne 0) {
+        Show-RunFailure -RunResult $runResult
+        return
+    }
+
+    Show-RunSuccess -RunResult $runResult
+}
+
+function Invoke-EnvironmentCheckFromMenu {
+    $runResult = Invoke-RunScript -Arguments @('-CheckEnvironment')
+    if ($runResult.ExitCode -ne 0) {
+        Show-RunFailure -RunResult $runResult
+        return
+    }
+
+    Write-Host ''
+    Write-Host '環境チェックが完了しました。'
+    if ($runResult.Report -and -not [string]::IsNullOrWhiteSpace($runResult.Report.EnvironmentReportPath)) {
+        Write-Host ("レポート: {0}" -f $runResult.Report.EnvironmentReportPath)
+    }
+    Pause
 }
 
 $remainingArgs = @($ForwardArgs)
 Assert-SecureLocalStorageAvailable
 Assert-ExecutionLocationAllowed
+$availableProfiles = @(Get-AvailableProfiles)
+$script:currentProfileName = Resolve-CurrentProfileName -Profiles $availableProfiles
+if (-not [string]::IsNullOrWhiteSpace($script:currentProfileName)) {
+    Save-MenuState -SelectedProfileName $script:currentProfileName
+}
 if (-not $ForceMenu -and $remainingArgs.Count -gt 0) {
-    exit (Invoke-RunScript -Arguments $remainingArgs)
+    exit ((Invoke-RunScript -Arguments $remainingArgs).ExitCode)
 }
 
 while ($true) {
+    $availableProfiles = @(Get-AvailableProfiles)
+    if (-not [string]::IsNullOrWhiteSpace($script:currentProfileName) -and -not (@($availableProfiles | ForEach-Object { $_.Name }) -contains $script:currentProfileName)) {
+        $script:currentProfileName = Resolve-CurrentProfileName -Profiles $availableProfiles
+        if (-not [string]::IsNullOrWhiteSpace($script:currentProfileName)) {
+            Save-MenuState -SelectedProfileName $script:currentProfileName
+        }
+    }
+
     Clear-Host
     Write-Host '=========================================='
     Write-Host (" $systemLabel")
@@ -145,6 +422,7 @@ while ($true) {
         Write-Host ' 開発・検証用の標準変換です。'
         Write-Host ' 保存先を指定しない場合は output フォルダに保存します。'
     }
+    Write-Host (" 現在のプロファイル: {0}" -f (Get-CurrentProfileDisplay -Profiles $availableProfiles))
     Write-Host ''
     Write-Host ' [1] PDFファイルを選んで変換'
     Write-Host ' [2] PDFフォルダを選んで変換'
@@ -154,43 +432,17 @@ while ($true) {
     Write-Host ' [6] プロファイル雛形を作成'
     Write-Host ' [7] ログフォルダを開く'
     Write-Host ' [8] 終了'
+    Write-Host ' [9] プロファイルを選ぶ'
+    Write-Host ' [0] 環境チェック'
     Write-Host ''
 
     $selection = Read-Host '番号を選んでください'
     switch ($selection) {
         '1' {
-            $exitCode = Invoke-RunScript -Arguments @('-PromptForOutputFile')
-            if ($exitCode -ne 0) {
-                Write-Host ''
-                Write-Host "PDF2Excel の処理に失敗しました。終了コード: $exitCode"
-                Write-Host "詳細は '$logsDir' のログを確認してください。"
-                Pause
-            } else {
-                Write-Host ''
-                Write-Host '変換が完了しました。'
-                Write-Host "出力先: $outputDir"
-                Write-Host "ログ先: $logsDir"
-                Write-Host $completionSheetMessage
-                Write-Host '必要に応じて output と logs の内容を確認してください。'
-                Pause
-            }
+            Invoke-MenuRun -Arguments @('-PromptForOutputFile')
         }
         '2' {
-            $exitCode = Invoke-RunScript -Arguments @('-SelectInputFolder', '-PromptForOutputFile')
-            if ($exitCode -ne 0) {
-                Write-Host ''
-                Write-Host "PDF2Excel の処理に失敗しました。終了コード: $exitCode"
-                Write-Host "詳細は '$logsDir' のログを確認してください。"
-                Pause
-            } else {
-                Write-Host ''
-                Write-Host '変換が完了しました。'
-                Write-Host "出力先: $outputDir"
-                Write-Host "ログ先: $logsDir"
-                Write-Host $completionSheetMessage
-                Write-Host '必要に応じて output と logs の内容を確認してください。'
-                Pause
-            }
+            Invoke-MenuRun -Arguments @('-SelectInputFolder', '-PromptForOutputFile')
         }
         '3' {
             Open-PathIfExists -Path $manualPath -MissingMessage "使い方マニュアルが見つかりません: $manualPath"
@@ -208,9 +460,11 @@ while ($true) {
                 Write-Host "プロファイル雛形の作成に失敗しました。終了コード: $exitCode"
                 Pause
             } else {
+                $availableProfiles = @(Get-AvailableProfiles)
                 Write-Host ''
                 Write-Host 'プロファイル雛形を作成しました。'
                 Write-Host "保存先: $profileDir"
+                Write-Host '使うプロファイルを切り替える場合は [9] を選んでください。'
                 Pause
             }
         }
@@ -220,9 +474,15 @@ while ($true) {
         '8' {
             exit 0
         }
+        '9' {
+            Select-ProfileFromMenu -Profiles $availableProfiles
+        }
+        '0' {
+            Invoke-EnvironmentCheckFromMenu
+        }
         default {
             Write-Host ''
-            Write-Host '1 から 8 の番号を入力してください。'
+            Write-Host '0 から 9 の番号を入力してください。'
             Pause
         }
     }

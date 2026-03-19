@@ -4,6 +4,7 @@
     [string]$ProfileName,
     [string]$DisplayName,
     [string]$OutputPath,
+    [switch]$Wizard,
     [switch]$Force
 )
 
@@ -12,7 +13,45 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'pdf2excel.common.ps1')
 
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
+
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$profileObject = $null
+
+function Get-DefaultProfileScaffoldValues {
+    param(
+        [Parameter(Mandatory = $true)][string]$ResolvedVersionMode,
+        [string]$ResolvedProfileName,
+        [string]$ResolvedDisplayName
+    )
+
+    return [ordered]@{
+        ProfileName                = $ResolvedProfileName
+        DisplayName                = if ([string]::IsNullOrWhiteSpace($ResolvedDisplayName)) {
+            if ($ResolvedVersionMode -eq 'v2') { '生データ転記サンプルプロファイル' } else { "$ResolvedProfileName プロファイル" }
+        } else {
+            $ResolvedDisplayName
+        }
+        Description                = if ($ResolvedVersionMode -eq 'v2') { '生データ転記向けのサンプルプロファイルです。列定義と review 列を調整して使います。' } else { '標準変換向けのサンプルプロファイルです。列数やヘッダー行数を調整して使います。' }
+        ExpectedColumns            = if ($ResolvedVersionMode -eq 'v2') { 30 } else { 10 }
+        HeaderRowsToSkip           = 1
+        TargetRowCount             = if ($ResolvedVersionMode -eq 'v2') { 5 } else { 100 }
+        AllowMoreColumns           = $false
+        PreferredTableKinds        = @('Table')
+        PreferredTableNameContains = @()
+        PreferredTableIdContains   = @()
+        SourceFileColumnName       = if ($ResolvedVersionMode -eq 'v2') { '元ファイル名' } else { 'SourceFile' }
+        DataColumnPrefix           = if ($ResolvedVersionMode -eq 'v2') { '項目' } else { 'Column' }
+        MultiPageMergeMode         = if ($ResolvedVersionMode -eq 'v2') { 'sameHeader' } else { 'single' }
+        NormalizedTimeColumns      = @()
+        ReviewPersonColumn         = $null
+        ReviewSiteColumn           = $null
+        ReviewInTimeColumn         = $null
+        ReviewOutTimeColumn        = $null
+    }
+}
 
 function Read-VersionMode {
     while ($true) {
@@ -63,55 +102,353 @@ function Read-OptionalValue {
     return $value
 }
 
+function Read-ValidatedIntValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Prompt,
+        [int]$DefaultValue,
+        [int]$MinValue = 0
+    )
+
+    while ($true) {
+        $rawValue = Read-OptionalValue -Prompt $Prompt -DefaultValue $DefaultValue
+        $parsedValue = 0
+        if (-not [int]::TryParse([string]$rawValue, [ref]$parsedValue)) {
+            Write-Host '整数を入力してください。'
+            continue
+        }
+        if ($parsedValue -lt $MinValue) {
+            Write-Host ("{0} 以上の整数を入力してください。" -f $MinValue)
+            continue
+        }
+
+        return $parsedValue
+    }
+}
+
+function Read-NullableIntValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Prompt,
+        [Nullable[int]]$DefaultValue,
+        [int]$MinValue = 1
+    )
+
+    while ($true) {
+        $defaultText = if ($null -eq $DefaultValue) { '' } else { [string]$DefaultValue }
+        $value = Read-Host $(if ([string]::IsNullOrWhiteSpace($defaultText)) { "$Prompt (未設定のままにする場合は Enter)" } else { "$Prompt (Enter で $defaultText / 未設定にする場合は -)" })
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return $DefaultValue
+        }
+        if ($value.Trim() -eq '-') {
+            return $null
+        }
+
+        $parsedValue = 0
+        if (-not [int]::TryParse($value, [ref]$parsedValue)) {
+            Write-Host '整数を入力してください。'
+            continue
+        }
+        if ($parsedValue -lt $MinValue) {
+            Write-Host ("{0} 以上の整数を入力してください。" -f $MinValue)
+            continue
+        }
+
+        return $parsedValue
+    }
+}
+
+function Read-YesNoValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Prompt,
+        [bool]$DefaultValue = $false
+    )
+
+    while ($true) {
+        $defaultLabel = if ($DefaultValue) { 'Y' } else { 'N' }
+        $value = Read-Host "$Prompt (Y/N, Enter で $defaultLabel)"
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return $DefaultValue
+        }
+
+        switch ($value.Trim().ToUpperInvariant()) {
+            'Y' { return $true }
+            'YES' { return $true }
+            'N' { return $false }
+            'NO' { return $false }
+            default { Write-Host 'Y または N を入力してください。' }
+        }
+    }
+}
+
+function ConvertTo-StringArrayFromCommaSeparated {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return @()
+    }
+
+    return @(
+        $Value -split '[,、]' |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+}
+
+function ConvertTo-NormalizedTimeColumnEntries {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return @()
+    }
+
+    $entries = @()
+    foreach ($token in @($Value -split '[,、]' | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $parts = $token -split ':', 2
+        if ($parts.Count -ne 2) {
+            throw "正規化時刻列は '列番号:表示名' 形式で入力してください: $token"
+        }
+
+        $sourceColumn = 0
+        if (-not [int]::TryParse($parts[0].Trim(), [ref]$sourceColumn) -or $sourceColumn -lt 1) {
+            throw "列番号は 1 以上の整数で入力してください: $token"
+        }
+
+        $displayName = $parts[1].Trim()
+        if ([string]::IsNullOrWhiteSpace($displayName)) {
+            throw "表示名を省略できません: $token"
+        }
+
+        $entries += [ordered]@{
+            sourceColumn = $sourceColumn
+            displayName  = $displayName
+        }
+    }
+
+    return @($entries)
+}
+
+function Read-NormalizedTimeColumns {
+    param($DefaultEntries)
+
+    while ($true) {
+        $defaultText = if ($null -eq $DefaultEntries -or @($DefaultEntries).Count -eq 0) {
+            ''
+        } else {
+            (@($DefaultEntries) | ForEach-Object { '{0}:{1}' -f $_.sourceColumn, $_.displayName }) -join ','
+        }
+
+        try {
+            $rawValue = Read-Host $(if ([string]::IsNullOrWhiteSpace($defaultText)) { "正規化時刻列を入力してください (列番号:表示名 をカンマ区切り / 未設定は Enter)" } else { "正規化時刻列を入力してください (Enter で $defaultText / 未設定は -)" })
+            if ([string]::IsNullOrWhiteSpace($rawValue)) {
+                return if ([string]::IsNullOrWhiteSpace($defaultText)) { @() } else { @($DefaultEntries) }
+            }
+            if ($rawValue.Trim() -eq '-') {
+                return @()
+            }
+
+            return @(ConvertTo-NormalizedTimeColumnEntries -Value $rawValue)
+        } catch {
+            Write-Host $_.Exception.Message
+        }
+    }
+}
+
+function Read-MultiPageMergeModeValue {
+    param([string]$DefaultValue = 'sameHeader')
+
+    while ($true) {
+        $value = Read-Host "複数ページ結合モードを入力してください (single / sameHeader, Enter で $DefaultValue)"
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return $DefaultValue
+        }
+
+        switch ($value.Trim()) {
+            'single' { return 'single' }
+            'sameHeader' { return 'sameHeader' }
+            default { Write-Host 'single または sameHeader を入力してください。' }
+        }
+    }
+}
+
+function Show-ProfileSummary {
+    param(
+        [Parameter(Mandatory = $true)]$Profile,
+        [Parameter(Mandatory = $true)][string]$ResolvedVersionMode,
+        [Parameter(Mandatory = $true)][string]$ResolvedOutputPath
+    )
+
+    Write-Host ''
+    Write-Host '作成内容の確認'
+    Write-Host ("  VersionMode               : {0}" -f $ResolvedVersionMode)
+    Write-Host ("  ProfileName               : {0}" -f $Profile.name)
+    Write-Host ("  DisplayName               : {0}" -f $Profile.displayName)
+    Write-Host ("  OutputPath                : {0}" -f $ResolvedOutputPath)
+    Write-Host ("  Description               : {0}" -f $Profile.description)
+    Write-Host ("  ExpectedColumns           : {0}" -f $Profile.expectedColumns)
+    Write-Host ("  HeaderRowsToSkip          : {0}" -f $Profile.headerRowsToSkip)
+    Write-Host ("  TargetRowCount            : {0}" -f $Profile.targetRowCount)
+    Write-Host ("  AllowMoreColumns          : {0}" -f $Profile.allowMoreColumns)
+    Write-Host ("  SourceFileColumnName      : {0}" -f $Profile.sourceFileColumnName)
+    Write-Host ("  DataColumnPrefix          : {0}" -f $Profile.dataColumnPrefix)
+    Write-Host ("  PreferredTableNameContains: {0}" -f ((@($Profile.preferredTableNameContains) -join ', ')))
+    if ($ResolvedVersionMode -eq 'v2') {
+        Write-Host ("  MultiPageMergeMode        : {0}" -f $Profile.multiPageMergeMode)
+        Write-Host ("  ReviewPersonColumn        : {0}" -f $Profile.reviewPersonColumn)
+        Write-Host ("  ReviewSiteColumn          : {0}" -f $Profile.reviewSiteColumn)
+        Write-Host ("  ReviewInTimeColumn        : {0}" -f $Profile.reviewInTimeColumn)
+        Write-Host ("  ReviewOutTimeColumn       : {0}" -f $Profile.reviewOutTimeColumn)
+        $normalizedTimeSummary = if (@($Profile.normalizedTimeColumns).Count -eq 0) { '未設定' } else { (@($Profile.normalizedTimeColumns) | ForEach-Object { '{0}:{1}' -f $_.sourceColumn, $_.displayName }) -join ', ' }
+        Write-Host ("  NormalizedTimeColumns     : {0}" -f $normalizedTimeSummary)
+    }
+    Write-Host ''
+}
+
+function Confirm-WizardSummary {
+    while ($true) {
+        $value = Read-Host 'この内容で作成しますか? (Y/N)'
+        switch ($value.Trim().ToUpperInvariant()) {
+            'Y' { return $true }
+            'YES' { return $true }
+            'N' { return $false }
+            'NO' { return $false }
+            default { Write-Host 'Y または N を入力してください。' }
+        }
+    }
+}
+
 function New-ProfileScaffoldObject {
     param(
         [Parameter(Mandatory = $true)][string]$ResolvedVersionMode,
         [Parameter(Mandatory = $true)][string]$ResolvedProfileName,
-        [Parameter(Mandatory = $true)][string]$ResolvedDisplayName
+        [Parameter(Mandatory = $true)][string]$ResolvedDisplayName,
+        [string]$Description,
+        [int]$ExpectedColumns = 0,
+        [int]$HeaderRowsToSkip = 0,
+        [int]$TargetRowCount = 0,
+        [bool]$AllowMoreColumns = $false,
+        [string[]]$PreferredTableNameContains = @(),
+        [string]$SourceFileColumnName,
+        [string]$DataColumnPrefix,
+        [string]$MultiPageMergeMode,
+        $NormalizedTimeColumns = @(),
+        [Nullable[int]]$ReviewPersonColumn = $null,
+        [Nullable[int]]$ReviewSiteColumn = $null,
+        [Nullable[int]]$ReviewInTimeColumn = $null,
+        [Nullable[int]]$ReviewOutTimeColumn = $null
     )
 
+    $defaults = Get-DefaultProfileScaffoldValues -ResolvedVersionMode $ResolvedVersionMode -ResolvedProfileName $ResolvedProfileName -ResolvedDisplayName $ResolvedDisplayName
     $profile = [ordered]@{
-        name                      = $ResolvedProfileName
-        displayName               = $ResolvedDisplayName
-        description               = if ($ResolvedVersionMode -eq 'v2') { '生データ転記向けのサンプルプロファイルです。列定義と review 列を調整して使います。' } else { '標準変換向けのサンプルプロファイルです。列数やヘッダー行数を調整して使います。' }
-        expectedColumns           = 10
-        headerRowsToSkip          = 1
-        targetRowCount            = 100
-        allowMoreColumns          = $false
-        preferredTableKinds       = @('Table')
-        preferredTableNameContains = @()
-        preferredTableIdContains  = @()
-        sourceFileColumnName      = if ($ResolvedVersionMode -eq 'v2') { '元ファイル名' } else { 'SourceFile' }
-        dataColumnPrefix          = if ($ResolvedVersionMode -eq 'v2') { '項目' } else { 'Column' }
+        name                       = $ResolvedProfileName
+        displayName                = $ResolvedDisplayName
+        description                = if ([string]::IsNullOrWhiteSpace($Description)) { $defaults.Description } else { $Description }
+        expectedColumns            = if ($ExpectedColumns -gt 0) { $ExpectedColumns } else { $defaults.ExpectedColumns }
+        headerRowsToSkip           = $HeaderRowsToSkip
+        targetRowCount             = if ($TargetRowCount -gt 0) { $TargetRowCount } else { $defaults.TargetRowCount }
+        allowMoreColumns           = $AllowMoreColumns
+        preferredTableKinds        = @('Table')
+        preferredTableNameContains = @($PreferredTableNameContains)
+        preferredTableIdContains   = @()
+        sourceFileColumnName       = if ([string]::IsNullOrWhiteSpace($SourceFileColumnName)) { $defaults.SourceFileColumnName } else { $SourceFileColumnName }
+        dataColumnPrefix           = if ([string]::IsNullOrWhiteSpace($DataColumnPrefix)) { $defaults.DataColumnPrefix } else { $DataColumnPrefix }
     }
 
     if ($ResolvedVersionMode -eq 'v2') {
-        $profile.multiPageMergeMode = 'single'
-        $profile.normalizedTimeColumns = @()
-        $profile.reviewPersonColumn = $null
-        $profile.reviewSiteColumn = $null
-        $profile.reviewInTimeColumn = $null
-        $profile.reviewOutTimeColumn = $null
+        $profile.multiPageMergeMode = if ([string]::IsNullOrWhiteSpace($MultiPageMergeMode)) { $defaults.MultiPageMergeMode } else { $MultiPageMergeMode }
+        $profile.normalizedTimeColumns = @($NormalizedTimeColumns)
+        $profile.reviewPersonColumn = $ReviewPersonColumn
+        $profile.reviewSiteColumn = $ReviewSiteColumn
+        $profile.reviewInTimeColumn = $ReviewInTimeColumn
+        $profile.reviewOutTimeColumn = $ReviewOutTimeColumn
     }
 
     return $profile
+}
+
+function Invoke-V2Wizard {
+    param(
+        [string]$RequestedProfileName,
+        [string]$RequestedDisplayName,
+        [string]$RequestedOutputPath
+    )
+
+    $resolvedProfileName = Read-ProfileName -DefaultValue $RequestedProfileName
+    $defaults = Get-DefaultProfileScaffoldValues -ResolvedVersionMode 'v2' -ResolvedProfileName $resolvedProfileName -ResolvedDisplayName $RequestedDisplayName
+    $resolvedDisplayName = Read-OptionalValue -Prompt '表示名を入力してください' -DefaultValue $defaults.DisplayName
+    $defaultOutputPath = if ([string]::IsNullOrWhiteSpace($RequestedOutputPath)) {
+        Join-Path (Join-Path $projectRoot 'config\profiles\v2') ("{0}.json" -f $resolvedProfileName)
+    } else {
+        $RequestedOutputPath
+    }
+    $resolvedOutputPath = [System.IO.Path]::GetFullPath((Read-OptionalValue -Prompt '保存先を入力してください' -DefaultValue $defaultOutputPath))
+    $resolvedDescription = Read-OptionalValue -Prompt '説明を入力してください' -DefaultValue $defaults.Description
+    $expectedColumns = Read-ValidatedIntValue -Prompt '想定列数を入力してください' -DefaultValue $defaults.ExpectedColumns -MinValue 1
+    $headerRowsToSkip = Read-ValidatedIntValue -Prompt 'ヘッダー除外行数を入力してください' -DefaultValue $defaults.HeaderRowsToSkip -MinValue 0
+    $targetRowCount = Read-ValidatedIntValue -Prompt '想定行数を入力してください' -DefaultValue $defaults.TargetRowCount -MinValue 1
+    $allowMoreColumns = Read-YesNoValue -Prompt '想定列数より多い列を許可しますか' -DefaultValue $defaults.AllowMoreColumns
+    $multiPageMergeMode = Read-MultiPageMergeModeValue -DefaultValue $defaults.MultiPageMergeMode
+    $sourceFileColumnName = Read-OptionalValue -Prompt '元ファイル列名を入力してください' -DefaultValue $defaults.SourceFileColumnName
+    $dataColumnPrefix = Read-OptionalValue -Prompt 'データ列接頭辞を入力してください' -DefaultValue $defaults.DataColumnPrefix
+    $preferredTableNameContains = ConvertTo-StringArrayFromCommaSeparated -Value (Read-OptionalValue -Prompt '優先表名キーワードを入力してください (カンマ区切り / 未設定は Enter)' -DefaultValue '')
+    $reviewPersonColumn = Read-NullableIntValue -Prompt 'Review 氏名列番号を入力してください' -DefaultValue $defaults.ReviewPersonColumn -MinValue 1
+    $reviewSiteColumn = Read-NullableIntValue -Prompt 'Review 現場列番号を入力してください' -DefaultValue $defaults.ReviewSiteColumn -MinValue 1
+    $reviewInTimeColumn = Read-NullableIntValue -Prompt 'Review 入場列番号を入力してください' -DefaultValue $defaults.ReviewInTimeColumn -MinValue 1
+    $reviewOutTimeColumn = Read-NullableIntValue -Prompt 'Review 退場列番号を入力してください' -DefaultValue $defaults.ReviewOutTimeColumn -MinValue 1
+    $normalizedTimeColumns = @(Read-NormalizedTimeColumns -DefaultEntries $defaults.NormalizedTimeColumns)
+
+    $resolvedProfile = New-ProfileScaffoldObject `
+        -ResolvedVersionMode 'v2' `
+        -ResolvedProfileName $resolvedProfileName `
+        -ResolvedDisplayName $resolvedDisplayName `
+        -Description $resolvedDescription `
+        -ExpectedColumns $expectedColumns `
+        -HeaderRowsToSkip $headerRowsToSkip `
+        -TargetRowCount $targetRowCount `
+        -AllowMoreColumns:$allowMoreColumns `
+        -PreferredTableNameContains $preferredTableNameContains `
+        -SourceFileColumnName $sourceFileColumnName `
+        -DataColumnPrefix $dataColumnPrefix `
+        -MultiPageMergeMode $multiPageMergeMode `
+        -NormalizedTimeColumns $normalizedTimeColumns `
+        -ReviewPersonColumn $reviewPersonColumn `
+        -ReviewSiteColumn $reviewSiteColumn `
+        -ReviewInTimeColumn $reviewInTimeColumn `
+        -ReviewOutTimeColumn $reviewOutTimeColumn
+
+    Show-ProfileSummary -Profile $resolvedProfile -ResolvedVersionMode 'v2' -ResolvedOutputPath $resolvedOutputPath
+    if (-not (Confirm-WizardSummary)) {
+        throw 'プロファイル作成をキャンセルしました。'
+    }
+
+    return [pscustomobject]@{
+        ProfileObject = $resolvedProfile
+        OutputPath    = $resolvedOutputPath
+    }
 }
 
 if ([string]::IsNullOrWhiteSpace($VersionMode)) {
     $VersionMode = Read-VersionMode
 }
 
-$ProfileName = Read-ProfileName -DefaultValue $ProfileName
-$defaultDisplayName = if ($VersionMode -eq 'v2') { '生データ転記サンプルプロファイル' } else { "$ProfileName プロファイル" }
-if ([string]::IsNullOrWhiteSpace($DisplayName)) {
-    $DisplayName = Read-OptionalValue -Prompt '表示名を入力してください' -DefaultValue $defaultDisplayName
+if ($Wizard -and $VersionMode -eq 'v2') {
+    $wizardResult = Invoke-V2Wizard -RequestedProfileName $ProfileName -RequestedDisplayName $DisplayName -RequestedOutputPath $OutputPath
+    $ProfileName = [string]$wizardResult.ProfileObject.name
+    $DisplayName = [string]$wizardResult.ProfileObject.displayName
+    $OutputPath = [string]$wizardResult.OutputPath
+    $profileObject = $wizardResult.ProfileObject
+} else {
+    $ProfileName = Read-ProfileName -DefaultValue $ProfileName
+    $defaultDisplayName = if ($VersionMode -eq 'v2') { '生データ転記サンプルプロファイル' } else { "$ProfileName プロファイル" }
+    if ([string]::IsNullOrWhiteSpace($DisplayName)) {
+        $DisplayName = Read-OptionalValue -Prompt '表示名を入力してください' -DefaultValue $defaultDisplayName
+    }
+
+    $defaultOutputPath = Join-Path (Join-Path $projectRoot ("config\profiles\{0}" -f $VersionMode)) ("{0}.json" -f $ProfileName)
+    if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+        $OutputPath = Read-OptionalValue -Prompt '保存先を入力してください' -DefaultValue $defaultOutputPath
+    }
+    $OutputPath = [System.IO.Path]::GetFullPath($OutputPath)
 }
 
-$defaultOutputPath = Join-Path (Join-Path $projectRoot ("config\profiles\{0}" -f $VersionMode)) ("{0}.json" -f $ProfileName)
-if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Read-OptionalValue -Prompt '保存先を入力してください' -DefaultValue $defaultOutputPath
-}
-$OutputPath = [System.IO.Path]::GetFullPath($OutputPath)
 $outputDir = Split-Path -Path $OutputPath -Parent
 Ensure-Directory -Path $outputDir
 
@@ -119,7 +456,10 @@ if ((Test-Path -LiteralPath $OutputPath) -and -not $Force) {
     throw "プロファイルは既に存在します。上書きする場合は -Force を指定してください: $OutputPath"
 }
 
-$profileObject = New-ProfileScaffoldObject -ResolvedVersionMode $VersionMode -ResolvedProfileName $ProfileName -ResolvedDisplayName $DisplayName
+if ($null -eq $profileObject) {
+    $profileObject = New-ProfileScaffoldObject -ResolvedVersionMode $VersionMode -ResolvedProfileName $ProfileName -ResolvedDisplayName $DisplayName
+}
+
 $json = $profileObject | ConvertTo-Json -Depth 6
 [System.IO.File]::WriteAllText($OutputPath, $json + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($true))
 
@@ -128,3 +468,12 @@ Write-Host ("{0} のプロファイル雛形を作成しました。" -f (Get-Ve
 Write-Host ("内部ID: {0}" -f $ProfileName)
 Write-Host ("表示名: {0}" -f $DisplayName)
 Write-Host ("保存先: {0}" -f $OutputPath)
+Write-Host ''
+Write-Host '次に確認してください:'
+Write-Host '- expectedColumns / headerRowsToSkip / targetRowCount'
+if ($VersionMode -eq 'v2') {
+    Write-Host '- multiPageMergeMode'
+    Write-Host '- preferredTableNameContains'
+    Write-Host '- normalizedTimeColumns'
+    Write-Host '- reviewPersonColumn / reviewSiteColumn / reviewInTimeColumn / reviewOutTimeColumn'
+}

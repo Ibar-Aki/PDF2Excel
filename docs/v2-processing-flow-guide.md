@@ -1,6 +1,8 @@
 # V2 処理フロー 完全ガイド
 
 - 作成日: 2026-03-15 21:52 JST
+- 作成者: Codex (GPT-5)
+- 更新日: 2026-03-20
 - 目的: PDF 3 件が Excel に転記される仕組みを学習するためのドキュメント
 
 ## 全体像
@@ -43,9 +45,9 @@ PDF2Excel V2 は **4 層アーキテクチャ** で構成されています。
 
 | # | 処理 | ファイル | 技術解説 |
 |---|---|---|---|
-| A-1 | ユーザーが `run_pdf2excel_v2.bat` をダブルクリック | `run_pdf2excel_v2.bat` | BAT ファイルは Windows の最も基本的なスクリプト形式。ASCII のみで書かれており、日本語を含まない |
+| A-1 | ユーザーが `run_pdf2excel.bat` または `run_pdf2excel_v2.bat` を起動 | `run_pdf2excel.bat` / `run_pdf2excel_v2.bat` | 正式運用では `run_pdf2excel.bat` を使う。どちらも `VER2 Secure` を起動する |
 | A-2 | `chcp 65001` でコンソールの文字コードを UTF-8 に設定 | 同上 | `chcp` は **C**hange **C**ode **P**age の略。65001 = UTF-8。日本語の表示崩れを防ぐ |
-| A-3 | PowerShell に `-NoProfile -ExecutionPolicy Bypass` で制御を渡す | 同上 | `-NoProfile` = 個人設定を読み込まない（環境差異を排除）。`-ExecutionPolicy Bypass` = スクリプト実行制限を回避 |
+| A-3 | PowerShell に `-NoProfile -ExecutionPolicy RemoteSigned` で制御を渡す | 同上 | `-NoProfile` = 個人設定を読み込まない（環境差異を排除）。正式導線では `RemoteSigned` を前提にする |
 
 > **専門知識: なぜ BAT と PS を分離するか？**
 >
@@ -57,14 +59,14 @@ PDF2Excel V2 は **4 層アーキテクチャ** で構成されています。
 
 | # | 処理 | ファイル | 技術解説 |
 |---|---|---|---|
-| A-4 | `run_pdf2excel_menu_v2.ps1` が起動し、`-VersionMode v2` を付けて `run_pdf2excel.ps1` を呼び出す | `scripts/run_pdf2excel_menu_v2.ps1` | メニュースクリプトはフォルダ選択ダイアログなどの UI を提供。最終的に本体スクリプトを呼ぶ |
+| A-4 | `run_pdf2excel_menu.ps1` が起動し、`VER2 Secure` の既定値・現在プロファイル・環境チェック導線を読み込む | `scripts/run_pdf2excel_menu.ps1` | 共通メニューはフォルダ選択ダイアログ、`[9] プロファイル選択`、`[0] 環境チェック`、完了後の `O/F` 操作を提供する |
 
 ### A-3. ワークスペース初期化
 
 | # | 処理 | 関数 | 技術解説 |
 |---|---|---|---|
 | A-5 | `Initialize-RunWorkspace` を呼び出し | `run_pdf2excel.ps1` | 全体の前準備を一括で行う親関数 |
-| A-6 | `Ensure-Workspace` で必要なフォルダ群を再帰的に作成 | `Ensure-Directory` | `input/`, `output/`, `output/runtime/runs/`, `logs/`, `template/`, `config/profiles/v2/` の 9 フォルダ |
+| A-6 | `Ensure-Workspace` で必要なフォルダ群を再帰的に作成 | `Ensure-Directory` | `VER2 Secure` では `%LOCALAPPDATA%\PDF2Excel\runtime` と `%LOCALAPPDATA%\PDF2Excel\logs`、repo 側では `output/`, `reports/`, `template/`, `config/profiles/v2/` などを整える |
 | A-7 | `Rotate-LogFiles` で古いログを削除 | 同上 | 30 日以上前 or 200 件超のログを自動削除。ディスクを圧迫しない |
 | A-8 | `Acquire-RunLock` で排他ロックを取得 | 同上 | **名前付き Mutex**（`Global\PDF2Excel_RunMutex`）を使用。OS レベルで同時実行を防止する |
 | A-9 | `run.lock` ファイルに実行情報を JSON で書き込み | 同上 | PID、ユーザー名、開始日時を記録。ロック中に別の実行が来たとき「誰が使っているか」分かる |
@@ -86,7 +88,7 @@ PDF2Excel V2 は **4 層アーキテクチャ** で構成されています。
 | B-3 | `Get-ProfileConfiguration` でプロファイル JSON を読み込み | 同上 | `config/profiles/v2/construction_transfer_poc.json` を解析し、30 以上のプロパティを持つオブジェクトに変換 |
 | B-4 | `Confirm-Preflight` で実行前チェックを表示 | 同上 | PDF 数、出力先、プロファイル情報を表示。`-NoConfirm` でなければ Y/N 確認 |
 | B-5 | `Stage-PdfFiles` で PDF 3 件を staging フォルダへコピー | `Prepare-RunInputs` | 同名チェック後、`output/runtime/runs/.../staging/` にコピー。元ファイルには触れない |
-| B-6 | `Sync-InputStorage` で `input/` フォルダにもコピー | 同上 | 次回実行時の参照用に保持。`-KeepInput` なら過去ファイルも残す |
+| B-6 | `VER2 Secure` では `input/` フォルダへ同期しない | 同上 | 正式運用では今回 PDF を `input` に複製せず、staging のみで処理する |
 | B-7 | `Start-Sleep -Seconds 1` で 1 秒待機 | 同上 | Excel の PDF コネクタがファイルシステムの変更を認識するための待機時間 |
 
 ### プロファイル JSON の主要設定（PoC の場合）

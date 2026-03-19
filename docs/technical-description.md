@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-14 05:31 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-14
+- 更新日: 2026-03-20
 
 ## 1. 文書の目的
 
@@ -22,6 +22,9 @@ PDF2Excel は、Windows ローカル環境上で動作する Excel 連携型の 
 - Excel への最終ロード先はテンプレートワークブックに統一する
 - プロファイルにより帳票差分を吸収する
 - ログ、Summary、Errors により運用可視性を確保する
+- `VER2 Secure` では runtime / logs をローカル領域へ寄せる
+- 環境チェック、実行履歴、実行レポートで運用性を補強する
+- テンプレート整合性マニフェストで配布物破損を早期検知する
 
 ## 3. 技術スタック
 
@@ -31,7 +34,7 @@ PDF2Excel は、Windows ローカル環境上で動作する Excel 連携型の 
 | 実行制御 | PowerShell | 入力解決、staging、Excel COM 起動、クエリ設定、保存、ログ |
 | UI 補助 | Windows Forms | ファイル選択ダイアログ、フォルダ選択ダイアログ、保存先選択 |
 | 抽出エンジン | Excel Power Query / `Pdf.Tables` | PDF 内の表候補抽出 |
-| テンプレート | Excel `.xlsm` | 4 シート構成の器、VBA 保持 |
+| テンプレート | Excel `.xlsm` | V1 は 4 シート、V2 は 5 シート構成の器、VBA 保持 |
 | マクロ | VBA | Excel 側リフレッシュ補助、xlsx エクスポート |
 | 設定 | JSON | 帳票プロファイル |
 | テスト | PowerShell + Excel COM | 統合テスト、自動 PDF 生成、出力検証 |
@@ -64,10 +67,11 @@ PDF2Excel は、Windows ローカル環境上で動作する Excel 連携型の 
 ```text
 PDF2Excel
 ├─ run_pdf2excel.bat
+├─ run_pdf2excel_v2.bat
 ├─ README.md
 ├─ config/
-│  └─ profiles/
-│     └─ default.json
+│  ├─ profiles/
+│  └─ template-integrity.json
 ├─ docs/
 ├─ handoff/
 ├─ input/
@@ -77,10 +81,13 @@ PDF2Excel
 ├─ reports/
 ├─ scripts/
 │  ├─ run_pdf2excel.ps1
+│  ├─ run_pdf2excel_menu.ps1
+│  ├─ new_profile_scaffold.ps1
 │  ├─ build_excel_template.ps1
 │  └─ build_handoff_package.ps1
 ├─ template/
-│  ├─ PDF2Excel_Converter.xlsm
+│  ├─ PDF2Excel_V1_Converter.xlsm
+│  ├─ PDF2Excel_V2_Converter.xlsm
 │  └─ vba/
 │     └─ PDF2ExcelMacros.bas
 └─ tests/
@@ -92,15 +99,17 @@ PDF2Excel
 ```mermaid
 flowchart TD
     A["利用者"] --> B["run_pdf2excel.bat"]
-    B --> C["scripts/run_pdf2excel.ps1"]
-    C --> D["config/profiles/*.json"]
-    C --> E["input/ staging"]
-    C --> F["Excel COM"]
-    F --> G["template/PDF2Excel_Converter.xlsm"]
-    G --> H["Power Query: Pdf.Tables"]
-    H --> I["Control / Summary / Result / Errors"]
-    C --> J["output/*.xlsx"]
-    C --> K["logs/run_*.log"]
+    B --> C["scripts/run_pdf2excel_menu.ps1"]
+    C --> D["scripts/run_pdf2excel.ps1"]
+    D --> E["config/profiles/*.json"]
+    D --> F["runtime / staging"]
+    D --> G["Excel COM"]
+    G --> H["template/PDF2Excel_V1_Converter.xlsm / PDF2Excel_V2_Converter.xlsm"]
+    H --> I["Power Query: Pdf.Tables"]
+    I --> J["Control / Summary / Result / Errors / Review"]
+    D --> K["output/*.xlsx"]
+    D --> L["reports/run-history.csv / environment-check.md"]
+    D --> M["%LOCALAPPDATA%/PDF2Excel/logs"]
 ```
 
 ## 5.1 アーキテクチャ上の責務分離
@@ -157,7 +166,8 @@ flowchart TD
 
 ### 6.4 テンプレート層
 
-- `template/PDF2Excel_Converter.xlsm`
+- `template/PDF2Excel_V1_Converter.xlsm`
+- `template/PDF2Excel_V2_Converter.xlsm`
 - `template/vba/PDF2ExcelMacros.bas`
 
 役割:
@@ -272,10 +282,11 @@ sequenceDiagram
 
 ### 8.5 staging
 
-`Stage-PdfFiles` が `input` フォルダへ対象 PDF を配置します。  
+`Stage-PdfFiles` が対象 PDF を実行単位の staging 領域へ配置します。  
 特徴は次の通りです。
 
-- 今回対象外の旧 PDF を除去する
+- `VER2 Secure` では `%LOCALAPPDATA%\PDF2Excel\runtime\runs\...\staging` を使う
+- `VER1` / 互換導線では `input` フォルダ同期も併用できる
 - 同名 PDF 衝突を明示エラーにする
 - `input` 自己参照時に自己削除しない
 
@@ -540,10 +551,12 @@ PowerShell は `Control` と `Summary` に集計値を直接書き込みます�
   - 件数集計と PDF 単位の一覧
 - `Result`
   - 成功データの本体
+- `Review`
+  - 追加確認が必要な行の本体
 - `Errors`
   - 失敗データの本体
 
-この 4 シートは役割が重複しないように分けている。
+V1 は 4 シート、V2 は `Review` を含む 5 シートで、役割が重複しないように分けている。
 
 ## 11. モジュール責務
 
@@ -604,11 +617,12 @@ PowerShell は `Control` と `Summary` に集計値を直接書き込みます�
 - `xlsx` エクスポート
 - 出力先フォルダの自動作成
 
-### 11.5 `config/profiles/default.json`
+### 11.5 `config/profiles/v1/default.json` / `config/profiles/v2/*.json`
 
 責務:
 
-- 既定帳票条件の定義
+- V1 / V2 の帳票条件定義
+- 想定列数、ヘッダー除外、表候補優先度、Review 列、時刻正規化列などの切り替え
 
 ### 11.6 `tests/run_integration_tests.ps1`
 
@@ -678,11 +692,13 @@ VBA 実行に失敗しても、PowerShell 側保存へ切り替えて継続し�
 - 一時 `xlsm` を配置
 - 実行開始時 compaction
 - 実行終了時削除
+- `VER2 Secure` では `%LOCALAPPDATA%\PDF2Excel\runtime` を既定とする
 
 ### logs
 
 - `run_yyyyMMdd_HHmmss.log`
 - 1 実行 1 ログ
+- `VER2 Secure` の既定保存先は `%LOCALAPPDATA%\PDF2Excel\logs`
 
 ログ粒度:
 
@@ -694,6 +710,12 @@ VBA 実行に失敗しても、PowerShell 側保存へ切り替えて継続し�
 
 - 最終 `xlsx`
 - 利用者成果物置き場
+
+### reports
+
+- `run-history.csv`
+- `environment-check.md`
+- 運用履歴と事前診断の保存先
 
 ## 13.1 ログフォーマット
 
@@ -726,6 +748,8 @@ yyyy-MM-dd HH:mm:ss [LEVEL] Message
 - 壊れた PDF 混在
 - 深い出力先
 - プロファイル切替
+- 環境チェック
+- V2 プロファイル設定ウィザード
 - runtime 清掃
 - Excel プロセス残留なし
 
@@ -748,15 +772,19 @@ md は人間確認用、json は再利用・機械処理用という位置づけ
 
 - `run_pdf2excel.bat`
 - `scripts/run_pdf2excel.ps1`
-- `template/PDF2Excel_Converter.xlsm`
-- `config/profiles/default.json`
-- 空の `input` / `output` / `logs`
+- `scripts/run_pdf2excel_menu.ps1`
+- `scripts/new_profile_scaffold.ps1`
+- `scripts/pdf2excel.common.ps1`
+- `template/PDF2Excel_V2_Converter.xlsm`
+- `config/profiles/v2/construction_transfer_poc.json`
+- `config/template-integrity.json`
+- 空の `input` / `output` / `logs` / `reports`
 - 配布用簡易マニュアル
 
 ## 15.1 配布最小化方針
 
 - 開発用資料、テスト、サンプルは配布しない
-- 実行に必要なテンプレート、設定、実行スクリプトだけを残す
+- 実行に必要なテンプレート、設定、実行スクリプト、レポート説明だけを残す
 - 配布先が追加インストールなしで試せることを優先する
 
 ## 16. 保守時の主な変更ポイント

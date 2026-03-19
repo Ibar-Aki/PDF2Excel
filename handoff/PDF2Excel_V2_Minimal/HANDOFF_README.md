@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-16 03:20 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-19
+- 更新日: 2026-03-20
 
 ## これは何か
 
@@ -32,7 +32,7 @@
 - `scripts/run_pdf2excel_menu.ps1`
   - 利用者向けメニューです。
 - `scripts/new_profile_scaffold.ps1`
-  - `VER2` のプロファイル雛形を作る保守者向けスクリプトです。
+  - `VER2` のプロファイル設定ウィザード兼、雛形生成スクリプトです。
 - `scripts/pdf2excel.common.ps1`
   - 共通関数です。
 - `template/PDF2Excel_V2_Converter.xlsm`
@@ -49,6 +49,10 @@
   - 出力された Excel の保存先です。
 - `logs`
   - 互換用に残している空フォルダです。`VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
+- `reports`
+  - `run-history.csv` と `environment-check.md` の出力先です。コミット対象ではありません。
+- `reports/README.md`
+  - `reports` 配下で追跡するものと生成物の扱いを説明します。
 
 ## 使う前の条件
 
@@ -60,7 +64,7 @@
 ## いちばん簡単な使い方
 
 1. `run_pdf2excel.bat` をダブルクリックします。
-2. メニューで `1` または `2` を選びます。必要なら `6` でプロファイル雛形を作れます。
+2. 初回やトラブル時は、先に `0` の環境チェックを実行します。必要なら `6` で `VER2` のプロファイル設定ウィザードを起動します。
 3. PDF または PDF フォルダを選びます。
 4. 保存先を選びます。
 5. 実行前チェックを確認し、問題なければ続行します。
@@ -122,6 +126,8 @@
 ## 困ったとき
 
 - `%LOCALAPPDATA%\PDF2Excel\logs` の最新ログを見る
+- `reports/environment-check.md` を見る
+- `reports/run-history.csv` を見る
 - `Errors` シートを見る
 - `Review` シートを見る
 - 実行前チェックの入力元、保存先、件数が正しいか確認する
