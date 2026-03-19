@@ -210,6 +210,20 @@ $testResults += Invoke-UnitTest -Name 'Resolve-RunErrorInfo はロックとキ�
     return "$($locked.ErrorCode) / $($cancelled.ErrorCode)"
 }
 
+$testResults += Invoke-UnitTest -Name 'Resolve-RunErrorInfo はプロファイルと LOCALAPPDATA を分類する' -Body {
+    $profile = Resolve-RunErrorInfo -Message 'プロファイルが見つかりません。'
+    $local = Resolve-RunErrorInfo -Message 'VER2 Secure の正式運用では LOCALAPPDATA が必要です。'
+    Assert-True -Condition ($profile.ErrorCode -eq 'PROFILE_RESOLUTION_ERROR') -Message "プロファイル時のコードが想定と異なります: $($profile.ErrorCode)"
+    Assert-True -Condition ($local.ErrorCode -eq 'LOCAL_RUNTIME_UNAVAILABLE') -Message "LOCALAPPDATA 時のコードが想定と異なります: $($local.ErrorCode)"
+    return "$($profile.ErrorCode) / $($local.ErrorCode)"
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-RunErrorGuidance は次アクションを返す' -Body {
+    $guidance = Get-RunErrorGuidance -ErrorInfo ([pscustomobject]@{ ErrorCode = 'RUN_LOCKED'; ErrorCategory = '実行競合' })
+    Assert-True -Condition ($guidance.Contains('別の実行が完了するまで待って')) -Message "案内文が想定と異なります: $guidance"
+    return $guidance
+}
+
 $testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は日本語勤怠プロファイルを読み込む' -Body {
     $profile = Get-ProfileConfiguration -RequestedProfileName 'attendance_monthly_jp'
     Assert-True -Condition ($profile.ExpectedColumns -eq 35) -Message "expectedColumns が想定と異なります: $($profile.ExpectedColumns)"
@@ -282,13 +296,34 @@ $testResults += Invoke-UnitTest -Name 'run_pdf2excel.ps1 は Secure モードで
     Assert-True -Condition ($scriptText.Contains("[ValidateSet('INFO', 'DEBUG')]")) -Message 'LogLevel の ValidateSet が見つかりません。'
     Assert-True -Condition ($scriptText.Contains("Get-LocalAppDataPdf2ExcelPath -ChildPath 'runtime'")) -Message 'LOCALAPPDATA 配下の runtime ルート解決が見つかりません。'
     Assert-True -Condition ($scriptText.Contains("Get-LocalAppDataPdf2ExcelPath -ChildPath 'logs'")) -Message 'LOCALAPPDATA 配下の logs ルート解決が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('[switch]$CheckEnvironment')) -Message 'CheckEnvironment オプションが見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('[string]$RunReportPath')) -Message 'RunReportPath オプションが見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('Join-Path $reportsDir ''run-history.csv''')) -Message 'run-history.csv の出力先が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('Join-Path $reportsDir ''environment-check.md''')) -Message 'environment-check.md の出力先が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('Protect-MessagePaths -Message $Message -PathMap $script:sensitivePathMap')) -Message 'Secure ログのパスマスクが見つかりません。'
     Assert-True -Condition ($scriptText.Contains('if ($Level -eq ''DEBUG'' -and $LogLevel -ne ''DEBUG'')')) -Message 'DEBUG ログ抑制の分岐が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('Stop-Process -Id $ProcessId -Force -ErrorAction Stop')) -Message 'Excel 強制終了の実装が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('function Get-PdfPreviewSummary')) -Message '簡易プレビュー関数が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('function Invoke-EnvironmentCheck')) -Message '環境チェック関数が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('テンプレート再生成導線')) -Message '環境チェックにテンプレート再生成導線がありません。'
+    Assert-True -Condition ($scriptText.Contains('実行競合状態')) -Message '環境チェックに実行競合状態がありません。'
+    Assert-True -Condition ($scriptText.Contains('Append-RunHistory -Status ''SUCCESS''')) -Message '実行履歴追記が見つかりません。'
     Assert-True -Condition (-not $scriptText.Contains('& powershell -NoProfile -ExecutionPolicy Bypass -File $buildTemplateScript')) -Message 'テンプレート生成で Bypass が残っています。'
     Assert-True -Condition ($scriptText.Contains("VER2 Secure では -KeepInput は無効")) -Message 'KeepInput 無効化メッセージが見つかりません。'
     Assert-True -Condition ($scriptText.Contains('Clear-ControlPathsForSecureOutput')) -Message 'Secure 出力向け Control パス空欄化が見つかりません。'
-    return 'SecurityMode / LogLevel / LOCALAPPDATA runtime/logs / path mask / force stop / KeepInput 無効化を確認'
+    Assert-True -Condition ($scriptText.Contains('$templateIntegrityPath = Join-Path $configDir ''template-integrity.json''')) -Message 'テンプレート整合性マニフェストの参照がありません。'
+    Assert-True -Condition ($scriptText.Contains('Assert-TemplateIntegrity')) -Message 'テンプレート整合性チェックがありません。'
+    return 'SecurityMode / LogLevel / LOCALAPPDATA runtime/logs / path mask / template integrity / KeepInput 無効化を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'run_pdf2excel_menu.ps1 はプロファイル選択と環境チェック導線を持つ' -Body {
+    $menuPath = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
+    $menuText = Get-Content -LiteralPath $menuPath -Raw -Encoding UTF8
+    Assert-True -Condition ($menuText.Contains('[9] プロファイルを選ぶ')) -Message 'メニューにプロファイル選択がありません。'
+    Assert-True -Condition ($menuText.Contains('[0] 環境チェック')) -Message 'メニューに環境チェックがありません。'
+    Assert-True -Condition ($menuText.Contains('Get-RunReportTempPath')) -Message 'メニューの実行レポート連携がありません。'
+    Assert-True -Condition ($menuText.Contains('現在のプロファイル')) -Message '現在のプロファイル表示がありません。'
+    return 'profile select / environment check / run report / current profile を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'V2 ラッパーは Secure モードを渡し RemoteSigned で起動する' -Body {
@@ -384,12 +419,56 @@ $testResults += Invoke-UnitTest -Name 'handoff ビルドは VBA モジュール�
     $scriptPath = Join-Path $projectRoot 'scripts\build_handoff_package.ps1'
     $scriptText = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
     Assert-True -Condition ($scriptText.Contains("'template\vba'")) -Message 'handoff 作成先に template\vba がありません。'
+    Assert-True -Condition ($scriptText.Contains("config\template-integrity.json")) -Message 'template-integrity.json の同梱が見つかりません。'
     Assert-True -Condition ($scriptText.Contains("template\vba\PDF2ExcelTemplateBuilder.bas")) -Message 'TemplateBuilder.bas の同梱が見つかりません。'
     Assert-True -Condition ($scriptText.Contains("template\vba\PDF2ExcelMacros.bas")) -Message 'PDF2ExcelMacros.bas の同梱が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('function Sync-VbaModuleEncodingMirror')) -Message 'Shift_JIS ミラー同期関数が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('PDF2ExcelTemplateBuilder.sjis.bas')) -Message 'TemplateBuilder.sjis.bas の同期が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('new_profile_scaffold.ps1')) -Message 'new_profile_scaffold.ps1 の同梱が見つかりません。'
     return 'template\vba / sjis ミラー同期 / new_profile_scaffold.ps1 / TemplateBuilder.bas / PDF2ExcelMacros.bas を確認'
+}
+
+$testResults += Invoke-UnitTest -Name '生成済み V2 handoff は配布元ソースと同期している' -Body {
+    $handoffRoot = Join-Path $projectRoot 'handoff\PDF2Excel_V2_Minimal'
+    $pairs = @(
+        @{
+            Source = Join-Path $projectRoot 'handoff\HANDOFF_README_V2_SOURCE.md'
+            Generated = Join-Path $handoffRoot 'HANDOFF_README.md'
+        },
+        @{
+            Source = Join-Path $projectRoot 'run_pdf2excel_v2.bat'
+            Generated = Join-Path $handoffRoot 'run_pdf2excel.bat'
+        },
+        @{
+            Source = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'
+            Generated = Join-Path $handoffRoot 'scripts\run_pdf2excel.ps1'
+        },
+        @{
+            Source = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
+            Generated = Join-Path $handoffRoot 'scripts\run_pdf2excel_menu.ps1'
+        },
+        @{
+            Source = Join-Path $projectRoot 'scripts\new_profile_scaffold.ps1'
+            Generated = Join-Path $handoffRoot 'scripts\new_profile_scaffold.ps1'
+        },
+        @{
+            Source = Join-Path $projectRoot 'scripts\pdf2excel.common.ps1'
+            Generated = Join-Path $handoffRoot 'scripts\pdf2excel.common.ps1'
+        },
+        @{
+            Source = Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json'
+            Generated = Join-Path $handoffRoot 'config\profiles\v2\construction_transfer_poc.json'
+        }
+    )
+
+    foreach ($pair in $pairs) {
+        Assert-True -Condition (Test-Path -LiteralPath $pair.Generated) -Message "handoff 生成物が見つかりません: $($pair.Generated)"
+        $sourceText = Get-Content -LiteralPath $pair.Source -Raw -Encoding UTF8
+        $generatedText = Get-Content -LiteralPath $pair.Generated -Raw -Encoding UTF8
+        Assert-True -Condition ($sourceText -eq $generatedText) -Message "handoff 生成物が古いか差分があります: $($pair.Generated)"
+    }
+
+    return 'README / BAT / scripts / profile の handoff 同期を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'new_profile_scaffold は v1/v2 雛形を生成できる' -Body {
@@ -413,9 +492,49 @@ $testResults += Invoke-UnitTest -Name 'new_profile_scaffold は v1/v2 雛形を�
     Assert-True -Condition ($v1.displayName -eq 'テストV1') -Message "v1 displayName が想定と異なります: $($v1.displayName)"
     Assert-True -Condition ($v1.sourceFileColumnName -eq 'SourceFile') -Message "v1 sourceFileColumnName が想定と異なります: $($v1.sourceFileColumnName)"
     Assert-True -Condition ($v2.displayName -eq 'テストV2') -Message "v2 displayName が想定と異なります: $($v2.displayName)"
-    Assert-True -Condition ($v2.multiPageMergeMode -eq 'single') -Message "v2 multiPageMergeMode が想定と異なります: $($v2.multiPageMergeMode)"
+    Assert-True -Condition ($v2.multiPageMergeMode -eq 'sameHeader') -Message "v2 multiPageMergeMode が想定と異なります: $($v2.multiPageMergeMode)"
     Assert-True -Condition ($v2.sourceFileColumnName -eq '元ファイル名') -Message "v2 sourceFileColumnName が想定と異なります: $($v2.sourceFileColumnName)"
     return 'v1/v2 雛形生成を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'new_profile_scaffold は v2 Wizard で主要設定を生成できる' -Body {
+    $scaffoldRoot = Join-Path $resultsRoot 'profile-scaffold'
+    Ensure-Directory -Path $scaffoldRoot
+    $wizardPath = Join-Path $scaffoldRoot 'sample_v2_wizard.json'
+    if (Test-Path -LiteralPath $wizardPath) {
+        Remove-Item -LiteralPath $wizardPath -Force
+    }
+
+    $wizardInput = @(
+        'sample_v2_wizard',
+        'テストV2ウィザード',
+        $wizardPath,
+        'ウィザード説明',
+        '28',
+        '2',
+        '6',
+        'Y',
+        'sameHeader',
+        '元ファイル名',
+        '項目',
+        '勤怠,現場',
+        '3',
+        '5',
+        '6',
+        '7',
+        '6:正規化入場1,7:正規化退場1',
+        'Y'
+    ) -join [Environment]::NewLine
+    $wizardInput | & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $scaffoldScript -VersionMode v2 -Wizard
+    Assert-True -Condition ($LASTEXITCODE -eq 0) -Message "v2 Wizard 生成が失敗しました: $LASTEXITCODE"
+
+    $wizardProfile = Get-Content -LiteralPath $wizardPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-True -Condition ($wizardProfile.displayName -eq 'テストV2ウィザード') -Message "Wizard displayName が想定と異なります: $($wizardProfile.displayName)"
+    Assert-True -Condition ($wizardProfile.expectedColumns -eq 28) -Message "Wizard expectedColumns が想定と異なります: $($wizardProfile.expectedColumns)"
+    Assert-True -Condition ($wizardProfile.allowMoreColumns -eq $true) -Message 'Wizard allowMoreColumns が true ではありません。'
+    Assert-True -Condition (@($wizardProfile.preferredTableNameContains).Count -eq 2) -Message 'Wizard preferredTableNameContains が想定と異なります。'
+    Assert-True -Condition (@($wizardProfile.normalizedTimeColumns).Count -eq 2) -Message 'Wizard normalizedTimeColumns が想定と異なります。'
+    return 'v2 Wizard 雛形生成を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 限定再生成を受け付ける' -Body {
@@ -434,6 +553,22 @@ $testResults += Invoke-UnitTest -Name 'run.lock は匿名化され、Secure clea
     Assert-True -Condition ($scriptText.Contains('端末再起動または管理者確認が必要')) -Message 'cleanup 失敗時の警告文が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('throw $script:cleanupFailureMessage')) -Message 'cleanup 失敗時の非ゼロ終了分岐が見つかりません。'
     return 'run.lock 匿名化 / cleanup 警告強化を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'テンプレート整合性マニフェストは必要ファイルを持つ' -Body {
+    $manifestPath = Join-Path $projectRoot 'config\template-integrity.json'
+    Assert-True -Condition (Test-Path -LiteralPath $manifestPath) -Message 'template-integrity.json が見つかりません。'
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $relativePaths = @($manifest.Files | ForEach-Object { [string]$_.RelativePath })
+    foreach ($requiredPath in @(
+        'template\PDF2Excel_V1_Converter.xlsm',
+        'template\PDF2Excel_V2_Converter.xlsm',
+        'template\vba\PDF2ExcelMacros.bas',
+        'template\vba\PDF2ExcelTemplateBuilder.bas'
+    )) {
+        Assert-True -Condition ($relativePaths -contains $requiredPath) -Message "マニフェストに必要ファイルがありません: $requiredPath"
+    }
+    return 'template-integrity.json の主要エントリを確認'
 }
 
 $testResults += Invoke-UnitTest -Name '日本語コンソール出力スクリプトは UTF-8 初期化と保存形式を持つ' -Body {
@@ -455,6 +590,87 @@ $testResults += Invoke-UnitTest -Name '日本語コンソール出力スクリ�
     Assert-True -Condition ($buildHandoffBytes.Length -ge 3) -Message 'build_handoff_package.ps1 が空です。'
     Assert-True -Condition ($buildHandoffBytes[0] -eq 0xEF -and $buildHandoffBytes[1] -eq 0xBB -and $buildHandoffBytes[2] -eq 0xBF) -Message 'build_handoff_package.ps1 が UTF-8 BOM ではありません。'
     return 'run/build/scaffold scripts の UTF-8 初期化と build_handoff_package.ps1 の BOM を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'Write-Log は INFO で詳細パスを伏せ DEBUG を抑止する' -Body {
+    $tempLogPath = Join-Path $resultsRoot 'write-log-info.log'
+    $originalLogPath = $script:logPath
+    $originalSensitiveMap = $script:sensitivePathMap
+    $originalSecureMode = $script:isSecureMode
+    $originalLogLevel = $LogLevel
+
+    try {
+        if (Test-Path -LiteralPath $tempLogPath) {
+            Remove-Item -LiteralPath $tempLogPath -Force
+        }
+
+        $script:logPath = $tempLogPath
+        $script:sensitivePathMap = [ordered]@{
+            'C:\Users\TestUser\AppData\Local\PDF2Excel\logs\run_001.log' = '...\logs\run_001.log'
+        }
+        $script:isSecureMode = $true
+        $LogLevel = 'INFO'
+
+        Write-Log -Message 'INFO path=C:\Users\TestUser\AppData\Local\PDF2Excel\logs\run_001.log' -Level 'INFO'
+        Write-Log -Message 'DEBUG path=C:\Users\TestUser\AppData\Local\PDF2Excel\logs\run_001.log' -Level 'DEBUG'
+
+        $logText = Get-Content -LiteralPath $tempLogPath -Raw -Encoding UTF8
+        Assert-True -Condition ($logText.Contains('...\logs\run_001.log')) -Message "INFO ログのマスクが効いていません: $logText"
+        Assert-True -Condition (-not $logText.Contains('C:\Users\TestUser\AppData\Local\PDF2Excel\logs\run_001.log')) -Message "INFO ログにフルパスが残っています: $logText"
+        Assert-True -Condition (-not $logText.Contains('DEBUG path=')) -Message "INFO レベルで DEBUG ログが出力されています: $logText"
+        return 'INFO では path mask / DEBUG 抑止を確認'
+    } finally {
+        $script:logPath = $originalLogPath
+        $script:sensitivePathMap = $originalSensitiveMap
+        $script:isSecureMode = $originalSecureMode
+        $LogLevel = $originalLogLevel
+    }
+}
+
+$testResults += Invoke-UnitTest -Name 'Write-Log は DEBUG 指定時だけ詳細パスを出力する' -Body {
+    $tempLogPath = Join-Path $resultsRoot 'write-log-debug.log'
+    $originalLogPath = $script:logPath
+    $originalSensitiveMap = $script:sensitivePathMap
+    $originalSecureMode = $script:isSecureMode
+    $originalLogLevel = $LogLevel
+
+    try {
+        if (Test-Path -LiteralPath $tempLogPath) {
+            Remove-Item -LiteralPath $tempLogPath -Force
+        }
+
+        $script:logPath = $tempLogPath
+        $script:sensitivePathMap = [ordered]@{
+            'C:\Users\TestUser\AppData\Local\PDF2Excel\logs\run_001.log' = '...\logs\run_001.log'
+        }
+        $script:isSecureMode = $true
+        $LogLevel = 'DEBUG'
+
+        Write-Log -Message 'DEBUG path=C:\Users\TestUser\AppData\Local\PDF2Excel\logs\run_001.log' -Level 'DEBUG'
+
+        $logText = Get-Content -LiteralPath $tempLogPath -Raw -Encoding UTF8
+        Assert-True -Condition ($logText.Contains('DEBUG path=C:\Users\TestUser\AppData\Local\PDF2Excel\logs\run_001.log')) -Message "DEBUG ログで詳細パスが出力されていません: $logText"
+        Assert-True -Condition (-not $logText.Contains('...\logs\run_001.log')) -Message "DEBUG ログで path mask が残っています: $logText"
+        return 'DEBUG では詳細パスを確認'
+    } finally {
+        $script:logPath = $originalLogPath
+        $script:sensitivePathMap = $originalSensitiveMap
+        $script:isSecureMode = $originalSecureMode
+        $LogLevel = $originalLogLevel
+    }
+}
+
+$testResults += Invoke-UnitTest -Name 'ログ要約関数は件数と代表ファイル名を返す' -Body {
+    $summary = Get-PathListLogSummary -Paths @(
+        'C:\temp\alpha.pdf',
+        'C:\temp\beta.pdf',
+        'C:\temp\gamma.pdf',
+        'C:\temp\delta.pdf'
+    )
+    Assert-True -Condition ($summary.Contains('4 件')) -Message "件数が想定と異なります: $summary"
+    Assert-True -Condition ($summary.Contains('alpha.pdf')) -Message "代表ファイル名が含まれていません: $summary"
+    Assert-True -Condition ($summary.Contains('ほか 1 件')) -Message "省略件数が含まれていません: $summary"
+    return $summary
 }
 
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel.ps1 は待機メッセージを表示する' -Body {

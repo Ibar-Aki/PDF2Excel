@@ -29,6 +29,7 @@ $reportsRoot = Join-Path $projectRoot 'reports'
 $runScript = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'
 $runScriptV1 = Join-Path $projectRoot 'scripts\run_pdf2excel_v1.ps1'
 $runScriptV2 = Join-Path $projectRoot 'scripts\run_pdf2excel_v2.ps1'
+$scaffoldScript = Join-Path $projectRoot 'scripts\new_profile_scaffold.ps1'
 $buildTemplateScript = Join-Path $projectRoot 'scripts\build_excel_template.ps1'
 $buildSamplesScript = Join-Path $projectRoot 'scripts\build_sample_pdfs.ps1'
 $batScript = Join-Path $projectRoot 'run_pdf2excel.bat'
@@ -538,6 +539,14 @@ function Initialize-TestFixtures {
     Get-ChildItem -LiteralPath $resultsRoot -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -like 'case_*.json' -or $_.Extension -eq '.xlsx' } |
         Remove-Item -Force -ErrorAction SilentlyContinue
+    foreach ($reportPath in @(
+        (Join-Path $reportsRoot 'run-history.csv'),
+        (Join-Path $reportsRoot 'environment-check.md')
+    )) {
+        if (Test-Path -LiteralPath $reportPath) {
+            Remove-Item -LiteralPath $reportPath -Force -ErrorAction SilentlyContinue
+        }
+    }
 
     if (Test-Path -LiteralPath $secureRuntimeRunsRoot) {
         Get-ChildItem -LiteralPath $secureRuntimeRunsRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
@@ -689,6 +698,9 @@ function Get-TestCases {
         [pscustomobject]@{ Name = '同時実行ロック'; Scenario = '別実行中は 2 本目が即時失敗すること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'BAT 経由の変換'; Scenario = '同じ PDF 群を BAT から正常に変換できること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'BAT 直実行で待機しない'; Scenario = '引数付き BAT 実行で pause せず終了すること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = '環境チェック'; Scenario = '環境チェックが成功し、レポートを保存すること'; TimeoutSeconds = 120 },
+        [pscustomobject]@{ Name = '実行履歴台帳'; Scenario = '変換結果が run-history.csv に記録されること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = 'V2 プロファイル Wizard 生成'; Scenario = 'v2 プロファイルを対話ウィザードで生成できること'; TimeoutSeconds = 120 },
         [pscustomobject]@{ Name = 'V2 BAT ダブルクリックでメニュー表示'; Scenario = 'V2 BAT を無引数で起動すると最初にメニューが表示されること'; TimeoutSeconds = 60 },
         [pscustomobject]@{ Name = 'V2 BAT 引数付きで直接変換'; Scenario = 'V2 BAT を引数付きで起動するとメニューを介さず直接変換できること'; TimeoutSeconds = 300 },
         [pscustomobject]@{ Name = 'input 自己参照'; Scenario = 'input 自体を入力フォルダにしても自己削除せず処理できること'; TimeoutSeconds = 180 },
@@ -894,10 +906,72 @@ function Invoke-NamedScenario {
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message 'BAT 直実行の出力ブックが作成されていません。'
             return 'BAT 直実行が待機せず終了'
         }
+        '環境チェック' {
+            $reportPath = Join-Path $reportsRoot 'environment-check.md'
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -CheckEnvironment
+            Assert-True -Condition (Test-Path -LiteralPath $reportPath) -Message '環境チェックレポートが作成されていません。'
+            $reportText = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8
+            Assert-True -Condition ($reportText.Contains('PDF2Excel 環境チェックレポート')) -Message '環境チェックレポートのタイトルがありません。'
+            Assert-True -Condition ($reportText.Contains('Excel COM')) -Message '環境チェックレポートに Excel COM 判定がありません。'
+            Assert-True -Condition ($reportText.Contains('実行競合状態')) -Message '環境チェックレポートに実行競合状態がありません。'
+            Assert-True -Condition ($reportText.Contains('テンプレート再生成導線')) -Message '環境チェックレポートにテンプレート再生成導線がありません。'
+            return '環境チェックレポートを確認'
+        }
+        '実行履歴台帳' {
+            $historyPath = Join-Path $reportsRoot 'run-history.csv'
+            if (Test-Path -LiteralPath $historyPath) {
+                Remove-Item -LiteralPath $historyPath -Force
+            }
+            $outputPath = Join-Path $resultsRoot 'run_history_success.xlsx'
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -InputFolder $sampleConstructionPocPdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '実行履歴台帳テストの出力ブックが作成されていません。'
+            Assert-True -Condition (Test-Path -LiteralPath $historyPath) -Message 'run-history.csv が作成されていません。'
+            $historyRows = @(Import-Csv -LiteralPath $historyPath)
+            Assert-True -Condition ($historyRows.Count -ge 1) -Message 'run-history.csv に実行結果が記録されていません。'
+            $latest = $historyRows[-1]
+            Assert-True -Condition ($latest.Status -eq 'SUCCESS') -Message "run-history の Status が想定と異なります: $($latest.Status)"
+            Assert-True -Condition ($latest.ProfileName -eq 'construction_transfer_poc') -Message "run-history の ProfileName が想定と異なります: $($latest.ProfileName)"
+            return "run-history status=$($latest.Status), profile=$($latest.ProfileName)"
+        }
+        'V2 プロファイル Wizard 生成' {
+            $wizardPath = Join-Path $resultsRoot 'wizard_profile_v2.json'
+            if (Test-Path -LiteralPath $wizardPath) {
+                Remove-Item -LiteralPath $wizardPath -Force
+            }
+            $wizardInput = @(
+                'wizard_profile_v2',
+                '統合テストV2ウィザード',
+                $wizardPath,
+                '統合テスト用説明',
+                '26',
+                '1',
+                '8',
+                'N',
+                'single',
+                '元ファイル名',
+                '項目',
+                '勤怠,入退場',
+                '3',
+                '5',
+                '6',
+                '7',
+                '6:正規化入場1,7:正規化退場1',
+                'Y'
+            ) -join [Environment]::NewLine
+            $wizardInput | & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $scaffoldScript -VersionMode v2 -Wizard
+            Assert-True -Condition ($LASTEXITCODE -eq 0) -Message "v2 Wizard 統合テストが失敗しました: $LASTEXITCODE"
+            Assert-True -Condition (Test-Path -LiteralPath $wizardPath) -Message 'Wizard 生成ファイルが作成されていません。'
+            $wizardProfile = Get-Content -LiteralPath $wizardPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            Assert-True -Condition ($wizardProfile.multiPageMergeMode -eq 'single') -Message "Wizard multiPageMergeMode が想定と異なります: $($wizardProfile.multiPageMergeMode)"
+            Assert-True -Condition (@($wizardProfile.normalizedTimeColumns).Count -eq 2) -Message 'Wizard normalizedTimeColumns が想定と異なります。'
+            return 'v2 Wizard 生成を確認'
+        }
         'V2 BAT ダブルクリックでメニュー表示' {
-            $combinedOutput = '7' | & cmd.exe /c $batScriptV2 2>&1 | Out-String
+            $combinedOutput = '8' | & cmd.exe /c $batScriptV2 2>&1 | Out-String
             Assert-True -Condition ($combinedOutput.Contains('PDF2Excel VER2')) -Message ('V2 BAT 無引数起動で VER2 タイトルが見つかりません: ' + $combinedOutput)
             Assert-True -Condition ($combinedOutput.Contains('[1] PDFファイルを選んで変換')) -Message ('V2 BAT 無引数起動でメニュー項目が見つかりません: ' + $combinedOutput)
+            Assert-True -Condition ($combinedOutput.Contains('[9] プロファイルを選ぶ')) -Message ('V2 BAT 無引数起動でプロファイル選択項目が見つかりません: ' + $combinedOutput)
+            Assert-True -Condition ($combinedOutput.Contains('[0] 環境チェック')) -Message ('V2 BAT 無引数起動で環境チェック項目が見つかりません: ' + $combinedOutput)
             Assert-True -Condition ($combinedOutput.Contains('[8] 終了')) -Message ('V2 BAT 無引数起動で終了項目が見つかりません: ' + $combinedOutput)
             return 'V2 BAT 無引数起動でメニュー表示を確認'
         }

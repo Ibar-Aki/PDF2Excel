@@ -64,7 +64,7 @@ if ($TargetVersion -ne 'all') {
 foreach ($package in $packageDefinitions) {
     Reset-Directory -Path $package.PackageRoot
 
-    foreach ($relativeDir in @('scripts', 'template', 'template\vba', "config\profiles\$($package.VersionMode)", 'input', 'output', 'output\runtime', 'logs')) {
+    foreach ($relativeDir in @('scripts', 'template', 'template\vba', 'config', "config\profiles\$($package.VersionMode)", 'input', 'output', 'output\runtime', 'logs')) {
         Ensure-Directory -Path (Join-Path $package.PackageRoot $relativeDir)
     }
 
@@ -74,6 +74,7 @@ foreach ($package in $packageDefinitions) {
         @{ Source = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'; Destination = Join-Path $package.PackageRoot 'scripts\run_pdf2excel_menu.ps1' },
         @{ Source = Join-Path $projectRoot 'scripts\new_profile_scaffold.ps1'; Destination = Join-Path $package.PackageRoot 'scripts\new_profile_scaffold.ps1' },
         @{ Source = Join-Path $projectRoot 'scripts\pdf2excel.common.ps1'; Destination = Join-Path $package.PackageRoot 'scripts\pdf2excel.common.ps1' },
+        @{ Source = Join-Path $projectRoot 'config\template-integrity.json'; Destination = Join-Path $package.PackageRoot 'config\template-integrity.json' },
         @{ Source = Join-Path $projectRoot ("template\{0}" -f $package.TemplateFile); Destination = Join-Path $package.PackageRoot ("template\{0}" -f $package.TemplateFile) },
         @{ Source = Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.bas'; Destination = Join-Path $package.PackageRoot 'template\vba\PDF2ExcelMacros.bas' },
         @{ Source = Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.sjis.bas'; Destination = Join-Path $package.PackageRoot 'template\vba\PDF2ExcelMacros.sjis.bas' },

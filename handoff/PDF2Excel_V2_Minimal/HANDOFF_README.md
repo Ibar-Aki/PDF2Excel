@@ -15,7 +15,7 @@
 - `VER2` は secure 既定です。
 - 実行中の `runtime / staging` は `%LOCALAPPDATA%\PDF2Excel\runtime\runs` を使います。
 - 既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
-- `VER2 Secure` のログは、既定で詳細パスをマスクして記録します。
+- `VER2 Secure` のログは、既定で `INFO` の要点だけを記録し、詳細パスや個別ファイル一覧は `DEBUG` 指定時だけ出力します。
 - 今回選んだ PDF は `input` フォルダへ複製しません。
 - 共有パス上からの `VER2 Secure` 実行は拒否します。ローカルへ展開して使ってください。
 - 正式運用では、この ZIP をローカルへ展開して `run_pdf2excel.bat` だけを使ってください。

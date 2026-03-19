@@ -827,7 +827,13 @@ function Resolve-RunErrorInfo {
     if ($normalizedMessage.Contains('共有パス上')) {
         return [pscustomobject]@{ ErrorCode = 'SHARED_EXECUTION_PATH'; ErrorCategory = 'セキュリティ制約' }
     }
+    if ($normalizedMessage.Contains('localappdata')) {
+        return [pscustomobject]@{ ErrorCode = 'LOCAL_RUNTIME_UNAVAILABLE'; ErrorCategory = 'セキュリティ制約' }
+    }
     if ($normalizedMessage.Contains('実行前チェックでキャンセル')) {
+        return [pscustomobject]@{ ErrorCode = 'RUN_CANCELLED'; ErrorCategory = '実行キャンセル' }
+    }
+    if ($normalizedMessage.Contains('選択されませんでした')) {
         return [pscustomobject]@{ ErrorCode = 'RUN_CANCELLED'; ErrorCategory = '実行キャンセル' }
     }
     if ($normalizedMessage.Contains('同名の pdf')) {
@@ -836,8 +842,18 @@ function Resolve-RunErrorInfo {
     if ($normalizedMessage.Contains('別の pdf2excel 実行が進行中')) {
         return [pscustomobject]@{ ErrorCode = 'RUN_LOCKED'; ErrorCategory = '実行競合' }
     }
+    if ($normalizedMessage.Contains('プロファイル')) {
+        return [pscustomobject]@{ ErrorCode = 'PROFILE_RESOLUTION_ERROR'; ErrorCategory = '設定エラー' }
+    }
     if ($normalizedMessage.Contains('入力フォルダ') -or $normalizedMessage.Contains('入力ファイル')) {
         return [pscustomobject]@{ ErrorCode = 'INPUT_RESOLUTION_ERROR'; ErrorCategory = '入力エラー' }
+    }
+    if (
+        $normalizedMessage.Contains('出力ファイル') -or
+        $normalizedMessage.Contains('書き込め') -or
+        $normalizedMessage.Contains('saveas')
+    ) {
+        return [pscustomobject]@{ ErrorCode = 'OUTPUT_WRITE_ERROR'; ErrorCategory = '出力エラー' }
     }
     if ($normalizedMessage.Contains('テンプレート')) {
         return [pscustomobject]@{ ErrorCode = 'TEMPLATE_ERROR'; ErrorCategory = 'テンプレートエラー' }
@@ -847,4 +863,48 @@ function Resolve-RunErrorInfo {
     }
 
     return [pscustomobject]@{ ErrorCode = 'UNEXPECTED_RUN_ERROR'; ErrorCategory = 'システムエラー' }
+}
+
+function Get-RunErrorGuidance {
+    param($ErrorInfo)
+
+    if ($null -eq $ErrorInfo) {
+        return 'ログを確認し、入力内容と実行環境を見直してから再実行してください。'
+    }
+
+    switch ([string]$ErrorInfo.ErrorCode) {
+        'SHARED_EXECUTION_PATH' {
+            return 'ZIP をローカルへ展開し、共有フォルダ上ではなくローカルのコピーから再実行してください。'
+        }
+        'LOCAL_RUNTIME_UNAVAILABLE' {
+            return 'LOCALAPPDATA を使える Windows ユーザー環境で再実行してください。端末制約がある場合は管理者へ確認してください。'
+        }
+        'RUN_CANCELLED' {
+            return '入力 PDF、保存先、確認画面の内容を見直してから再実行してください。'
+        }
+        'DUPLICATE_FILE_NAME' {
+            return '同名 PDF が混在しています。ファイル名を変更してから再実行してください。'
+        }
+        'RUN_LOCKED' {
+            return '別の実行が完了するまで待ってから再実行してください。必要ならログフォルダで直近の実行状況を確認してください。'
+        }
+        'PROFILE_RESOLUTION_ERROR' {
+            return '使用するプロファイルを選び直してください。必要ならメニューの「プロファイルを選ぶ」または雛形作成を利用してください。'
+        }
+        'INPUT_RESOLUTION_ERROR' {
+            return '入力フォルダまたは PDF 選択内容を見直してください。PDF が存在し、拡張子が .pdf であることも確認してください。'
+        }
+        'OUTPUT_WRITE_ERROR' {
+            return '保存先フォルダの書き込み権限と既存ファイルの使用状況を確認し、必要なら別の保存先で再実行してください。'
+        }
+        'TEMPLATE_ERROR' {
+            return 'テンプレートの存在と整合性を確認してください。必要ならテンプレート再生成か環境チェックを実施してください。'
+        }
+        'EXCEL_RUNTIME_ERROR' {
+            return 'Excel を閉じて再実行してください。改善しない場合は環境チェックを実施し、Excel COM やテンプレート状態を確認してください。'
+        }
+        default {
+            return 'ログを確認し、改善しない場合は環境チェック結果とあわせて保守担当へ連絡してください。'
+        }
+    }
 }

@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-12 23:14 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-19
+- 更新日: 2026-03-20
 
 Excel(M365) の Power Query を使って、複数のテキストPDFをまとめて Excel に変換するローカルツールです。  
 追加インストールなしで、`BAT + PowerShell + Excel` のみで動く構成にしています。
@@ -34,7 +34,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `sameHeader` の厳格判定で多ページ結合を行い、曖昧な候補は `Errors` / `Review` に分離します。
 - `VER2 Secure` は `%LOCALAPPDATA%\PDF2Excel\runtime` を runtime / staging に使い、`input` フォルダへ今回 PDF を同期しません。
 - `VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
-- `VER2 Secure` のログは、既定で詳細パスをマスクして記録します。
+- `VER2 Secure` のログは、既定で `INFO` の要点だけを記録し、詳細パスや個別ファイル一覧は `DEBUG` 指定時だけ出力します。
 - `VER2 Secure` は共有パス上からの実行を拒否します。ZIP は必ずローカルへ展開して使ってください。
 - 正式運用では、出力された `xlsx` だけを部署共有へ移動してください。スクリプトやテンプレートを共有フォルダ上で直接更新しないでください。
 - ダブルクリック起動では、必ず最初にメニューを表示します。
@@ -48,12 +48,15 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `3`: 使い方マニュアルを開く
 - `4`: 出力フォルダを開く
 - `5`: プロファイルフォルダを開く
-- `6`: プロファイル雛形を作成
+- `6`: プロファイル雛形を作成 (`VER2` では設定ウィザードで主要設定を順番に入力)
 - `7`: ログフォルダを開く
 - `8`: 終了
+- `9`: プロファイルを選ぶ
+- `0`: 環境チェック
 
 保存先を指定しない場合は、`output` フォルダに `PDF2Excel_yyyyMMdd_HHmmss.xlsx` が作成されます。
-変換前には、対象件数、保存先、使用プロファイル、想定列数を確認する「実行前チェック」が表示されます。`VER2 Secure` のログは `%LOCALAPPDATA%\PDF2Excel\logs` に保存されます。
+変換前には、対象件数、保存先、使用プロファイル、想定列数を確認する「実行前チェック」が表示されます。対話実行では先頭 PDF の簡易プレビューも表示します。`VER2 Secure` のログは `%LOCALAPPDATA%\PDF2Excel\logs` に保存されます。
+メニュー上では現在選択中のプロファイルを常に表示し、最後に使ったプロファイルを次回起動時にも引き継ぎます。
 
 ## 構成
 
@@ -64,7 +67,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `scripts/run_pdf2excel_menu.ps1`
   - 日本語の共通対話メニューです。既定では `VER2` を前提に動作します。
 - `scripts/new_profile_scaffold.ps1`
-  - v1/v2 のプロファイル雛形を生成する保守者向けスクリプトです。
+  - v1/v2 のプロファイル雛形を生成する保守者向けスクリプトです。`VER2` では設定ウィザード付きで主要な抽出設定を順番に入力できます。
 - `scripts/run_pdf2excel_v2.ps1`
   - 共通コア `run_pdf2excel.ps1` を `VER2 Secure` 既定で起動するラッパーです。
 - `scripts/run_pdf2excel_v1.ps1` / `scripts/run_pdf2excel_v1.bat`
@@ -94,7 +97,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `logs/`
   - 開発・検証導線の実行ログを保存します。30日超または200件超の古いログは自動整理されます。
   - `VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
-  - `VER2 Secure` では `INFO` を既定にし、詳細パスは既定でマスクします。詳細ログは保守者が `-LogLevel DEBUG` を明示した場合だけ使ってください。
+- `VER2 Secure` では `INFO` を既定にし、詳細パスや個別ファイル一覧は既定で出しません。詳細ログは保守者が `-LogLevel DEBUG` を明示した場合だけ使ってください。
 - `output/runtime/`
   - 主に `VER1` と標準導線の実行中一時領域です。`runs/` 配下に実行単位の staging / runtime を作成し、通常は実行ごとに自動クリーンアップされます。
   - `VER2` secure 導線では `%LOCALAPPDATA%\PDF2Excel\runtime\runs` を使います。
@@ -129,9 +132,12 @@ PDF2Excel
 3. PDF または PDF フォルダを選択します。
 4. 保存先を選びます。
 5. 実行前チェックの内容を確認して続行します。
+   - 対話実行では、先頭 PDF の候補表数と列数・行数の簡易プレビューも表示されます。
    - `Y` を押した後は `PDF取り込みに時間がかかります。しばらくお待ちください....` が表示されます。
+   - 実行中は `入力確認 / PDF準備 / テンプレート準備 / Excel起動 / Power Query設定 / データ取込 / 結果整形 / 保存` の段階表示が出ます。
 6. 処理完了後、`Summary`、`Result`、`Review`、`Errors` シートを確認します。
-   - 完了画面には出力先とログ先も表示されます。
+   - 完了画面には実際に保存した `xlsx`、ログ、実行履歴台帳が表示されます。
+   - そのまま `O` で出力ファイル、`F` で保存先フォルダを開けます。
 7. 必要なら、完成した `xlsx` だけを部署共有へ移動します。
 
 PowerShell から実行する場合:
@@ -208,6 +214,9 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2exce
 - 利用者向け BAT / PS 導線は `RemoteSigned` を前提に起動します。
 - ツールは同時に 1 実行だけ許可します。別実行が動作中の場合は `RUN_LOCKED` として即時停止します。
 - BAT メニューと利用者向けの説明文は日本語化しています。
+- 各実行の結果は `reports/run-history.csv` に追記されます。
+- 環境チェック結果は `reports/environment-check.md` に保存されます。
+- 環境チェックでは `run.lock` の有無と `scripts/build_excel_template.ps1` の存在も確認します。
 - 生データ転記サンプルを試す場合は `config/profiles/v2/construction_transfer_poc.json` を利用してください。
 - 日本語サンプル PDF を再生成したい場合は `scripts/build_sample_pdfs.ps1` を実行してください。
 

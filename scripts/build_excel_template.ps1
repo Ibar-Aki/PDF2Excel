@@ -16,6 +16,8 @@ $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding
+$projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$templateIntegrityPath = Join-Path $projectRoot 'config\template-integrity.json'
 
 $TemplatePath = [System.IO.Path]::GetFullPath($TemplatePath)
 $VbaModulePath = [System.IO.Path]::GetFullPath($VbaModulePath)
@@ -54,6 +56,37 @@ function Resolve-TemplateVariant {
     }
 
     return 'v1'
+}
+
+function Write-TemplateIntegrityManifest {
+    $baseUri = New-Object System.Uri(($projectRoot.TrimEnd('\') + '\'))
+    $targets = @(
+        Join-Path $projectRoot 'template\PDF2Excel_V1_Converter.xlsm'
+        Join-Path $projectRoot 'template\PDF2Excel_V2_Converter.xlsm'
+        Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.bas'
+        Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.sjis.bas'
+        Join-Path $projectRoot 'template\vba\PDF2ExcelTemplateBuilder.bas'
+        Join-Path $projectRoot 'template\vba\PDF2ExcelTemplateBuilder.sjis.bas'
+    )
+
+    $files = @()
+    foreach ($targetPath in $targets) {
+        if (-not (Test-Path -LiteralPath $targetPath)) {
+            continue
+        }
+
+        $relativePath = [System.Uri]::UnescapeDataString($baseUri.MakeRelativeUri((New-Object System.Uri($targetPath))).ToString()).Replace('/', '\')
+        $files += [ordered]@{
+            RelativePath = $relativePath
+            Sha256       = (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash.ToUpperInvariant()
+        }
+    }
+
+    Ensure-Directory -Path (Split-Path -Path $templateIntegrityPath -Parent)
+    [ordered]@{
+        GeneratedAt = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+        Files       = $files
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $templateIntegrityPath -Encoding UTF8
 }
 
 function Ensure-WorkbookHasRequiredSheets {
@@ -253,6 +286,7 @@ try {
     $workbook.SaveAs($TemplatePath, 52)
     Import-VbaModule -Workbook $workbook -ModulePath $VbaModulePath
     $workbook.Save()
+    Write-TemplateIntegrityManifest
 
     Write-Host "テンプレートを作成しました: $TemplatePath"
     Write-Host "テンプレート種別: $resolvedTemplateVariant"
