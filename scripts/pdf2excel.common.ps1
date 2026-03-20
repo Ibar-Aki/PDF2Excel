@@ -304,14 +304,73 @@ function ConvertTo-MRecordListLiteral {
     return '{' + ($items -join ', ') + '}'
 }
 
+function Format-ProfileColumnDisplayName {
+    param([AllowNull()]$Value)
+
+    $text = if ($null -eq $Value) { '' } else { [string]$Value }
+    $text = $text.Replace("`r", ' ').Replace("`n", ' ').Replace('　', ' ')
+    $tokens = @($text -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $normalized = ($tokens -join ' ').Trim()
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return '(空欄)'
+    }
+
+    return $normalized
+}
+
+function Get-UniqueColumnNameList {
+    param([string[]]$Names)
+
+    $counts = @{}
+    $resolved = New-Object System.Collections.Generic.List[string]
+    foreach ($name in @($Names)) {
+        $baseName = Format-ProfileColumnDisplayName -Value $name
+        $nextCount = if ($counts.ContainsKey($baseName)) { [int]$counts[$baseName] + 1 } else { 1 }
+        $counts[$baseName] = $nextCount
+        $finalName = if ($nextCount -le 1) { $baseName } else { '{0}_{1}' -f $baseName, $nextCount }
+        [void]$resolved.Add($finalName)
+    }
+
+    return @($resolved)
+}
+
+function Test-ProfileHasCustomOutputColumnNames {
+    param([Parameter(Mandatory = $true)]$Profile)
+
+    return ($Profile.PSObject.Properties.Name -contains 'OutputColumnNames') -and $null -ne $Profile.OutputColumnNames -and @($Profile.OutputColumnNames).Count -gt 0
+}
+
+function Get-ProfileDataColumnNames {
+    param([Parameter(Mandatory = $true)]$Profile)
+
+    $expectedColumns = [int]$Profile.ExpectedColumns
+    if ($expectedColumns -lt 1) {
+        return @()
+    }
+
+    $dataColumnPrefix = if (
+        ($Profile.PSObject.Properties.Name -contains 'DataColumnPrefix') -and
+        -not [string]::IsNullOrWhiteSpace([string]$Profile.DataColumnPrefix)
+    ) {
+        [string]$Profile.DataColumnPrefix
+    } else {
+        'Column'
+    }
+
+    $seedNames = @()
+    if (Test-ProfileHasCustomOutputColumnNames -Profile $Profile) {
+        $seedNames += @($Profile.OutputColumnNames)
+    }
+    $seedNames += @(1..$expectedColumns | ForEach-Object { '{0}{1}' -f $dataColumnPrefix, $_ })
+
+    return @((Get-UniqueColumnNameList -Names $seedNames) | Select-Object -First $expectedColumns)
+}
+
 function Get-ProfileOutputColumnNames {
     param([Parameter(Mandatory = $true)]$Profile)
 
     $names = @($Profile.SourceFileColumnName)
-    foreach ($index in 1..$Profile.ExpectedColumns) {
-        $names += '{0}{1}' -f $Profile.DataColumnPrefix, $index
-    }
-
+    $names += @(Get-ProfileDataColumnNames -Profile $Profile)
     return $names
 }
 
@@ -634,7 +693,20 @@ function Get-ReviewReasonCategories {
         }
     }
 
-    $preferredOrder = @('HEADER_MISMATCH', 'TIME_MULTI', 'TIME_MISSING', 'TIME_INVALID')
+    if ($ExistingReason -like '*ヘッダー位置がずれ*') {
+        [void]$categorySet.Add('HEADER_ROW_SHIFT')
+    }
+    if ($ExistingReason -like '*ヘッダー文言に揺れ*') {
+        [void]$categorySet.Add('HEADER_TEXT_DRIFT')
+    }
+    if ($ExistingReason -like '*空欄で補完*') {
+        [void]$categorySet.Add('COLUMN_MISSING')
+    }
+    if ($ExistingReason -like '*無視しました*') {
+        [void]$categorySet.Add('COLUMN_EXTRA')
+    }
+
+    $preferredOrder = @('HEADER_MISMATCH', 'HEADER_ROW_SHIFT', 'HEADER_TEXT_DRIFT', 'COLUMN_MISSING', 'COLUMN_EXTRA', 'TIME_MULTI', 'TIME_MISSING', 'TIME_INVALID')
     $ordered = New-Object System.Collections.Generic.List[string]
 
     foreach ($category in $preferredOrder) {
@@ -664,6 +736,7 @@ function Get-NormalizedTimeColumnDefinitions {
     }
 
     $definitions = @()
+    $dataColumnNames = @(Get-ProfileDataColumnNames -Profile $Profile)
     $profileDefinitions = $Profile.PSObject.Properties['NormalizedTimeColumns']
     if ($null -ne $profileDefinitions -and $null -ne $profileDefinitions.Value) {
         foreach ($entry in @($profileDefinitions.Value)) {
@@ -685,7 +758,7 @@ function Get-NormalizedTimeColumnDefinitions {
 
             $definitions += [pscustomobject]@{
                 SourceColumn        = $sourceColumn
-                SourceColumnName    = '{0}{1}' -f $Profile.DataColumnPrefix, $sourceColumn
+                SourceColumnName    = if ($sourceColumn -le $dataColumnNames.Count) { [string]$dataColumnNames[$sourceColumn - 1] } else { '{0}{1}' -f $Profile.DataColumnPrefix, $sourceColumn }
                 DisplayName         = $displayName
                 MinutesColumnName   = $minutesColumnName
                 ReviewRawColumnName = '{0}_raw' -f $displayName

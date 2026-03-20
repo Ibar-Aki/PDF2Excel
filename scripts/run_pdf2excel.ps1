@@ -1329,6 +1329,16 @@ function Get-ProfileConfiguration {
         $dataColumnPrefix = 'Column'
     }
 
+    $rawOutputColumnNames = Get-OptionalProfileValue -ProfileObject $rawProfile -PropertyName 'outputColumnNames'
+    $hasCustomOutputColumnNames = $null -ne $rawOutputColumnNames -and @($rawOutputColumnNames).Count -gt 0
+    $resolvedOutputColumnNames = @(
+        Get-ProfileDataColumnNames -Profile ([pscustomobject]@{
+                ExpectedColumns   = $expectedColumns
+                DataColumnPrefix  = $dataColumnPrefix
+                OutputColumnNames = if ($null -eq $rawOutputColumnNames) { @() } else { @($rawOutputColumnNames) }
+            })
+    )
+
     $reviewMappings = [pscustomobject]@{
         PersonColumn = Get-OptionalIntValue -Value (Get-OptionalProfileValue -ProfileObject $rawProfile -PropertyName 'reviewPersonColumn')
         SiteColumn   = Get-OptionalIntValue -Value (Get-OptionalProfileValue -ProfileObject $rawProfile -PropertyName 'reviewSiteColumn')
@@ -1376,6 +1386,8 @@ function Get-ProfileConfiguration {
         PreferredTableIdContains   = @(Normalize-StringArray -Value $rawProfile.preferredTableIdContains)
         SourceFileColumnName       = $sourceFileColumnName
         DataColumnPrefix           = $dataColumnPrefix
+        OutputColumnNames          = @($resolvedOutputColumnNames)
+        HasCustomOutputColumnNames = $hasCustomOutputColumnNames
         ReviewMappings             = $reviewMappings
         NormalizedTimeColumns      = @($normalizedTimeColumns)
         MultiPageMergeMode         = if ([string]::IsNullOrWhiteSpace([string](Get-OptionalProfileValue -ProfileObject $rawProfile -PropertyName 'multiPageMergeMode'))) { 'single' } else { [string](Get-OptionalProfileValue -ProfileObject $rawProfile -PropertyName 'multiPageMergeMode') }
@@ -1566,6 +1578,7 @@ function Get-StagingQueryFormulaV2 {
 
     $escapedPath = Escape-MString -Value $InputPath
     $outputColumnsLiteral = ConvertTo-MTextListLiteral -Values (Get-ProfileOutputColumnNames -Profile $Profile)
+    $outputDataColumnsLiteral = ConvertTo-MTextListLiteral -Values (Get-ProfileDataColumnNames -Profile $Profile)
     $dataColumnsLiteral = ConvertTo-MTextListLiteral -Values @((1..$Profile.ExpectedColumns | ForEach-Object { '{0}{1}' -f $Profile.DataColumnPrefix, $_ }))
     $preferredKindsLiteral = ConvertTo-MTextListLiteral -Values @($Profile.PreferredTableKinds | ForEach-Object { $_.ToUpperInvariant() })
     $preferredNamesLiteral = ConvertTo-MTextListLiteral -Values @($Profile.PreferredTableNameContains | ForEach-Object { $_.ToUpperInvariant() })
@@ -1573,6 +1586,7 @@ function Get-StagingQueryFormulaV2 {
     $sourceFileColumnNameLiteral = Escape-MString -Value $Profile.SourceFileColumnName
     $dataColumnPrefixLiteral = Escape-MString -Value $Profile.DataColumnPrefix
     $allowMoreColumnsLiteral = ConvertTo-MLogicalLiteral -Value $Profile.AllowMoreColumns
+    $hasCustomOutputHeadersLiteral = ConvertTo-MLogicalLiteral -Value $Profile.HasCustomOutputColumnNames
     $reviewPersonColumnLiteral = if ($null -eq $Profile.ReviewMappings.PersonColumn) { 'null' } else { [string]$Profile.ReviewMappings.PersonColumn }
     $reviewSiteColumnLiteral = if ($null -eq $Profile.ReviewMappings.SiteColumn) { 'null' } else { [string]$Profile.ReviewMappings.SiteColumn }
     $reviewInTimeColumnLiteral = if ($null -eq $Profile.ReviewMappings.InTimeColumn) { 'null' } else { [string]$Profile.ReviewMappings.InTimeColumn }
@@ -1596,9 +1610,11 @@ let
     HeaderRowsToSkip = $($Profile.HeaderRowsToSkip),
     TargetRowCount = $($Profile.TargetRowCount),
     AllowMoreColumns = $allowMoreColumnsLiteral,
+    HasCustomOutputHeaders = $hasCustomOutputHeadersLiteral,
     SourceFileColumnName = "$sourceFileColumnNameLiteral",
     DataColumnPrefix = "$dataColumnPrefixLiteral",
     OutputColumns = $outputColumnsLiteral,
+    OutputDataColumns = $outputDataColumnsLiteral,
     DataColumns = $dataColumnsLiteral,
     PreferredKinds = $preferredKindsLiteral,
     PreferredNames = $preferredNamesLiteral,
@@ -1756,7 +1772,7 @@ let
                                                 normalizedId = Text.Upper(tableId),
                                                 headerSignature = if dataValue = null or rowCount = null or rowCount <= HeaderRowsToSkip then "" else GetHeaderSignature(dataValue),
                                                 pageNumber = GetPageNumber(tableId, tableName),
-                                                dataRowCount = if rowCount = null then 0 else Number.Max(rowCount - HeaderRowsToSkip, 0),
+                                                dataRowCount = if rowCount = null then 0 else List.Max({rowCount - HeaderRowsToSkip, 0}),
                                                 kindBonus = if List.Contains(PreferredKinds, normalizedKind) then -250 else 0,
                                                 nameBonus = if List.Count(PreferredNames) = 0 then 0 else if List.AnyTrue(List.Transform(PreferredNames, each Text.Contains(normalizedName, _))) then -120 else 0,
                                                 idBonus = if List.Count(PreferredIds) = 0 then 0 else if List.AnyTrue(List.Transform(PreferredIds, each Text.Contains(normalizedId, _))) then -120 else 0,
@@ -1950,6 +1966,7 @@ function Get-StagingQueryFormulaV2Simple {
 
     $escapedPath = Escape-MString -Value $InputPath
     $outputColumnsLiteral = ConvertTo-MTextListLiteral -Values (Get-ProfileOutputColumnNames -Profile $Profile)
+    $outputDataColumnsLiteral = ConvertTo-MTextListLiteral -Values (Get-ProfileDataColumnNames -Profile $Profile)
     $dataColumnsLiteral = ConvertTo-MTextListLiteral -Values @((1..$Profile.ExpectedColumns | ForEach-Object { '{0}{1}' -f $Profile.DataColumnPrefix, $_ }))
     $preferredKindsLiteral = ConvertTo-MTextListLiteral -Values @($Profile.PreferredTableKinds | ForEach-Object { $_.ToUpperInvariant() })
     $preferredNamesLiteral = ConvertTo-MTextListLiteral -Values @($Profile.PreferredTableNameContains | ForEach-Object { $_.ToUpperInvariant() })
@@ -1957,6 +1974,7 @@ function Get-StagingQueryFormulaV2Simple {
     $sourceFileColumnNameLiteral = Escape-MString -Value $Profile.SourceFileColumnName
     $dataColumnPrefixLiteral = Escape-MString -Value $Profile.DataColumnPrefix
     $allowMoreColumnsLiteral = ConvertTo-MLogicalLiteral -Value $Profile.AllowMoreColumns
+    $hasCustomOutputHeadersLiteral = ConvertTo-MLogicalLiteral -Value $Profile.HasCustomOutputColumnNames
     $reviewPersonColumnLiteral = if ($null -eq $Profile.ReviewMappings.PersonColumn) { 'null' } else { [string]$Profile.ReviewMappings.PersonColumn }
     $reviewSiteColumnLiteral = if ($null -eq $Profile.ReviewMappings.SiteColumn) { 'null' } else { [string]$Profile.ReviewMappings.SiteColumn }
     $reviewInTimeColumnLiteral = if ($null -eq $Profile.ReviewMappings.InTimeColumn) { 'null' } else { [string]$Profile.ReviewMappings.InTimeColumn }
@@ -1978,9 +1996,11 @@ let
     HeaderRowsToSkip = $($Profile.HeaderRowsToSkip),
     TargetRowCount = $($Profile.TargetRowCount),
     AllowMoreColumns = $allowMoreColumnsLiteral,
+    HasCustomOutputHeaders = $hasCustomOutputHeadersLiteral,
     SourceFileColumnName = "$sourceFileColumnNameLiteral",
     DataColumnPrefix = "$dataColumnPrefixLiteral",
     OutputColumns = $outputColumnsLiteral,
+    OutputDataColumns = $outputDataColumnsLiteral,
     DataColumns = $dataColumnsLiteral,
     PreferredKinds = $preferredKindsLiteral,
     PreferredNames = $preferredNamesLiteral,
@@ -2019,6 +2039,39 @@ let
             compact = Text.Trim(Text.Combine(filteredTokens, " "))
         in
             compact,
+    NormalizeComparableHeaderToken = (value as any) as text =>
+        let
+            normalized = NormalizeHeaderCell(value),
+            withoutSuffix =
+                if Text.EndsWith(normalized, ")") and Text.StartsWith(normalized, "(空欄") then
+                    ""
+                else
+                    Text.TrimEnd(normalized, {"0".."9"}),
+            comparable =
+                if Text.EndsWith(withoutSuffix, "_") then
+                    Text.Start(withoutSuffix, Text.Length(withoutSuffix) - 1)
+                else
+                    withoutSuffix
+        in
+            comparable,
+    ConfiguredHeaderTokens = List.Transform(OutputDataColumns, each NormalizeComparableHeaderToken(_)),
+    ConfiguredDistinctHeaderTokens = List.Distinct(List.Select(ConfiguredHeaderTokens, each _ <> "")),
+    ConfiguredHeaderTokenCount = List.Count(ConfiguredDistinctHeaderTokens),
+    MinimumHeaderOverlap =
+        if ConfiguredHeaderTokenCount <= 0 then
+            0
+        else if ConfiguredHeaderTokenCount <= 2 then
+            ConfiguredHeaderTokenCount
+        else
+            List.Max({2, Number.RoundUp(ConfiguredHeaderTokenCount * 0.25)}),
+    ConfiguredPositionTokenCount = List.Count(List.Select(ConfiguredHeaderTokens, each _ <> "")),
+    MinimumExactPositionMatches =
+        if ConfiguredPositionTokenCount <= 0 then
+            0
+        else if ConfiguredPositionTokenCount <= 3 then
+            1
+        else
+            List.Max({2, Number.RoundUp(ConfiguredPositionTokenCount * 0.15)}),
     CountTimeLikeTokens = (value as any) as number =>
         let
             normalized = NormalizeText(value),
@@ -2033,15 +2086,19 @@ let
             signature = Text.Combine(flattened, "|")
         in signature,
     GetCanonicalHeaderSignature = (tableValue as table) as text =>
-        let
-            requestedHeaderRows = if HeaderRowsToSkip <= 0 then 1 else HeaderRowsToSkip,
-            rowLimit = if Table.RowCount(tableValue) < requestedHeaderRows then Table.RowCount(tableValue) else requestedHeaderRows,
-            headerTable = Table.FirstN(tableValue, rowLimit),
-            rows = Table.ToRows(headerTable),
-            flattened = List.Combine(List.Transform(rows, each List.Transform(_, each NormalizeHeaderCell(_)))),
-            filtered = List.Select(flattened, each _ <> ""),
-            signature = Text.Combine(filtered, "|")
-        in signature,
+        if HasCustomOutputHeaders then
+            Text.Combine(List.Select(ConfiguredHeaderTokens, each _ <> ""), "|")
+        else
+            let
+                requestedHeaderRows = if HeaderRowsToSkip <= 0 then 1 else HeaderRowsToSkip,
+                rowLimit = if Table.RowCount(tableValue) < requestedHeaderRows then Table.RowCount(tableValue) else requestedHeaderRows,
+                headerTable = Table.FirstN(tableValue, rowLimit),
+                rows = Table.ToRows(headerTable),
+                flattened = List.Combine(List.Transform(rows, each List.Transform(_, each NormalizeHeaderCell(_)))),
+                filtered = List.Select(flattened, each _ <> ""),
+                signature = Text.Combine(filtered, "|")
+            in
+                signature,
     GetPageNumber = (tableId as nullable text, tableName as nullable text) as nullable number =>
         let
             combined = Text.Upper(Text.Combine(List.RemoveNulls({tableId, tableName}), " ")),
@@ -2053,10 +2110,104 @@ let
             digits = if firstPageToken <> null then Text.Select(firstPageToken, {"0".."9"}) else if fallbackToken <> null then fallbackToken else ""
         in
             if digits = "" then null else Number.FromText(digits),
-    BuildResultTable = (tableValue as nullable table, pageNumber as nullable number, columnStartNumber as number, padToExpected as logical) as nullable table =>
+    GetHeaderRowCandidates = (tableValue as nullable table) as list =>
+        let
+            rowCount = if tableValue = null then 0 else Table.RowCount(tableValue),
+            defaultRowIndex = if HeaderRowsToSkip <= 0 then 0 else HeaderRowsToSkip - 1,
+            searchWindow =
+                if HasCustomOutputHeaders then
+                    List.Min({rowCount, List.Max({defaultRowIndex + 3, 4})})
+                else
+                    List.Min({rowCount, List.Max({defaultRowIndex + 1, 1})}),
+            candidates =
+                if rowCount = 0 or searchWindow = 0 then
+                    {}
+                else
+                    List.Transform(
+                        {0..searchWindow - 1},
+                        (rowIndex) =>
+                            let
+                                rowValues = Table.ToRows(Table.Range(tableValue, rowIndex, 1)){0},
+                                normalizedValues = List.Transform(rowValues, each NormalizeHeaderCell(_)),
+                                nonEmptyValues = List.Select(normalizedValues, each _ <> ""),
+                                overlapCount =
+                                    if List.Count(ConfiguredHeaderTokens) = 0 then
+                                        0
+                                    else
+                                        List.Count(List.Intersect({List.Distinct(nonEmptyValues), ConfiguredDistinctHeaderTokens})),
+                                exactPositionMatches =
+                                    if List.Count(ConfiguredHeaderTokens) = 0 then
+                                        0
+                                    else
+                                        List.Count(
+                                            List.Select(
+                                                List.Positions(ConfiguredHeaderTokens),
+                                                each _ < List.Count(normalizedValues) and normalizedValues{_} <> "" and normalizedValues{_} = ConfiguredHeaderTokens{_}
+                                            )
+                                        ),
+                                score =
+                                    if HasCustomOutputHeaders then
+                                        overlapCount * 1000 +
+                                        exactPositionMatches * 100 -
+                                        Number.Abs(List.Count(nonEmptyValues) - ExpectedColumns) * 25 +
+                                        rowIndex
+                                    else
+                                        List.Count(nonEmptyValues) * 100 + rowIndex
+                            in
+                                [
+                                    HeaderRowIndex = rowIndex,
+                                    NormalizedValues = normalizedValues,
+                                    NonEmptyCount = List.Count(nonEmptyValues),
+                                    OverlapCount = overlapCount,
+                                    ExactPositionMatches = exactPositionMatches,
+                                    Score = score,
+                                    IsAcceptable = overlapCount >= MinimumHeaderOverlap or exactPositionMatches >= MinimumExactPositionMatches
+                                ]
+                    )
+        in
+            candidates,
+    GetBestHeaderInfo = (tableValue as nullable table) as nullable record =>
+        let
+            headerCandidates = GetHeaderRowCandidates(tableValue),
+            best =
+                if List.Count(headerCandidates) = 0 then
+                    null
+                else
+                    List.First(
+                        List.Sort(
+                            headerCandidates,
+                            (left, right) =>
+                                if left[Score] > right[Score] then
+                                    -1
+                                else if left[Score] < right[Score] then
+                                    1
+                                else if left[HeaderRowIndex] > right[HeaderRowIndex] then
+                                    -1
+                                else if left[HeaderRowIndex] < right[HeaderRowIndex] then
+                                    1
+                                else
+                                    0
+                        )
+                    )
+        in
+            best,
+    GetHeaderWarningRecords = (headerInfo as nullable record, columnCount as nullable number) as list =>
+        if HasCustomOutputHeaders = false or headerInfo = null then
+            {}
+        else
+            List.RemoveNulls(
+                {
+                    if headerInfo[HeaderRowIndex] + 1 <> HeaderRowsToSkip then [Text = "ヘッダー位置がずれたため " & Text.From(headerInfo[HeaderRowIndex] + 1) & " 行目を採用しました。", Category = "HEADER_ROW_SHIFT"] else null,
+                    if headerInfo[ExactPositionMatches] < List.Count(List.Select(ConfiguredHeaderTokens, each _ <> "")) then [Text = "ヘッダー文言に揺れがあるため列順優先で取り込みました。", Category = "HEADER_TEXT_DRIFT"] else null,
+                    if columnCount <> null and columnCount < ExpectedColumns then [Text = "一部の列が不足していたため空欄で補完しました。", Category = "COLUMN_MISSING"] else null,
+                    if columnCount <> null and columnCount > ExpectedColumns then [Text = "余分な列は取り込まずに無視しました。", Category = "COLUMN_EXTRA"] else null
+                }
+            ),
+    BuildResultTable = (tableValue as nullable table, pageNumber as nullable number, headerInfo as nullable record, columnStartNumber as number, padToExpected as logical) as nullable table =>
         if tableValue = null then null else
         let
-            dataOnly = Table.Skip(tableValue, HeaderRowsToSkip),
+            effectiveHeaderRowIndex = if headerInfo = null then (if HeaderRowsToSkip <= 0 then 0 else HeaderRowsToSkip - 1) else headerInfo[HeaderRowIndex],
+            dataOnly = Table.Skip(tableValue, effectiveHeaderRowIndex + 1),
             originalColumns = Table.ColumnNames(dataOnly),
             renamed = Table.RenameColumns(dataOnly, List.Transform(List.Positions(originalColumns), each {originalColumns{_}, DataColumnPrefix & Text.From(columnStartNumber + _)}), MissingField.Ignore),
             renamedCount = Table.ColumnCount(renamed),
@@ -2074,6 +2225,15 @@ let
             normalized = Table.TransformColumns(selected, List.Transform(Table.ColumnNames(selected), each {_, NormalizeText, type text})),
             withPage = if padToExpected then Table.AddColumn(normalized, "__PageNumber", each pageNumber, type nullable number) else normalized
         in withPage,
+    RenameResultColumnsForOutput = (tableValue as nullable table) as nullable table =>
+        if tableValue = null then
+            null
+        else
+            Table.RenameColumns(
+                tableValue,
+                List.Transform(List.Positions(OutputDataColumns), each {DataColumns{_}, OutputDataColumns{_}}),
+                MissingField.Ignore
+            ),
     BuildReviewRecord = (rowRecord as record, fileName as text, reasonText as nullable text, reasonCategories as nullable list) as record =>
         let
             personColumnName = if ReviewPersonColumn = null then null else DataColumnPrefix & Text.From(ReviewPersonColumn),
@@ -2094,7 +2254,18 @@ let
                 )
         in
             withTimeFields,
-    BuildReviewTable = (dataTable as nullable table, fileName as text, noteText as nullable text, noteCategory as nullable text) as table =>
+    BuildPageNoteRecord = (fileName as text, pageNumber as nullable number, noteText as nullable text, noteCategory as nullable text) as nullable record =>
+        if noteText = null or Text.Length(noteText) = 0 then
+            null
+        else
+            List.Accumulate(
+                NormalizedTimeDefinitions,
+                [FileName = fileName, Page = pageNumber, PersonRaw = "", SiteRaw = "", Reason = noteText, ReasonCategory = if noteCategory = null then "" else noteCategory],
+                (state, current) => Record.AddField(state, current[ReviewRawColumnName], "")
+            ),
+    BuildCandidatePageNotes = (candidates as list, fileName as text) as list =>
+        List.RemoveNulls(List.Transform(candidates, each BuildPageNoteRecord(fileName, [PageNumber], [HeaderWarningText], [HeaderWarningCategory]))),
+    BuildReviewTable = (dataTable as nullable table, fileName as text, pageNoteRecords as list) as table =>
         let
             empty = #table(ReviewColumns, {}),
             rowRecords =
@@ -2141,16 +2312,7 @@ let
                                 BuildReviewRecord(_, fileName, reasonText, reasonCategories)
                     ),
             rowReviews = if List.Count(rowRecords) = 0 then empty else Table.SelectColumns(Table.FromRecords(rowRecords), ReviewColumns, MissingField.UseNull),
-            pageNoteRecord =
-                if noteText = null or Text.Length(noteText) = 0 then
-                    null
-                else
-                    List.Accumulate(
-                        NormalizedTimeDefinitions,
-                        [FileName = fileName, Page = null, PersonRaw = "", SiteRaw = "", Reason = noteText, ReasonCategory = if noteCategory = null then "" else noteCategory],
-                        (state, current) => Record.AddField(state, current[ReviewRawColumnName], "")
-                    ),
-            pageNote = if pageNoteRecord = null then empty else Table.SelectColumns(Table.FromRecords({pageNoteRecord}), ReviewColumns, MissingField.UseNull)
+            pageNote = if List.Count(pageNoteRecords) = 0 then empty else Table.SelectColumns(Table.FromRecords(pageNoteRecords), ReviewColumns, MissingField.UseNull)
         in
             if Table.RowCount(rowReviews) = 0 then pageNote else if Table.RowCount(pageNote) = 0 then rowReviews else Table.Combine({rowReviews, pageNote}),
     CombineHorizontalTables = (candidateGroup as list) as nullable table =>
@@ -2161,7 +2323,7 @@ let
                     each
                         let
                             priorColumns = if _ = 0 then 0 else List.Sum(List.Transform(List.FirstN(candidateGroup, _), each [ColumnCount])),
-                            segment = BuildResultTable(candidateGroup{_}[Data], null, priorColumns + 1, false)
+                            segment = BuildResultTable(candidateGroup{_}[Data], null, candidateGroup{_}[HeaderInfo], priorColumns + 1, false)
                         in
                             if segment = null then null else Table.AddIndexColumn(segment, "__JoinIndex", 0, 1, Int64.Type)
                 ),
@@ -2206,6 +2368,48 @@ let
                     else
                         0
             ),
+    GetPageCandidateKey = (candidate as record) as text =>
+        if candidate[PageNumber] = null then
+            "IDX|" & Text.From(candidate[CandidateIndex])
+        else
+            "PAGE|" & Text.From(candidate[PageNumber]),
+    GetBestCandidatesPerPage = (candidates as list) as list =>
+        let
+            grouped =
+                if List.Count(candidates) = 0 then
+                    #table({"PageKey", "Candidates"}, {})
+                else
+                    Table.Group(
+                        Table.FromRecords(List.Transform(candidates, each [PageKey = GetPageCandidateKey(_), Candidate = _])),
+                        {"PageKey"},
+                        {{"Candidates", each [Candidate], type list}}
+                    ),
+            bestCandidates =
+                if Table.RowCount(grouped) = 0 then
+                    {}
+                else
+                    List.Transform(
+                        Table.ToRecords(grouped),
+                        each
+                            List.First(
+                                List.Sort(
+                                    [Candidates],
+                                    (left, right) =>
+                                        if left[Score] < right[Score] then
+                                            -1
+                                        else if left[Score] > right[Score] then
+                                            1
+                                        else if left[CandidateIndex] < right[CandidateIndex] then
+                                            -1
+                                        else if left[CandidateIndex] > right[CandidateIndex] then
+                                            1
+                                        else
+                                            0
+                                )
+                            )
+                    )
+        in
+            SortCandidatesByPageAndIndex(bestCandidates),
     GetCandidateGroupKey = (candidate as record) as text => candidate[CanonicalHeaderSignature] & "|" & Text.Upper(candidate[TableKind]),
     IsContinuousCandidateSequence = (candidates as list) as logical =>
         let
@@ -2315,14 +2519,25 @@ let
                     normalizedKind = Text.Upper(tableKind),
                     normalizedName = Text.Upper(tableName),
                     normalizedId = Text.Upper(tableId),
-                    headerSignature = if dataValue = null or rowCount = null or rowCount <= HeaderRowsToSkip then "" else GetCanonicalHeaderSignature(dataValue),
+                    headerInfo = if dataValue = null or rowCount = null or rowCount = 0 then null else GetBestHeaderInfo(dataValue),
+                    effectiveHeaderRows = if headerInfo = null then HeaderRowsToSkip else headerInfo[HeaderRowIndex] + 1,
+                    headerWarnings = GetHeaderWarningRecords(headerInfo, columnCount),
+                    headerSignature = if dataValue = null or rowCount = null or rowCount <= effectiveHeaderRows then "" else GetCanonicalHeaderSignature(dataValue),
                     pageNumber = GetPageNumber(tableId, tableName),
-                    dataRowCount = if rowCount = null then 0 else rowCount - HeaderRowsToSkip,
+                    dataRowCount = if rowCount = null then 0 else List.Max({rowCount - effectiveHeaderRows, 0}),
                     kindBonus = if List.Contains(PreferredKinds, normalizedKind) then -250 else 0,
                     nameBonus = if List.Count(PreferredNames) = 0 then 0 else if List.AnyTrue(List.Transform(PreferredNames, each Text.Contains(normalizedName, _))) then -120 else 0,
                     idBonus = if List.Count(PreferredIds) = 0 then 0 else if List.AnyTrue(List.Transform(PreferredIds, each Text.Contains(normalizedId, _))) then -120 else 0,
-                    score = if dataValue = null or rowCount = null or columnCount = null then 999999 else if preferMoreRows then Number.Abs(columnCount - ExpectedColumns) * 100000 - dataRowCount * 10 + kindBonus + nameBonus + idBonus else Number.Abs(columnCount - ExpectedColumns) * 1000 + Number.Abs(dataRowCount - TargetRowCount) * 10 + kindBonus + nameBonus + idBonus
-                in [Data = dataValue, ColumnCount = columnCount, RowCount = rowCount, DataRowCount = dataRowCount, Score = score, TableId = tableId, TableKind = tableKind, TableName = tableName, CanonicalHeaderSignature = headerSignature, PageNumber = pageNumber, CandidateIndex = Record.Field(_, "CandidateIndex")]
+                    headerPenalty =
+                        if HasCustomOutputHeaders and headerInfo <> null then
+                            Number.Abs(List.Count(List.Select(ConfiguredHeaderTokens, each _ <> "")) - headerInfo[OverlapCount]) * 500 +
+                            Number.Abs(effectiveHeaderRows - HeaderRowsToSkip) * 25
+                        else
+                            0,
+                    score = if dataValue = null or rowCount = null or columnCount = null then 999999 else if preferMoreRows then Number.Abs(columnCount - ExpectedColumns) * 100000 - dataRowCount * 10 + headerPenalty + kindBonus + nameBonus + idBonus else Number.Abs(columnCount - ExpectedColumns) * 1000 + Number.Abs(dataRowCount - TargetRowCount) * 10 + headerPenalty + kindBonus + nameBonus + idBonus,
+                    headerWarningText = Text.Combine(List.Transform(headerWarnings, each _[Text]), " / "),
+                    headerWarningCategory = Text.Combine(List.Distinct(List.Transform(headerWarnings, each _[Category])), ",")
+                in [Data = dataValue, ColumnCount = columnCount, RowCount = rowCount, DataRowCount = dataRowCount, Score = score, TableId = tableId, TableKind = tableKind, TableName = tableName, CanonicalHeaderSignature = headerSignature, PageNumber = pageNumber, CandidateIndex = Record.Field(_, "CandidateIndex"), HeaderInfo = headerInfo, HeaderWarningText = headerWarningText, HeaderWarningCategory = headerWarningCategory]
             )
         in
             List.Select(
@@ -2332,7 +2547,11 @@ let
                     [RowCount] <> null and
                     [RowCount] > HeaderRowsToSkip and
                     (
-                        if allowPartialColumns then
+                        if HasCustomOutputHeaders then
+                            [ColumnCount] > 0 and
+                            [HeaderInfo] <> null and
+                            [HeaderInfo][IsAcceptable]
+                        else if allowPartialColumns then
                             [ColumnCount] > 0 and [ColumnCount] <= ExpectedColumns
                         else if AllowMoreColumns = true then
                             [ColumnCount] >= ExpectedColumns
@@ -2363,29 +2582,56 @@ let
                         else
                             List.Select(pageCandidatesRaw, each List.Contains(PreferredKinds, Text.Upper([TableKind]))),
                     sortedPageCandidates = SortCandidatesByPageAndIndex(pageCandidates),
-                    exactPageCandidates = List.Select(sortedPageCandidates, each [ColumnCount] = ExpectedColumns),
+                    exactPageCandidates = if HasCustomOutputHeaders then List.Select(sortedPageCandidates, each [ColumnCount] > 0) else List.Select(sortedPageCandidates, each [ColumnCount] = ExpectedColumns),
                     bestExactCandidate = if List.Count(exactPageCandidates) = 0 then null else List.First(List.Sort(exactPageCandidates, (left, right) => if left[Score] < right[Score] then -1 else if left[Score] > right[Score] then 1 else 0)),
-                    groupedVerticalCandidates = if bestExactCandidate = null then {} else List.Select(exactPageCandidates, each GetCandidateGroupKey(_) = GetCandidateGroupKey(bestExactCandidate)),
-                    hasExactCandidatesOutsidePrimaryGroup = bestExactCandidate <> null and List.Count(groupedVerticalCandidates) <> List.Count(exactPageCandidates),
+                    bestPageCandidates = if HasCustomOutputHeaders then GetBestCandidatesPerPage(exactPageCandidates) else {},
+                    groupedVerticalCandidates = if HasCustomOutputHeaders then bestPageCandidates else if bestExactCandidate = null then {} else List.Select(exactPageCandidates, each GetCandidateGroupKey(_) = GetCandidateGroupKey(bestExactCandidate)),
+                    hasExactCandidatesOutsidePrimaryGroup = if HasCustomOutputHeaders then false else bestExactCandidate <> null and List.Count(groupedVerticalCandidates) <> List.Count(exactPageCandidates),
                     verticalSequenceValid = if List.Count(groupedVerticalCandidates) <= 1 then true else IsContinuousCandidateSequence(groupedVerticalCandidates),
                     partialPageCandidates = List.Select(sortedPageCandidates, each [ColumnCount] < ExpectedColumns),
                     horizontalMergeSequences = FindHorizontalMergeSequences(partialPageCandidates),
                     hasHorizontalAmbiguity = List.Count(horizontalMergeSequences) > 1,
                     horizontalMergeCandidates = if hasHorizontalAmbiguity or List.Count(horizontalMergeSequences) = 0 then {} else horizontalMergeSequences{0},
                     chosenMergedCandidate = if List.Count(mergedCandidates) = 0 then null else List.First(List.Sort(mergedCandidates, (left, right) => if left[Score] < right[Score] then -1 else if left[Score] > right[Score] then 1 else 0)),
-                    verticalMergedData = if List.Count(groupedVerticalCandidates) <= 1 or verticalSequenceValid = false then null else Table.Combine(List.Transform(SortCandidatesByPageAndIndex(groupedVerticalCandidates), each BuildResultTable([Data], [PageNumber], 1, true))),
+                    verticalCandidatesSorted = SortCandidatesByPageAndIndex(groupedVerticalCandidates),
+                    verticalMergedData = if List.Count(verticalCandidatesSorted) <= 1 or verticalSequenceValid = false then null else Table.Combine(List.Transform(verticalCandidatesSorted, each BuildResultTable([Data], [PageNumber], [HeaderInfo], 1, true))),
+                    verticalPageNotes = if List.Count(verticalCandidatesSorted) <= 1 then {} else BuildCandidatePageNotes(verticalCandidatesSorted, fileName),
                     horizontalMergedData = if List.Count(horizontalMergeCandidates) <= 1 then null else CombineHorizontalTables(horizontalMergeCandidates),
-                    chosenSinglePage =
-                        if List.Count(exactPageCandidates) = 1 then
-                            BuildResultTable(exactPageCandidates{0}[Data], exactPageCandidates{0}[PageNumber], 1, true)
-                        else if List.Count(exactPageCandidates) = 0 and horizontalMergedData = null and chosenMergedCandidate <> null then
-                            BuildResultTable(chosenMergedCandidate[Data], null, 1, true)
+                    horizontalPageNotes = if List.Count(horizontalMergeCandidates) <= 1 then {} else BuildCandidatePageNotes(horizontalMergeCandidates, fileName),
+                    chosenSingleCandidate =
+                        if HasCustomOutputHeaders then
+                            if List.Count(bestPageCandidates) = 1 then
+                                bestPageCandidates{0}
+                            else if List.Count(bestPageCandidates) > 1 and verticalSequenceValid = false then
+                                List.First(bestPageCandidates)
+                            else if List.Count(bestPageCandidates) = 0 and horizontalMergedData = null and chosenMergedCandidate <> null then
+                                chosenMergedCandidate
+                            else
+                                null
                         else
                             null,
+                    chosenSinglePage =
+                        if HasCustomOutputHeaders and chosenSingleCandidate <> null then
+                            BuildResultTable(chosenSingleCandidate[Data], chosenSingleCandidate[PageNumber], chosenSingleCandidate[HeaderInfo], 1, true)
+                        else if List.Count(exactPageCandidates) = 1 then
+                            BuildResultTable(exactPageCandidates{0}[Data], exactPageCandidates{0}[PageNumber], exactPageCandidates{0}[HeaderInfo], 1, true)
+                        else if List.Count(exactPageCandidates) = 0 and horizontalMergedData = null and chosenMergedCandidate <> null then
+                            BuildResultTable(chosenMergedCandidate[Data], null, chosenMergedCandidate[HeaderInfo], 1, true)
+                        else
+                            null,
+                    chosenSinglePageNotes =
+                        if HasCustomOutputHeaders and chosenSingleCandidate <> null then
+                            BuildCandidatePageNotes({chosenSingleCandidate}, fileName)
+                        else if List.Count(exactPageCandidates) = 1 then
+                            BuildCandidatePageNotes({exactPageCandidates{0}}, fileName)
+                        else if List.Count(exactPageCandidates) = 0 and horizontalMergedData = null and chosenMergedCandidate <> null then
+                            BuildCandidatePageNotes({chosenMergedCandidate}, fileName)
+                        else
+                            {},
                     failureRecord =
                         if mergedTry[HasError] then
                             [ErrorCode = "PDF_READ_FAILURE", ErrorCategory = "PDF読込エラー", UserMessage = "PDF を読み取れませんでした。壊れているか、Excel の PDF 解析で扱えない可能性があります。", TechnicalDetail = try Error.Message(mergedTry[Error]) otherwise "Pdf.Tables の読み取りに失敗しました。"]
-                        else if hasExactCandidatesOutsidePrimaryGroup or (List.Count(groupedVerticalCandidates) > 1 and verticalSequenceValid = false) then
+                        else if HasCustomOutputHeaders = false and (hasExactCandidatesOutsidePrimaryGroup or (List.Count(groupedVerticalCandidates) > 1 and verticalSequenceValid = false)) then
                             [ErrorCode = "TABLE_GROUP_AMBIGUOUS", ErrorCategory = "表分離エラー", UserMessage = "同一 PDF 内にヘッダー不一致または連続しない候補表があり、安全に結合できませんでした。", TechnicalDetail = "sameHeader の厳格判定で複数の full-table 候補が競合しました。"]
                         else if hasHorizontalAmbiguity then
                             [ErrorCode = "PARTIAL_TABLE_AMBIGUOUS", ErrorCategory = "表分離エラー", UserMessage = "同一 PDF 内に横分割候補が複数あり、安全に結合できませんでした。", TechnicalDetail = "partial-table の組み合わせが一意に定まりませんでした。"]
@@ -2394,15 +2640,19 @@ let
                         else
                             null,
                     resultData = if failureRecord <> null then null else if horizontalMergedData <> null then horizontalMergedData else if verticalMergedData <> null then verticalMergedData else chosenSinglePage,
-                    withFileName = if resultData = null then null else Table.AddColumn(resultData, SourceFileColumnName, each fileName, type text),
-                    reordered = if withFileName = null then null else Table.ReorderColumns(Table.RemoveColumns(withFileName, {"__PageNumber"}, MissingField.Ignore), OutputColumns, MissingField.UseNull),
-                    reviewData =
-                        BuildReviewTable(
-                            resultData,
-                            fileName,
-                            if failureRecord = null then null else failureRecord[UserMessage],
-                            if failureRecord = null then null else if List.Contains({"TABLE_GROUP_AMBIGUOUS", "PARTIAL_TABLE_AMBIGUOUS"}, failureRecord[ErrorCode]) then "HEADER_MISMATCH" else null
-                        )
+                    resultPageNotes =
+                        if failureRecord <> null then
+                            List.RemoveNulls({ BuildPageNoteRecord(fileName, null, failureRecord[UserMessage], if List.Contains({"TABLE_GROUP_AMBIGUOUS", "PARTIAL_TABLE_AMBIGUOUS"}, failureRecord[ErrorCode]) then "HEADER_MISMATCH" else null) })
+                        else if horizontalMergedData <> null then
+                            horizontalPageNotes
+                        else if verticalMergedData <> null then
+                            verticalPageNotes
+                        else
+                            chosenSinglePageNotes,
+                    outputData = if resultData = null then null else RenameResultColumnsForOutput(Table.RemoveColumns(resultData, {"__PageNumber"}, MissingField.Ignore)),
+                    withFileName = if outputData = null then null else Table.AddColumn(outputData, SourceFileColumnName, each fileName, type text),
+                    reordered = if withFileName = null then null else Table.ReorderColumns(withFileName, OutputColumns, MissingField.UseNull),
+                    reviewData = BuildReviewTable(resultData, fileName, resultPageNotes)
                 in [
                     IsError = failureRecord <> null,
                     ErrorCode = if failureRecord = null then null else failureRecord[ErrorCode],
@@ -2867,7 +3117,7 @@ function Load-WorkbookQueryToWorksheet {
             }
         }
 
-        $source = @('OLEDB;Provider=Microsoft.Mashup.OleDb.1;Data Source=$Workbook$;Location=' + $QueryName + ';Extended Properties=""')
+        $source = 'OLEDB;Provider=Microsoft.Mashup.OleDb.1;Data Source=$Workbook$;Location=' + $QueryName + ';Extended Properties=""'
         try {
             $listObject = $worksheet.ListObjects.Add(0, $source, $null, 1, $worksheet.Range($DestinationAddress))
         } catch {
@@ -2883,7 +3133,7 @@ function Load-WorkbookQueryToWorksheet {
 
         try {
             $queryTable.CommandType = 2
-            $queryTable.CommandText = @("SELECT * FROM [$QueryName]")
+            $queryTable.CommandText = "SELECT * FROM [$QueryName]"
             $queryTable.BackgroundQuery = $false
         } catch {
             throw "QueryTable の設定に失敗しました: $($_.Exception.Message)"

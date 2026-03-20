@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-15 01:10 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-20
+- 更新日: 2026-03-21
 
 `samples` フォルダには、PDF2Excel の動作確認に使えるサンプル帳票を置いています。
 
@@ -54,11 +54,17 @@
 - PDF: `common/pdf/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf`
 - PDF: `common/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf`
 - PDF: `common/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf`
+- PDF: `common/pdf/feature_combo_demo/2026年07月_作業員勤怠一覧_新機能体験_標準帳票.pdf`
+- PDF: `common/pdf/feature_combo_demo/2026年07月_作業員勤怠一覧_新機能体験_2ページ帳票.pdf`
+- PDF: `common/pdf/feature_combo_demo/2026年07月_作業員勤怠一覧_新機能体験_ヘッダー位置ずれ帳票.pdf`
 - 元Excel: `common/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.xlsx`
 - 元Excel: `common/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.xlsx`
 - 元Excel: `common/source/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.xlsx`
 - 元Excel: `common/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.xlsx`
 - 元Excel: `common/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_時刻確認負例.xlsx`
+- 元Excel: `common/source/feature_combo_demo/2026年07月_作業員勤怠一覧_新機能体験_標準帳票.xlsx`
+- 元Excel: `common/source/feature_combo_demo/2026年07月_作業員勤怠一覧_新機能体験_2ページ帳票.xlsx`
+- 元Excel: `common/source/feature_combo_demo/2026年07月_作業員勤怠一覧_新機能体験_ヘッダー位置ずれ帳票.xlsx`
 - 推奨プロファイル: `../config/profiles/v2/construction_transfer_poc.json`
 - 特徴:
   - タイトル 3 行 + 4 行目ヘッダー
@@ -69,6 +75,7 @@
   - `2ページ同一列` と `6ページ同一列` のパターンを同梱
 - `ヘッダー不一致負例` で sameHeader 拒否を確認可能
 - `時刻確認負例` で `24:30` と片側空の Review を確認可能
+- `feature_combo_demo` では 3 ファイル同時取込で、標準帳票 / 2ページ帳票 / ヘッダー位置ずれ帳票を一括確認可能
 
 ## プロファイル雛形生成体験サンプル
 

@@ -14,6 +14,7 @@ $timeStarted = Get-Date
 
 . $commonScript
 . $runScript -SkipMain
+. $scaffoldScript -SkipMain
 
 Ensure-Directory -Path $resultsRoot
 Ensure-Directory -Path $reportsRoot
@@ -167,16 +168,18 @@ $testResults += Invoke-UnitTest -Name 'Protect-MessagePaths は登録済みパ�
     return $protected
 }
 
-$testResults += Invoke-UnitTest -Name 'Get-ProfileOutputColumnNames は接頭辞と元ファイル列を並べる' -Body {
+$testResults += Invoke-UnitTest -Name 'Get-ProfileOutputColumnNames は custom outputColumnNames を優先し空欄と重複を補正する' -Body {
     $profile = [pscustomobject]@{
         SourceFileColumnName = 'SourceFile'
         ExpectedColumns      = 3
         DataColumnPrefix     = 'Column'
+        OutputColumnNames    = @('', '氏名', '氏名')
     }
     $actual = @(Get-ProfileOutputColumnNames -Profile $profile)
     Assert-True -Condition ($actual.Count -eq 4) -Message "列数が想定と異なります: $($actual.Count)"
     Assert-True -Condition ($actual[0] -eq 'SourceFile') -Message "先頭列名が想定と異なります: $($actual[0])"
-    Assert-True -Condition ($actual[3] -eq 'Column3') -Message "末尾列名が想定と異なります: $($actual[3])"
+    Assert-True -Condition ($actual[1] -eq '(空欄)') -Message "空欄列名の補正が想定と異なります: $($actual[1])"
+    Assert-True -Condition ($actual[3] -eq '氏名_2') -Message "重複列名の補正が想定と異なります: $($actual[3])"
     return ($actual -join ',')
 }
 
@@ -263,6 +266,8 @@ $testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は生データ�
     Assert-True -Condition ($profile.TargetRowCount -eq 5) -Message "targetRowCount が想定と異なります: $($profile.TargetRowCount)"
     Assert-True -Condition ($profile.DisplayName -eq '生データ転記サンプルプロファイル') -Message "displayName が想定と異なります: $($profile.DisplayName)"
     Assert-True -Condition ($profile.MultiPageMergeMode -eq 'sameHeader') -Message "multiPageMergeMode が想定と異なります: $($profile.MultiPageMergeMode)"
+    Assert-True -Condition ($profile.HasCustomOutputColumnNames -eq $true) -Message 'outputColumnNames の custom 判定が想定と異なります。'
+    Assert-True -Condition ($profile.OutputColumnNames[0] -eq '日付') -Message "outputColumnNames 先頭が想定と異なります: $($profile.OutputColumnNames[0])"
     Assert-True -Condition ($profile.NormalizedTimeColumns.Count -eq 4) -Message "normalizedTimeColumns 数が想定と異なります: $($profile.NormalizedTimeColumns.Count)"
     return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
 }
@@ -563,9 +568,11 @@ $testResults += Invoke-UnitTest -Name 'new_profile_scaffold は v2 Wizard で主
     if (Test-Path -LiteralPath $wizardPath) {
         Remove-Item -LiteralPath $wizardPath -Force
     }
+    $sampleWizardPdfPath = Join-Path $projectRoot 'samples\v2\pdf\profile_wizard_demo\2026年03月_職人別作業日報_Wizard体験.pdf'
 
     $wizardInput = @(
         'sample_v2_wizard',
+        $sampleWizardPdfPath,
         'テストV2ウィザード',
         $wizardPath,
         'ウィザード説明',
@@ -592,8 +599,34 @@ $testResults += Invoke-UnitTest -Name 'new_profile_scaffold は v2 Wizard で主
     Assert-True -Condition ($wizardProfile.expectedColumns -eq 28) -Message "Wizard expectedColumns が想定と異なります: $($wizardProfile.expectedColumns)"
     Assert-True -Condition ($wizardProfile.allowMoreColumns -eq $true) -Message 'Wizard allowMoreColumns が true ではありません。'
     Assert-True -Condition (@($wizardProfile.preferredTableNameContains).Count -eq 2) -Message 'Wizard preferredTableNameContains が想定と異なります。'
+    Assert-True -Condition (@($wizardProfile.outputColumnNames).Count -eq 28) -Message 'Wizard outputColumnNames が想定列数に揃っていません。'
     Assert-True -Condition (@($wizardProfile.normalizedTimeColumns).Count -eq 2) -Message 'Wizard normalizedTimeColumns が想定と異なります。'
     return 'v2 Wizard 雛形生成を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'new_profile_scaffold は Read-Host 失敗を一定回数で中断する' -Body {
+    $script:mockReadHostFailureCount = 0
+    function Read-Host {
+        param([string]$Prompt)
+        $script:mockReadHostFailureCount += 1
+        throw 'mocked stdin failure'
+    }
+
+    try {
+        $thrown = $false
+        try {
+            Read-HostSafely -Prompt 'mock prompt' | Out-Null
+        } catch {
+            $thrown = $true
+            Assert-True -Condition ($_.Exception.Message.Contains('入力を取得できないため処理を中断しました')) -Message "例外メッセージが想定と異なります: $($_.Exception.Message)"
+        }
+
+        Assert-True -Condition $thrown -Message 'Read-HostSafely が失敗を中断扱いにしませんでした。'
+        Assert-True -Condition ($script:mockReadHostFailureCount -eq 3) -Message "Read-Host の再試行回数が想定と異なります: $script:mockReadHostFailureCount"
+        return 'read-host fail-fast'
+    } finally {
+        Remove-Item function:Read-Host -ErrorAction SilentlyContinue
+    }
 }
 
 $testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 既定生成と legacy v1 参照を持つ' -Body {
@@ -1013,8 +1046,11 @@ $testResults += Invoke-UnitTest -Name 'Get-StagingQueryFormula は V2 で canoni
     $profile = Get-ProfileConfiguration -RequestedProfilePath (Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json')
     $formula = Get-StagingQueryFormula -InputPath 'C:\Temp\Input' -Profile $profile
     Assert-True -Condition ($formula.Contains('GetCanonicalHeaderSignature')) -Message 'canonical ヘッダー署名ロジックが見つかりません。'
+    Assert-True -Condition ($formula.Contains('RenameResultColumnsForOutput')) -Message 'Result ヘッダー変換ロジックが見つかりません。'
     Assert-True -Condition ($formula.Contains('FindHorizontalMergeSequences')) -Message 'partial merge sequence ロジックが見つかりません。'
     Assert-True -Condition ($formula.Contains('TABLE_GROUP_AMBIGUOUS')) -Message 'sameHeader 分離エラーが見つかりません。'
+    Assert-True -Condition ($formula.Contains('HEADER_ROW_SHIFT')) -Message 'ヘッダー位置ずれ Review 分類が見つかりません。'
+    Assert-True -Condition ($formula.Contains('HEADER_TEXT_DRIFT')) -Message 'ヘッダー文言揺れ Review 分類が見つかりません。'
     Assert-True -Condition ($formula.Contains('正規化入場1_raw')) -Message 'Review raw 列が見つかりません。'
     Assert-True -Condition ($formula.Contains('ReasonCategory')) -Message 'Review の ReasonCategory 列が見つかりません。'
     Assert-True -Condition ($formula.Contains('TIME_MULTI')) -Message 'Review の TIME_MULTI 分類が見つかりません。'

@@ -29,6 +29,7 @@ $sampleSalesPdfDir = Join-Path $legacyRoot 'samples\pdf\sales_daily_jp'
 $sampleInventoryPdfDir = Join-Path $legacyRoot 'samples\pdf\inventory_jp'
 $sampleInquiryPdfDir = Join-Path $legacyRoot 'samples\pdf\inquiry_jp'
 $sampleConstructionPocPdfDir = Join-Path $projectRoot 'samples\v2\pdf\construction_transfer_poc'
+$sampleFeatureComboPdfDir = Join-Path $projectRoot 'samples\v2\pdf\feature_combo_demo'
 $resultsRoot = Join-Path $testsRoot 'results'
 $reportsRoot = Join-Path $projectRoot 'reports'
 $runScript = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'
@@ -878,6 +879,7 @@ function Get-CaseSuites {
         'V2 BAT 引数付きで直接変換' { return @('full') }
         '統合テスト補足は要約表示' { return @('full') }
         'V2 2ページ同一列の変換' { return @('full') }
+        'V2 新機能体験3ファイルの変換' { return @('full') }
         'V2 6ページ同一列の変換' { return @('full') }
         'V2 ヘッダー不一致負例の分離' { return @('full') }
         'V2 時刻確認負例の分離' { return @('full') }
@@ -918,6 +920,7 @@ function Get-TestCases {
         [pscustomobject]@{ Name = '日本語問い合わせ管理表の変換'; Scenario = '週次の問い合わせ管理表を日本語プロファイルで正しく変換できること'; TimeoutSeconds = 240 },
         [pscustomobject]@{ Name = '建設現場転記PoCの変換'; Scenario = '改行セルや時刻ゆれを含む PoC 帳票を生データ転記できること'; TimeoutSeconds = 300 },
         [pscustomobject]@{ Name = 'V2 2ページ同一列の変換'; Scenario = '同一列ヘッダーの2ページ帳票を1つの Result に連結できること'; TimeoutSeconds = 360 },
+        [pscustomobject]@{ Name = 'V2 新機能体験3ファイルの変換'; Scenario = '標準帳票・2ページ帳票・ヘッダー位置ずれ帳票を同時に取り込めること'; TimeoutSeconds = 420 },
         [pscustomobject]@{ Name = 'V2 6ページ同一列の変換'; Scenario = '同一列ヘッダーの6ページ帳票を1つの Result に連結できること'; TimeoutSeconds = 420 },
         [pscustomobject]@{ Name = 'V2 ヘッダー不一致負例の分離'; Scenario = 'sameHeader に乗らない multi-page 帳票を Errors 側へ分離できること'; TimeoutSeconds = 360 },
         [pscustomobject]@{ Name = 'V2 時刻確認負例の分離'; Scenario = '第2時刻ペアの invalid / 片側空を Review で拾えること'; TimeoutSeconds = 240 },
@@ -1265,8 +1268,10 @@ Stop-Process -Id $PID -Force
             if (Test-Path -LiteralPath $wizardPath) {
                 Remove-Item -LiteralPath $wizardPath -Force
             }
+            $sampleWizardPdfPath = Join-Path $projectRoot 'samples\v2\pdf\profile_wizard_demo\2026年03月_職人別作業日報_Wizard体験.pdf'
             $wizardInput = @(
                 'wizard_profile_v2',
+                $sampleWizardPdfPath,
                 '統合テストV2ウィザード',
                 $wizardPath,
                 '統合テスト用説明',
@@ -1290,6 +1295,7 @@ Stop-Process -Id $PID -Force
             Assert-True -Condition (Test-Path -LiteralPath $wizardPath) -Message 'Wizard 生成ファイルが作成されていません。'
             $wizardProfile = Get-Content -LiteralPath $wizardPath -Raw -Encoding UTF8 | ConvertFrom-Json
             Assert-True -Condition ($wizardProfile.multiPageMergeMode -eq 'single') -Message "Wizard multiPageMergeMode が想定と異なります: $($wizardProfile.multiPageMergeMode)"
+            Assert-True -Condition (@($wizardProfile.outputColumnNames).Count -eq 26) -Message 'Wizard outputColumnNames が想定列数に揃っていません。'
             Assert-True -Condition (@($wizardProfile.normalizedTimeColumns).Count -eq 2) -Message 'Wizard normalizedTimeColumns が想定と異なります。'
             return 'v2 Wizard 生成を確認'
         }
@@ -1552,13 +1558,39 @@ exit 0
             & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -InputFolder $twoPageDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '2ページ同一列テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
-            $twoPageNames = @($snapshot.ResultRecords | ForEach-Object { $_.'項目3' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            $twoPageNames = @($snapshot.ResultRecords | ForEach-Object { $_.'氏名' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
             $twoPageDistinctNames = @($twoPageNames | Select-Object -Unique)
             Assert-True -Condition ($snapshot.ResultRows -eq 11) -Message "2ページ同一列の Result 行数が想定と異なります: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "2ページ同一列の版表示が想定と異なります: $($snapshot.ControlVersion)"
             Assert-True -Condition ($twoPageDistinctNames.Count -eq 5) -Message ('2ページ同一列で氏名重複が解消されていません: ' + ($twoPageDistinctNames -join ','))
             Assert-True -Condition ($snapshot.ReviewRows -ge 11) -Message '2ページ同一列で Review が十分に出ていません。'
             return "2ページ Result=$($snapshot.ResultRows), 氏名=$($twoPageDistinctNames -join ','), Review=$($snapshot.ReviewRows)"
+        }
+        'V2 新機能体験3ファイルの変換' {
+            $featureDir = Join-Path $fixturesRoot 'construction_feature_combo_v2'
+            Reset-Directory -Path $featureDir
+            $featureFiles = @(
+                '2026年07月_作業員勤怠一覧_新機能体験_標準帳票.pdf',
+                '2026年07月_作業員勤怠一覧_新機能体験_2ページ帳票.pdf',
+                '2026年07月_作業員勤怠一覧_新機能体験_ヘッダー位置ずれ帳票.pdf'
+            )
+            foreach ($fileName in $featureFiles) {
+                Copy-Item -LiteralPath (Join-Path $sampleFeatureComboPdfDir $fileName) -Destination (Join-Path $featureDir $fileName) -Force
+            }
+            $outputPath = Join-Path $resultsRoot 'construction_feature_combo.xlsx'
+            & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -InputFolder $featureDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm
+            Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '新機能体験3ファイルテストの出力ブックが作成されていません。'
+            $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
+            $sourceNames = @($snapshot.ResultRecords | ForEach-Object { $_.'元ファイル名' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $reviewReasons = @($snapshot.ReviewRecords | ForEach-Object { $_.'Reason' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            $reviewCategories = @($snapshot.ReviewRecords | ForEach-Object { $_.'ReasonCategory' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            Assert-True -Condition ($snapshot.ResultRows -eq 21) -Message "新機能体験3ファイルの Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($sourceNames.Count -eq 3) -Message ('新機能体験3ファイルで元ファイル名が揃っていません: ' + ($sourceNames -join ','))
+            Assert-True -Condition ($snapshot.ErrorsRows -le 1) -Message "新機能体験3ファイルで Errors が残りすぎています: $($snapshot.ErrorsRows)"
+            Assert-True -Condition ($snapshot.ReviewRows -ge 2) -Message "新機能体験3ファイルで Review が不足しています: $($snapshot.ReviewRows)"
+            Assert-True -Condition ((@($reviewReasons | Where-Object { $_ -like '*ヘッダー位置がずれ*' }).Count) -ge 1) -Message ('新機能体験3ファイルでヘッダー位置ずれの警告が見つかりません: ' + ($reviewReasons -join ' | '))
+            Assert-True -Condition ((@($reviewCategories | Where-Object { $_ -like '*HEADER_ROW_SHIFT*' }).Count) -ge 1) -Message ('新機能体験3ファイルで HEADER_ROW_SHIFT が見つかりません: ' + ($reviewCategories -join ','))
+            return "feature-combo Result=$($snapshot.ResultRows), Files=$($sourceNames -join ','), Review=$($snapshot.ReviewRows), Categories=$($reviewCategories -join ',')"
         }
         'V2 6ページ同一列の変換' {
             $sixPageDir = Join-Path $fixturesRoot 'construction_6page_v2'
@@ -1569,7 +1601,7 @@ exit 0
             Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '6ページ同一列テストの出力ブックが作成されていません。'
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $fileNames = @($snapshot.ResultRecords | ForEach-Object { $_.'元ファイル名' } | Select-Object -Unique)
-            $sixPageNames = @($snapshot.ResultRecords | ForEach-Object { $_.'項目3' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $sixPageNames = @($snapshot.ResultRecords | ForEach-Object { $_.'氏名' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             Assert-True -Condition ($snapshot.ResultRows -eq 31) -Message "6ページ同一列の Result 行数が想定と異なります: $($snapshot.ResultRows)"
             Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "6ページ同一列の版表示が想定と異なります: $($snapshot.ControlVersion)"
             Assert-True -Condition ($fileNames.Count -eq 1) -Message '6ページ同一列で元ファイル名が分断されています。'
@@ -1587,11 +1619,11 @@ exit 0
             $snapshot = Get-WorkbookSnapshot -WorkbookPath $outputPath
             $reviewReasons = @($snapshot.ReviewRecords | ForEach-Object { $_.'Reason' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
             $reviewCategories = @($snapshot.ReviewRecords | ForEach-Object { $_.'ReasonCategory' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-            Assert-True -Condition ($snapshot.ResultRows -eq 1) -Message "ヘッダー不一致負例で Result 行が出ています: $($snapshot.ResultRows)"
-            Assert-True -Condition ($snapshot.ErrorsRows -ge 2) -Message "ヘッダー不一致負例で Errors が不足しています: $($snapshot.ErrorsRows)"
-            Assert-True -Condition ($snapshot.ReviewRows -ge 2) -Message "ヘッダー不一致負例で Review が不足しています: $($snapshot.ReviewRows)"
-            Assert-True -Condition ((@($reviewReasons | Where-Object { $_ -like '*安全に結合できませんでした*' }).Count) -ge 1) -Message ('ヘッダー不一致負例で Review 理由が見つかりません: ' + ($reviewReasons -join ' | '))
-            Assert-True -Condition ((@($reviewCategories | Where-Object { $_ -like '*HEADER_MISMATCH*' }).Count) -ge 1) -Message ('ヘッダー不一致負例で ReasonCategory が見つかりません: ' + ($reviewCategories -join ' | '))
+            Assert-True -Condition ($snapshot.ResultRows -eq 11) -Message "ヘッダー不一致負例で Result 行数が想定と異なります: $($snapshot.ResultRows)"
+            Assert-True -Condition ($snapshot.ErrorsRows -le 1) -Message "ヘッダー不一致負例で Errors が残りすぎています: $($snapshot.ErrorsRows)"
+            Assert-True -Condition ($snapshot.ReviewRows -ge 1) -Message "ヘッダー不一致負例で Review が不足しています: $($snapshot.ReviewRows)"
+            Assert-True -Condition ((@($reviewReasons | Where-Object { $_ -like '*ヘッダー文言に揺れ*' -or $_ -like '*ヘッダー位置がずれ*' }).Count) -ge 1) -Message ('ヘッダー不一致負例で Review 理由が見つかりません: ' + ($reviewReasons -join ' | '))
+            Assert-True -Condition ((@($reviewCategories | Where-Object { $_ -like '*HEADER_TEXT_DRIFT*' -or $_ -like '*HEADER_ROW_SHIFT*' }).Count) -ge 1) -Message ('ヘッダー不一致負例で ReasonCategory が見つかりません: ' + ($reviewCategories -join ' | '))
             return "header-mismatch Result=$($snapshot.ResultRows), Errors=$($snapshot.ErrorsRows), Review=$($snapshot.ReviewRows), Categories=$($reviewCategories -join ',')"
         }
         'V2 時刻確認負例の分離' {

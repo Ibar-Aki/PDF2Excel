@@ -1,0 +1,43 @@
+﻿{
+    "name":  "wizard_shift_demo",
+    "displayName":  "生データ転記サンプルプロファイル",
+    "description":  "生データ転記向けのサンプルプロファイルです。列定義と review 列を調整して使います。",
+    "expectedColumns":  8,
+    "headerRowsToSkip":  1,
+    "targetRowCount":  4,
+    "allowMoreColumns":  true,
+    "preferredTableKinds":  [
+                                "Table"
+                            ],
+    "preferredTableNameContains":  null,
+    "preferredTableIdContains":  [
+
+                                 ],
+    "sourceFileColumnName":  "元ファイル名",
+    "dataColumnPrefix":  "項目",
+    "outputColumnNames":  [
+                              "日付",
+                              "氏名",
+                              "班",
+                              "現場",
+                              "入場",
+                              "退場",
+                              "作業内容",
+                              "備考"
+                          ],
+    "multiPageMergeMode":  "single",
+    "normalizedTimeColumns":  [
+                                  {
+                                      "sourceColumn":  5,
+                                      "displayName":  "正規化入場"
+                                  },
+                                  {
+                                      "sourceColumn":  6,
+                                      "displayName":  "正規化退場"
+                                  }
+                              ],
+    "reviewPersonColumn":  null,
+    "reviewSiteColumn":  null,
+    "reviewInTimeColumn":  null,
+    "reviewOutTimeColumn":  null
+}

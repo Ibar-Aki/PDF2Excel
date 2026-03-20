@@ -2,7 +2,7 @@
 
 - 作成日: 2026-03-20 10:45 JST
 - 作成者: Codex (GPT-5)
-- 更新日: 2026-03-20
+- 更新日: 2026-03-21
 
 このフォルダは、`VER2 Secure` の体験と検証に使うサンプル専用の案内です。  
 最短で試したい場合は、まず [V2 サンプル体験ガイド](../../docs/02-guides/01-v2-sample-walkthrough.md) を開いてください。
@@ -16,6 +16,8 @@
 
 - PDF: [pdf/construction_transfer_poc](pdf/construction_transfer_poc)
 - 元 Excel: [source/construction_transfer_poc](source/construction_transfer_poc)
+- 新機能体験 3 ファイル PDF: [pdf/feature_combo_demo](pdf/feature_combo_demo)
+- 新機能体験 3 ファイル 元 Excel: [source/feature_combo_demo](source/feature_combo_demo)
 - 雛形生成体験用 PDF: [pdf/profile_wizard_demo](pdf/profile_wizard_demo)
 - 雛形生成体験用 元 Excel: [source/profile_wizard_demo](source/profile_wizard_demo)
 
@@ -28,6 +30,7 @@
 | `2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf` | 長い帳票 | 手結合せずに一括取込できる |
 | `2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf` | Review 体験 | 確認が必要な行だけ `Review` に分離される |
 | `2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf` | 安全性確認 | 危ない自動結合を拒否できる |
+| `feature_combo_demo` フォルダ内の 3 PDF | 新機能の一括体験 | 1 回で「帳票ヘッダー出力」「2ページ結合」「ヘッダー位置ずれ吸収」をまとめて確認できる |
 | `2026年03月_職人別作業日報_Wizard体験.pdf` | 雛形生成体験 | 新規帳票向け profile を Wizard で起こせる |
 
 ## 4. まず試す順番
@@ -35,7 +38,8 @@
 1. `2026年02月_作業員勤怠一覧_PoC.pdf`
 2. `2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf`
 3. `2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf`
-4. `2026年03月_職人別作業日報_Wizard体験.pdf`
+4. `feature_combo_demo` フォルダの 3 PDF を同時選択
+5. `2026年03月_職人別作業日報_Wizard体験.pdf`
 
 ## 5. 出力後に見る場所
 

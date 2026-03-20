@@ -30,6 +30,7 @@ V2 を最初に触る人は、まず [v2-sample-walkthrough.md](../02-guides/01-
 `VER2` では、これに加えて `Review` シートが出ます。  
 `Review` には、確認が必要な行が `元ファイル名 / ページ / 氏名 raw / 現場 raw / 全時刻 raw / 確認要理由 / ReasonCategory` で並びます。
 さらに `Result` の末尾に `正規化入場*` / `正規化退場*` / `*_分` / `時刻正規化状態` / `時刻確認メモ` が追加され、`08：00` や `9時 15分`、Excel 時刻比率文字列、`24:00` / `24:00:00` を分析向けにそろえやすくしています。
+`outputColumnNames` を持つ V2 プロファイルでは、Result の表ヘッダーを `項目1..N` ではなく帳票ヘッダー準拠の列名で出力します。
 
 向いている用途:
 
@@ -72,6 +73,7 @@ V2 を最初に触る人は、まず [v2-sample-walkthrough.md](../02-guides/01-
 - 実際の変換は毎回専用の一時 staging で行います。
 - `input` に残っている過去PDFは、`-KeepInput` を使っても今回の変換には混ざりません。
 - `VER2` の `sameHeader` は、ヘッダー署名と連続ページを満たす候補だけを縦結合します。
+- `outputColumnNames` を設定した V2 では、高さ方向のヘッダー位置ずれや軽微な文言揺れを吸収し、可能な限り Result に取り込みつつ `Review` に `HEADER_ROW_SHIFT` / `HEADER_TEXT_DRIFT` などの警告を出します。
 - `VER2` の横分割結合は、一意に組める候補だけを採用し、曖昧な候補は `Errors` / `Review` に分離します。
 - `VER2` は secure 既定です。runtime / staging は `%LOCALAPPDATA%\PDF2Excel\runtime\runs` を使い、`input` フォルダへ今回 PDF を同期しません。
 - `VER2 Secure` の既定ログ保存先は `%LOCALAPPDATA%\PDF2Excel\logs` です。
@@ -128,9 +130,10 @@ V2 を最初に触る人は、まず [v2-sample-walkthrough.md](../02-guides/01-
 
 - 新しいプロファイル JSON を雛形から作ります。正式運用では `VER2` 雛形を使います。
 - `VER2` では内部名、表示名、保存先、列数、Review 列、正規化時刻列などを順番に入力する設定ウィザードで作成します。
+- 必要に応じてサンプル PDF 1 件を指定すると、`expectedColumns`、`headerRowsToSkip`、`targetRowCount`、`preferredTableNameContains`、`multiPageMergeMode`、`outputColumnNames`、Review 列候補、正規化時刻列候補の下書きを補助生成します。
 - 既存ファイルと同名の場合は上書きしません。上書きしたいときは保守者向けスクリプトへ `-Force` を付けます。
 - 正式運用で新規帳票を追加するときは、`VER2` の雛形から始めてください。
-- 作成後に `expectedColumns` や `review*Column` など、次に見直す項目が画面に表示されます。
+- 作成後に `expectedColumns`、`outputColumnNames`、`preferredTableNameContains`、`review*Column` など、次に見直す項目が画面に表示されます。
 
 ### [7] ログフォルダを開く
 

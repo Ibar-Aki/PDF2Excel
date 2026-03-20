@@ -282,35 +282,69 @@ function New-ConstructionTransferPocWorkbookAndPdf {
         [Parameter(Mandatory = $true)][string]$PdfPath
     )
 
-    $headers = @(
+    New-ConstructionTransferSingleWorkbookAndPdf `
+        -WorkbookPath $WorkbookPath `
+        -PdfPath $PdfPath `
+        -TitleLabel '建設現場別 延べ作業時間算出用 勤怠一覧（PoC）' `
+        -MonthLabel '2026年02月' `
+        -ManagerName '山田健'
+}
+
+function Get-ConstructionTransferHeaders {
+    return @(
         '日付', '曜日', '氏名', '所属', '現場1', '入場1', '退場1', '現場2', '入場2', '退場2',
         '現場3', '入場3', '退場3', '休憩', '当日小計', '事務所入', '事務所出', '移動', '宿泊', '資格',
         '工種', '天候', '体調', '安全確認', '備考1', '備考2', '確認者', '管理者メモ', '予備1', '予備2'
     )
+}
 
-    $rows = @(
+function Get-ConstructionTransferBaseRows {
+    return @(
         @("2/4`n（金）", '金', '佐藤 花子', '一次協力', "東京駅前再開発A棟`n東工区", ' 10:30', '19：00', '仮設事務所', '23:30', '24：00', '', '', '', '60', '7:30', '8:30', '20:00', 'あり', 'なし', '職長教育', '鉄筋', '晴', '良好', '済', "入場時に`n安全帯確認", '', '山田健', 'A棟は午後からB1へ応援', '', ''),
         @("2/5`n（土）", '土', '鈴木一郎', '一次協力', "東京駅前再開発Ａ棟", '10時30分', '18時 00分', "南口歩道橋更新`nその2", '18:25', '20：10', '', '', '', '45', '8:10', '9:10', '20:20', 'あり', 'なし', '高所作業', '足場', '曇', '良好', '済', '', "現場名が微妙に揺れ", '山田健', '', '', ''),
         @("2/6`n（日）", '日', '田中美咲', '直用', "湾岸物流センター`n新築工事", '9：05', '17:30', '', '', '', '', '', '', '60', '7:25', '8:10', '18:10', 'あり', 'なし', '玉掛', '搬入', '晴', '良好', '済', '朝礼あり', '', '岡本進', "氏名表記ゆれなし", '', ''),
         @("2/7`n（月）", '月', '高橋健太', '直用', "湾岸物流センタ-新築工事", ' 9時 15分', '17時30分', "東京駅前再開発A棟", '18:00', '20:15', '', '', '', '60', '9:30', '8:50', '20:40', 'あり', 'なし', '職長教育', '鉄骨', '雨', '普通', '済', "現場名の記号ゆれ", '', '岡本進', '', '', ''),
         @("2/8`n（火）", '火', '渡辺大輔', '二次協力', "渋谷駅西口改良工事`n南工区", '10：3０', '19:05', '', '', '', '', '', '', '60', '7:35', '9:00', '19:30', 'なし', 'なし', '誘導員', '雑工', '晴', '良好', '済', "全角数字混在`n確認要", '', '山田健', '', '', '')
     )
+}
 
+function New-ConstructionTransferSingleWorkbookAndPdf {
+    param(
+        [Parameter(Mandatory = $true)][string]$WorkbookPath,
+        [Parameter(Mandatory = $true)][string]$PdfPath,
+        [Parameter(Mandatory = $true)][string]$TitleLabel,
+        [Parameter(Mandatory = $true)][string]$MonthLabel,
+        [string]$ManagerName = '山田健',
+        [string[]]$PreHeaderRowValues = @()
+    )
+
+    $headers = @(Get-ConstructionTransferHeaders)
+    $rows = @(Get-ConstructionTransferBaseRows)
     Export-WorkbookAsSample -WorkbookPath $WorkbookPath -PdfPath $PdfPath -PopulateWorkbook {
         param($worksheet)
 
         $worksheet.Name = '勤怠一覧PoC'
         $worksheet.Range('A1:AD1').Merge()
-        $worksheet.Range('A1').Value2 = '建設現場別 延べ作業時間算出用 勤怠一覧（PoC）'
-        $worksheet.Range('A2').Value2 = '管理者: 山田健'
-        $worksheet.Range('A3').Value2 = '対象月: 2026年02月'
+        $worksheet.Range('A1').Value2 = $TitleLabel
+        $worksheet.Range('A2').Value2 = ('管理者: ' + $ManagerName)
+        $worksheet.Range('A3').Value2 = ('対象月: ' + $MonthLabel)
+
+        $headerRow = 4
+        if ($PreHeaderRowValues.Count -gt 0) {
+            for ($column = 1; $column -le $PreHeaderRowValues.Count; $column += 1) {
+                $worksheet.Cells.Item(4, $column).Value2 = $PreHeaderRowValues[$column - 1]
+            }
+            $worksheet.Range('A4:AD4').Font.Italic = $true
+            $worksheet.Range('A4:AD4').Interior.Color = 15132390
+            $headerRow = 5
+        }
 
         for ($column = 1; $column -le $headers.Count; $column += 1) {
-            $worksheet.Cells.Item(4, $column).Value2 = $headers[$column - 1]
+            $worksheet.Cells.Item($headerRow, $column).Value2 = $headers[$column - 1]
         }
 
         for ($rowIndex = 0; $rowIndex -lt $rows.Count; $rowIndex += 1) {
-            $excelRow = $rowIndex + 5
+            $excelRow = $rowIndex + $headerRow + 1
             for ($column = 1; $column -le $headers.Count; $column += 1) {
                 $worksheet.Cells.Item($excelRow, $column).Value2 = $rows[$rowIndex][$column - 1]
             }
@@ -320,12 +354,13 @@ function New-ConstructionTransferPocWorkbookAndPdf {
         $worksheet.Range('A1:AD1').Font.Bold = $true
         $worksheet.Range('A1:AD1').Font.Size = 14
         $worksheet.Range('A2:A3').Font.Bold = $true
-        $worksheet.Range('A4:AD4').Font.Bold = $true
-        $worksheet.Range('A4:AD4').Interior.Color = 15921906
-        $worksheet.Range('A4:AD9').Borders.LineStyle = 1
-        $worksheet.Range('A4:AD9').WrapText = $true
+        $worksheet.Range("A${headerRow}:AD${headerRow}").Font.Bold = $true
+        $worksheet.Range("A${headerRow}:AD${headerRow}").Interior.Color = 15921906
+        $lastDataRow = $headerRow + $rows.Count
+        $worksheet.Range("A${headerRow}:AD${lastDataRow}").Borders.LineStyle = 1
+        $worksheet.Range("A${headerRow}:AD${lastDataRow}").WrapText = $true
 
-        foreach ($rowNumber in 5..9) {
+        foreach ($rowNumber in ($headerRow + 1)..$lastDataRow) {
             $worksheet.Rows.Item($rowNumber).RowHeight = 42
         }
 
@@ -347,19 +382,8 @@ function New-ConstructionTransferPagedPocWorkbookAndPdf {
         [Parameter(Mandatory = $true)][string[]]$MonthLabels
     )
 
-    $headers = @(
-        '日付', '曜日', '氏名', '所属', '現場1', '入場1', '退場1', '現場2', '入場2', '退場2',
-        '現場3', '入場3', '退場3', '休憩', '当日小計', '事務所入', '事務所出', '移動', '宿泊', '資格',
-        '工種', '天候', '体調', '安全確認', '備考1', '備考2', '確認者', '管理者メモ', '予備1', '予備2'
-    )
-
-    $baseRows = @(
-        @("2/4`n（金）", '金', '佐藤 花子', '一次協力', "東京駅前再開発A棟`n東工区", ' 10:30', '19：00', '仮設事務所', '23:30', '24：00', '', '', '', '60', '7:30', '8:30', '20:00', 'あり', 'なし', '職長教育', '鉄筋', '晴', '良好', '済', "入場時に`n安全帯確認", '', '山田健', 'A棟は午後からB1へ応援', '', ''),
-        @("2/5`n（土）", '土', '鈴木一郎', '一次協力', "東京駅前再開発Ａ棟", '10時30分', '18時 00分', "南口歩道橋更新`nその2", '18:25', '20：10', '', '', '', '45', '8:10', '9:10', '20:20', 'あり', 'なし', '高所作業', '足場', '曇', '良好', '済', '', "現場名が微妙に揺れ", '山田健', '', '', ''),
-        @("2/6`n（日）", '日', '田中美咲', '直用', "湾岸物流センター`n新築工事", '9：05', '17:30', '', '', '', '', '', '', '60', '7:25', '8:10', '18:10', 'あり', 'なし', '玉掛', '搬入', '晴', '良好', '済', '朝礼あり', '', '岡本進', "氏名表記ゆれなし", '', ''),
-        @("2/7`n（月）", '月', '高橋健太', '直用', "湾岸物流センタ-新築工事", ' 9時 15分', '17時30分', "東京駅前再開発A棟", '18:00', '20:15', '', '', '', '60', '9:30', '8:50', '20:40', 'あり', 'なし', '職長教育', '鉄骨', '雨', '普通', '済', "現場名の記号ゆれ", '', '岡本進', '', '', ''),
-        @("2/8`n（火）", '火', '渡辺大輔', '二次協力', "渋谷駅西口改良工事`n南工区", '10：3０', '19:05', '', '', '', '', '', '', '60', '7:35', '9:00', '19:30', 'なし', 'なし', '誘導員', '雑工', '晴', '良好', '済', "全角数字混在`n確認要", '', '山田健', '', '', '')
-    )
+    $headers = @(Get-ConstructionTransferHeaders)
+    $baseRows = @(Get-ConstructionTransferBaseRows)
 
     Export-WorkbookAsSample -WorkbookPath $WorkbookPath -PdfPath $PdfPath -PopulateWorkbook {
         param($worksheet)
@@ -424,6 +448,35 @@ function New-ConstructionTransferPagedPocWorkbookAndPdf {
         $worksheet.PageSetup.FitToPagesTall = $false
         $worksheet.Columns.AutoFit() | Out-Null
     }
+}
+
+function New-ConstructionTransferFeatureShiftedHeaderWorkbookAndPdf {
+    param(
+        [Parameter(Mandatory = $true)][string]$WorkbookPath,
+        [Parameter(Mandatory = $true)][string]$PdfPath
+    )
+
+    New-ConstructionTransferSingleWorkbookAndPdf `
+        -WorkbookPath $WorkbookPath `
+        -PdfPath $PdfPath `
+        -TitleLabel '建設現場別 延べ作業時間算出用 勤怠一覧（新機能体験 ヘッダー位置ずれ）' `
+        -MonthLabel '2026年07月' `
+        -ManagerName '山田健' `
+        -PreHeaderRowValues @('注記')
+}
+
+function New-ConstructionTransferFeatureSingleWorkbookAndPdf {
+    param(
+        [Parameter(Mandatory = $true)][string]$WorkbookPath,
+        [Parameter(Mandatory = $true)][string]$PdfPath
+    )
+
+    New-ConstructionTransferSingleWorkbookAndPdf `
+        -WorkbookPath $WorkbookPath `
+        -PdfPath $PdfPath `
+        -TitleLabel '建設現場別 延べ作業時間算出用 勤怠一覧（新機能体験 基本帳票）' `
+        -MonthLabel '2026年07月' `
+        -ManagerName '佐々木匠'
 }
 
 function New-ConstructionTransferHeaderMismatchWorkbookAndPdf {
@@ -562,7 +615,8 @@ $managedDirectories = @(
     'inventory_jp',
     'inquiry_jp',
     'construction_transfer_poc',
-    'profile_wizard_demo'
+    'profile_wizard_demo',
+    'feature_combo_demo'
 )
 
 Ensure-Directory -Path $pdfRoot
@@ -675,6 +729,27 @@ $sampleDefinitions = @(
         WorkbookName      = '2026年03月_職人別作業日報_Wizard体験.xlsx'
         PdfName           = '2026年03月_職人別作業日報_Wizard体験.pdf'
         CreateSample      = { param($workbookPath, $pdfPath) New-ProfileWizardDemoWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath }
+    },
+    [pscustomobject]@{
+        PdfDirectory      = 'feature_combo_demo'
+        SourceDirectory   = 'feature_combo_demo'
+        WorkbookName      = '2026年07月_作業員勤怠一覧_新機能体験_標準帳票.xlsx'
+        PdfName           = '2026年07月_作業員勤怠一覧_新機能体験_標準帳票.pdf'
+        CreateSample      = { param($workbookPath, $pdfPath) New-ConstructionTransferFeatureSingleWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath }
+    },
+    [pscustomobject]@{
+        PdfDirectory      = 'feature_combo_demo'
+        SourceDirectory   = 'feature_combo_demo'
+        WorkbookName      = '2026年07月_作業員勤怠一覧_新機能体験_2ページ帳票.xlsx'
+        PdfName           = '2026年07月_作業員勤怠一覧_新機能体験_2ページ帳票.pdf'
+        CreateSample      = { param($workbookPath, $pdfPath) New-ConstructionTransferPagedPocWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath -PageCount 2 -TitleLabel '建設現場別 延べ作業時間算出用 勤怠一覧（新機能体験 2ページ帳票）' -MonthLabels @('2026年07月', '2026年07月') }
+    },
+    [pscustomobject]@{
+        PdfDirectory      = 'feature_combo_demo'
+        SourceDirectory   = 'feature_combo_demo'
+        WorkbookName      = '2026年07月_作業員勤怠一覧_新機能体験_ヘッダー位置ずれ帳票.xlsx'
+        PdfName           = '2026年07月_作業員勤怠一覧_新機能体験_ヘッダー位置ずれ帳票.pdf'
+        CreateSample      = { param($workbookPath, $pdfPath) New-ConstructionTransferFeatureShiftedHeaderWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath }
     }
 )
 
@@ -690,7 +765,7 @@ foreach ($definition in $sampleDefinitions) {
 }
 
 $v1SampleDirectories = @('attendance_jp', 'sales_daily_jp', 'inventory_jp', 'inquiry_jp')
-$v2SampleDirectories = @('construction_transfer_poc', 'profile_wizard_demo')
+$v2SampleDirectories = @('construction_transfer_poc', 'profile_wizard_demo', 'feature_combo_demo')
 
 foreach ($directoryName in $v1SampleDirectories) {
     $targetPdfDir = Join-Path (Join-Path $versionedSamplesRoot 'pdf') $directoryName
