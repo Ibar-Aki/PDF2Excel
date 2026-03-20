@@ -11,6 +11,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 
 - 文書一覧: [index.md](docs/index.md)
 - 詳しい使い方: [user-manual.md](docs/user-manual.md)
+- V2 体験ガイド: [v2-sample-walkthrough.md](docs/v2-sample-walkthrough.md)
 - 構成説明: [project-layout.md](docs/project-layout.md)
 - 障害対応: [troubleshooting.md](docs/troubleshooting.md)
 - 保守手順: [maintenance-guide.md](docs/maintenance-guide.md)
@@ -22,6 +23,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - 生データ転記案: [v2-data-transfer-proposal.md](docs/v2-data-transfer-proposal.md)
 
 詳しい使い方は [ユーザーマニュアル](docs/user-manual.md) を参照してください。
+まず V2 を体験したい場合は [V2 サンプル体験ガイド](docs/v2-sample-walkthrough.md) を参照してください。
 フォルダ構成は [project-layout.md](docs/project-layout.md) を参照してください。
 
 ## はじめに
@@ -213,6 +215,8 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2exce
 - 正式運用では `run_pdf2excel.bat` または `run_pdf2excel_v2.bat` を使い、ZIP はローカルへ展開して実行してください。
 - 利用者向け BAT / PS 導線は `RemoteSigned` を前提に起動します。
 - ツールは同時に 1 実行だけ許可します。別実行が動作中の場合は `RUN_LOCKED` として即時停止します。
+- 前回実行が異常終了して `run.lock` や mutex が放棄された場合は、次回起動時に自動回復を試みます。環境チェックでは `実行中 / 前回異常終了の可能性 / 内容読取不可` を区別して表示します。
+- 実行完了後の補足に `実行レポートを読み取れませんでした` と出た場合は、変換自体は終わっていてもメニュー用レポートの読取に失敗しています。ログと `reports/run-history.csv` を確認してください。
 - BAT メニューと利用者向けの説明文は日本語化しています。
 - 各実行の結果は `reports/run-history.csv` に追記されます。
 - 環境チェック結果は `reports/environment-check.md` に保存されます。

@@ -211,7 +211,7 @@ function Write-RunReport {
         RunHistoryPath      = $RunHistoryPath
     }
 
-    $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $RunReportPath -Encoding UTF8
+    Write-TextFileAtomically -Path $RunReportPath -Content ($report | ConvertTo-Json -Depth 6)
 }
 
 function Register-SensitivePaths {
@@ -477,6 +477,39 @@ function Remove-PathWithRetry {
     return $false
 }
 
+function Write-TextFileAtomically {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Content
+    )
+
+    $parentPath = Split-Path -Path $Path -Parent
+    if (-not [string]::IsNullOrWhiteSpace($parentPath)) {
+        Ensure-Directory -Path $parentPath
+    }
+
+    $tempPath = Join-Path $(if ([string]::IsNullOrWhiteSpace($parentPath)) { $baseDir } else { $parentPath }) ([System.IO.Path]::GetRandomFileName() + '.tmp')
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+    try {
+        [System.IO.File]::WriteAllText($tempPath, $Content, $utf8NoBom)
+        if (Test-Path -LiteralPath $Path) {
+            try {
+                [System.IO.File]::Replace($tempPath, $Path, $null, $true)
+            } catch {
+                [System.IO.File]::Copy($tempPath, $Path, $true)
+                Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+            }
+        } else {
+            [System.IO.File]::Move($tempPath, $Path)
+        }
+    } finally {
+        if (Test-Path -LiteralPath $tempPath) {
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Test-DirectoryWritable {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -535,6 +568,146 @@ function Append-RunHistory {
     }
 }
 
+function Test-ProcessIdAlive {
+    param([Nullable[int]]$ProcessId)
+
+    if ($null -eq $ProcessId) {
+        return $false
+    }
+
+    try {
+        $null = Get-Process -Id ([int]$ProcessId) -ErrorAction Stop
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Test-RunMutexAvailability {
+    param([string]$MutexName = 'Global\PDF2Excel_RunMutex')
+
+    $mutex = $null
+    $isAvailable = $false
+    $wasAbandoned = $false
+
+    try {
+        $createdNew = $false
+        $mutex = New-Object System.Threading.Mutex($false, $MutexName, [ref]$createdNew)
+        try {
+            $isAvailable = $mutex.WaitOne(0, $false)
+        } catch [System.Threading.AbandonedMutexException] {
+            $isAvailable = $true
+            $wasAbandoned = $true
+        }
+
+        return [pscustomobject]@{
+            IsAvailable  = $isAvailable
+            WasAbandoned = $wasAbandoned
+        }
+    } finally {
+        if ($isAvailable -and $mutex) {
+            try {
+                $mutex.ReleaseMutex() | Out-Null
+            } catch {
+            }
+        }
+        if ($mutex) {
+            try {
+                $mutex.Dispose()
+            } catch {
+            }
+        }
+    }
+}
+
+function Get-RunLockState {
+    $state = [ordered]@{
+        Status          = 'OK'
+        Detail          = 'run.lock はありません。'
+        SuggestedAction = ''
+        Classification  = 'CLEAR'
+        LockInfo        = $null
+        ProcessAlive    = $false
+        MutexAvailable  = $null
+        WasAbandoned    = $false
+    }
+
+    if (-not (Test-Path -LiteralPath $script:lockFilePath)) {
+        return [pscustomobject]$state
+    }
+
+    $state.Status = 'WARN'
+    $state.Detail = 'run.lock が存在します。'
+    $state.SuggestedAction = '別の実行中の可能性があります。完了を待ってから再実行し、不要な lock の場合は保守担当へ確認してください。'
+    $lockInfo = $null
+    $lockInfoReadable = $false
+    $pidValue = $null
+
+    try {
+        $lockInfo = Get-Content -LiteralPath $script:lockFilePath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $lockInfoReadable = $true
+        $state.LockInfo = $lockInfo
+        $parsedPid = 0
+        if ([int]::TryParse([string]$lockInfo.pid, [ref]$parsedPid)) {
+            $pidValue = $parsedPid
+        }
+    } catch {
+        $state.Detail = 'run.lock が存在しますが内容を読めませんでした。'
+        $state.Classification = 'UNREADABLE'
+        $state.SuggestedAction = '前回異常終了の可能性があります。再実行で回復しない場合は run.lock を削除する前にログを確認してください。'
+    }
+
+    $state.ProcessAlive = Test-ProcessIdAlive -ProcessId $pidValue
+    $mutexProbe = Test-RunMutexAvailability
+    $state.MutexAvailable = $mutexProbe.IsAvailable
+    $state.WasAbandoned = $mutexProbe.WasAbandoned
+
+    if ($state.ProcessAlive) {
+        $state.Classification = 'ACTIVE'
+        if ($lockInfoReadable) {
+            $state.Detail = "run.lock が存在します: 開始=$($lockInfo.startedAt), PID=$($lockInfo.pid) (実行中)"
+        } else {
+            $state.Detail = 'run.lock が存在し、対応するプロセスも動作中です。'
+        }
+        return [pscustomobject]$state
+    }
+
+    if (-not $lockInfoReadable) {
+        if ($mutexProbe.IsAvailable) {
+            $state.Detail = 'run.lock が存在しますが内容を読めませんでした。現在の mutex は空いています。'
+            if ($mutexProbe.WasAbandoned) {
+                $state.Detail += ' 放棄された mutex も検知しました。'
+            }
+        } else {
+            $state.Detail = 'run.lock が存在しますが内容を読めませんでした。現在も mutex 使用中です。'
+        }
+        return [pscustomobject]$state
+    }
+
+    if ($mutexProbe.IsAvailable) {
+        $state.Classification = 'STALE'
+        $state.SuggestedAction = '前回異常終了の痕跡です。次回実行で自動回復します。繰り返す場合はログを確認してください。'
+        if ($lockInfoReadable) {
+            $state.Detail = "run.lock が残っています: 開始=$($lockInfo.startedAt), PID=$($lockInfo.pid) (前回異常終了の可能性)"
+        } else {
+            $state.Detail = 'run.lock が残っていますが、現在の mutex は空いています。前回異常終了の可能性があります。'
+        }
+        if ($mutexProbe.WasAbandoned) {
+            $state.Detail += ' 放棄された mutex も検知しました。'
+        }
+        return [pscustomobject]$state
+    }
+
+    $state.Classification = 'ACTIVE_UNKNOWN'
+    if ($lockInfoReadable) {
+        $state.Detail = "run.lock が存在します: 開始=$($lockInfo.startedAt), PID=$($lockInfo.pid) (mutex 使用中)"
+    } else {
+        $state.Detail = 'run.lock が存在し、現在も mutex 使用中です。'
+    }
+
+    return [pscustomobject]$state
+}
+
 function New-EnvironmentCheckItem {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
@@ -586,7 +759,7 @@ function Write-EnvironmentCheckReport {
         $lines += ('| {0} | {1} | {2} | {3} |' -f $item.Name, $statusLabel, $item.Detail, $item.SuggestedAction)
     }
 
-    Set-Content -LiteralPath $script:environmentReportPath -Value ($lines -join [Environment]::NewLine) -Encoding UTF8
+    Write-TextFileAtomically -Path $script:environmentReportPath -Content ($lines -join [Environment]::NewLine)
 }
 
 function Invoke-EnvironmentCheck {
@@ -648,21 +821,8 @@ function Invoke-EnvironmentCheck {
     $logsWritable = Test-DirectoryWritable -Path $logsDir
     $items += New-EnvironmentCheckItem -Name 'logs 書き込み' -Status $(if ($logsWritable) { 'OK' } else { 'FAIL' }) -Detail $logsDir -SuggestedAction $(if ($logsWritable) { '' } else { 'ログフォルダの権限を確認してください。' })
 
-    $lockStatus = 'OK'
-    $lockDetail = 'run.lock はありません。'
-    $lockAction = ''
-    if (Test-Path -LiteralPath $script:lockFilePath) {
-        $lockStatus = 'WARN'
-        $lockDetail = 'run.lock が存在します。'
-        $lockAction = '別の実行中の可能性があります。完了を待ってから再実行し、不要な lock の場合は保守担当へ確認してください。'
-        try {
-            $lockInfo = Get-Content -LiteralPath $script:lockFilePath -Raw -Encoding UTF8 | ConvertFrom-Json
-            $lockDetail = "run.lock が存在します: 開始=$($lockInfo.startedAt), PID=$($lockInfo.pid)"
-        } catch {
-            $lockDetail = 'run.lock が存在しますが内容を読めませんでした。'
-        }
-    }
-    $items += New-EnvironmentCheckItem -Name '実行競合状態' -Status $lockStatus -Detail $lockDetail -SuggestedAction $lockAction
+    $lockState = Get-RunLockState
+    $items += New-EnvironmentCheckItem -Name '実行競合状態' -Status $lockState.Status -Detail $lockState.Detail -SuggestedAction $lockState.SuggestedAction
 
     $excel = $null
     try {
@@ -828,28 +988,38 @@ function Acquire-RunLock {
     $mutexName = 'Global\PDF2Excel_RunMutex'
     $createdNew = $false
     $script:runMutex = New-Object System.Threading.Mutex($false, $mutexName, [ref]$createdNew)
+    $acquired = $false
+    $recoveredFromAbandonedMutex = $false
 
-    if (-not $script:runMutex.WaitOne(0, $false)) {
+    try {
+        $acquired = $script:runMutex.WaitOne(0, $false)
+    } catch [System.Threading.AbandonedMutexException] {
+        $acquired = $true
+        $recoveredFromAbandonedMutex = $true
+    }
+
+    if (-not $acquired) {
         $lockSummary = ''
-        if (Test-Path -LiteralPath $script:lockFilePath) {
-            try {
-                $lockInfo = Get-Content -LiteralPath $script:lockFilePath -Raw -Encoding UTF8 | ConvertFrom-Json
-                $lockSummary = " 実行中情報: 開始=$($lockInfo.startedAt), PID=$($lockInfo.pid)"
-            } catch {
-                $lockSummary = ' 実行中情報: run.lock は存在しますが内容を読めませんでした。'
-            }
+        $lockState = Get-RunLockState
+        if ($lockState.Classification -ne 'CLEAR') {
+            $lockSummary = " 実行中情報: $($lockState.Detail)"
         }
 
         throw "別の PDF2Excel 実行が進行中です。完了後に再実行してください。$lockSummary"
+    }
+
+    if ($recoveredFromAbandonedMutex) {
+        Write-Log '前回異常終了で放棄された実行ロックを検知しました。自動回復して処理を続行します。' 'WARN'
     }
 
     $lockPayload = [ordered]@{
         runInstanceId = $script:runInstanceId
         pid           = $PID
         startedAt     = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-    } | ConvertTo-Json
+        recoveredFromAbandonedMutex = $recoveredFromAbandonedMutex
+    }
 
-    Set-Content -LiteralPath $script:lockFilePath -Value $lockPayload -Encoding UTF8
+    Write-TextFileAtomically -Path $script:lockFilePath -Content ($lockPayload | ConvertTo-Json)
 }
 
 function Release-RunLock {

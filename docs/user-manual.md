@@ -9,8 +9,11 @@
 - 文書一覧: [index.md](index.md)
 - 構成ガイド: [project-layout.md](project-layout.md)
 - 障害対応: [troubleshooting.md](troubleshooting.md)
+- V2 体験ガイド: [v2-sample-walkthrough.md](v2-sample-walkthrough.md)
 - サンプルPDF: `samples/v1/pdf`, `samples/v2/pdf`
 - サンプル一覧: [../samples/README.md](../samples/README.md)
+
+V2 を最初に触る人は、まず [v2-sample-walkthrough.md](v2-sample-walkthrough.md) の順番で試すと、操作と利便性を短時間で把握できます。
 
 ## 1. このツールの概要
 
@@ -65,6 +68,7 @@
 
 - 同時に 2 回以上は実行できません。
 - ほかの実行が動いているときは、その場で停止します。
+- 前回実行が異常終了して `run.lock` や mutex だけ残った場合は、次回実行時に自動回復を試みます。
 - 実際の変換は毎回専用の一時 staging で行います。
 - `input` に残っている過去PDFは、`-KeepInput` を使っても今回の変換には混ざりません。
 - `VER2` の `sameHeader` は、ヘッダー署名と連続ページを満たす候補だけを縦結合します。
@@ -148,6 +152,7 @@
 
 - Excel COM、テンプレート、保存先書き込み、LOCALAPPDATA、現在のプロファイル状態をまとめて診断します。
 - あわせて `run.lock` の有無と `scripts/build_excel_template.ps1` の存在も確認します。
+- `run.lock` は単なる有無だけでなく、`実行中`、`前回異常終了の可能性`、`内容読取不可` を分けて表示します。
 - 結果は画面表示に加えて `reports/environment-check.md` に保存されます。
 
 ## 4. 変換前の準備
@@ -225,6 +230,7 @@
 5. 実行前チェックを確認して `Y` を押します。
 6. 処理完了を待ちます。
 7. 保存した `xlsx` を開いて確認します。
+8. 完了画面に `実行レポートを読み取れませんでした` と出た場合は、`reports/run-history.csv` と最新ログを確認します。
 
 ### パターンC: PowerShell から実行する
 

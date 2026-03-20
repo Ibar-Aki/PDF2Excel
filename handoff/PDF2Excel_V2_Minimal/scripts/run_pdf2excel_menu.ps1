@@ -101,17 +101,22 @@ function Invoke-RunScript {
     & powershell @shellArgs @effectiveArguments | Out-Host
     $exitCode = $LASTEXITCODE
     $report = $null
+    $reportReadError = $null
     if (Test-Path -LiteralPath $reportPath) {
         try {
             $report = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8 | ConvertFrom-Json
         } catch {
+            $reportReadError = "実行レポートを読み取れませんでした: $($_.Exception.Message)"
         }
         Remove-Item -LiteralPath $reportPath -Force -ErrorAction SilentlyContinue
+    } else {
+        $reportReadError = '実行レポートが作成されませんでした。ログを確認してください。'
     }
 
     return [pscustomobject]@{
-        ExitCode = $exitCode
-        Report   = $report
+        ExitCode        = $exitCode
+        Report          = $report
+        ReportReadError = $reportReadError
     }
 }
 
@@ -334,6 +339,9 @@ function Show-RunFailure {
     } else {
         Write-Host ("詳細は '{0}' のログを確認してください。" -f $logsDir)
     }
+    if (-not [string]::IsNullOrWhiteSpace($RunResult.ReportReadError)) {
+        Write-Host ("補足: {0}" -f $RunResult.ReportReadError)
+    }
     Pause
 }
 
@@ -356,6 +364,9 @@ function Show-RunSuccess {
     } else {
         Write-Host ("出力先: {0}" -f $outputDir)
         Write-Host ("ログ先: {0}" -f $logsDir)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RunResult.ReportReadError)) {
+        Write-Host ("補足: {0}" -f $RunResult.ReportReadError)
     }
     Write-Host $completionSheetMessage
     Prompt-PostRunAction -Report $RunResult.Report
@@ -397,7 +408,11 @@ if (-not [string]::IsNullOrWhiteSpace($script:currentProfileName)) {
     Save-MenuState -SelectedProfileName $script:currentProfileName
 }
 if (-not $ForceMenu -and $remainingArgs.Count -gt 0) {
-    exit ((Invoke-RunScript -Arguments $remainingArgs).ExitCode)
+    $directRunResult = Invoke-RunScript -Arguments $remainingArgs
+    if (-not [string]::IsNullOrWhiteSpace($directRunResult.ReportReadError)) {
+        Write-Host ("補足: {0}" -f $directRunResult.ReportReadError)
+    }
+    exit $directRunResult.ExitCode
 }
 
 while ($true) {

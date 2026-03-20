@@ -555,6 +555,121 @@ $testResults += Invoke-UnitTest -Name 'run.lock は匿名化され、Secure clea
     return 'run.lock 匿名化 / cleanup 警告強化を確認'
 }
 
+$testResults += Invoke-UnitTest -Name 'Write-RunReport は既存ファイルを原子的に置き換える' -Body {
+    $tempReportPath = Join-Path $resultsRoot 'atomic-run-report.json'
+    $originalRunReportPath = $RunReportPath
+    $originalLogPath = $script:logPath
+
+    try {
+        [System.IO.File]::WriteAllText($tempReportPath, '{broken json', (New-Object System.Text.UTF8Encoding($false)))
+        $RunReportPath = $tempReportPath
+        $script:logPath = Join-Path $resultsRoot 'atomic-run-report.log'
+        [System.IO.File]::WriteAllText($script:logPath, 'log', (New-Object System.Text.UTF8Encoding($false)))
+
+        Write-RunReport -Status 'Success' -OutputPath 'C:\Temp\sample.xlsx' -OutputParent 'C:\Temp' -Profile ([pscustomobject]@{ Name = 'profile_a'; DisplayName = 'Profile A' }) -SourcePdfCount 1 -RunHistoryPath 'C:\Temp\run-history.csv'
+        $report = Get-Content -LiteralPath $tempReportPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        Assert-True -Condition ($report.Status -eq 'Success') -Message "RunReport の Status が想定と異なります: $($report.Status)"
+        Assert-True -Condition ($report.ProfileName -eq 'profile_a') -Message "RunReport の ProfileName が想定と異なります: $($report.ProfileName)"
+        $tempFiles = @(Get-ChildItem -LiteralPath $resultsRoot -Filter '*.tmp' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*atomic-run-report*' })
+        Assert-True -Condition ($tempFiles.Count -eq 0) -Message 'RunReport の一時ファイルが残っています。'
+        return 'RunReport の原子的置換を確認'
+    } finally {
+        $RunReportPath = $originalRunReportPath
+        $script:logPath = $originalLogPath
+        if (Test-Path -LiteralPath $tempReportPath) {
+            Remove-Item -LiteralPath $tempReportPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+$testResults += Invoke-UnitTest -Name 'Write-EnvironmentCheckReport は既存レポートを原子的に置き換える' -Body {
+    $tempReportPath = Join-Path $resultsRoot 'atomic-environment-check.md'
+    $originalEnvironmentReportPath = $script:environmentReportPath
+
+    try {
+        [System.IO.File]::WriteAllText($tempReportPath, 'broken report', (New-Object System.Text.UTF8Encoding($false)))
+        $script:environmentReportPath = $tempReportPath
+
+        $environmentResult = [pscustomobject]@{
+            Items = @(
+                [pscustomobject]@{
+                    Name = 'Excel COM'
+                    Status = 'OK'
+                    Detail = '起動可能'
+                    SuggestedAction = ''
+                }
+            )
+            HasFailures = $false
+            Summary = '主要な前提条件は満たしています。'
+        }
+
+        Write-EnvironmentCheckReport -EnvironmentResult $environmentResult
+        $reportText = Get-Content -LiteralPath $tempReportPath -Raw -Encoding UTF8
+        Assert-True -Condition ($reportText.Contains('PDF2Excel 環境チェックレポート')) -Message '環境チェックレポートのタイトルがありません。'
+        Assert-True -Condition ($reportText.Contains('Excel COM')) -Message '環境チェックレポートの項目がありません。'
+        $tempFiles = @(Get-ChildItem -LiteralPath $resultsRoot -Filter '*.tmp' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*atomic-environment-check*' })
+        Assert-True -Condition ($tempFiles.Count -eq 0) -Message '環境チェックレポートの一時ファイルが残っています。'
+        return '環境チェックレポートの原子的置換を確認'
+    } finally {
+        $script:environmentReportPath = $originalEnvironmentReportPath
+        if (Test-Path -LiteralPath $tempReportPath) {
+            Remove-Item -LiteralPath $tempReportPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-RunLockState は stale lock を識別する' -Body {
+    $tempLockPath = Join-Path $resultsRoot 'stale-run.lock'
+    $originalLockPath = $script:lockFilePath
+
+    try {
+        $script:lockFilePath = $tempLockPath
+        $staleLock = [ordered]@{
+            runInstanceId = 'stale-lock'
+            pid           = 999999
+            startedAt     = (Get-Date).AddHours(-1).ToString('yyyy-MM-dd HH:mm:ss')
+        } | ConvertTo-Json
+        [System.IO.File]::WriteAllText($tempLockPath, $staleLock, (New-Object System.Text.UTF8Encoding($false)))
+
+        $state = Get-RunLockState
+        Assert-True -Condition ($state.Classification -eq 'STALE') -Message "stale lock の分類が想定と異なります: $($state.Classification)"
+        Assert-True -Condition ($state.Detail.Contains('前回異常終了の可能性')) -Message "stale lock の詳細が想定と異なります: $($state.Detail)"
+        return 'stale lock の識別を確認'
+    } finally {
+        $script:lockFilePath = $originalLockPath
+        if (Test-Path -LiteralPath $tempLockPath) {
+            Remove-Item -LiteralPath $tempLockPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-RunLockState は壊れた lock を内容読取不可として保持する' -Body {
+    $tempLockPath = Join-Path $resultsRoot 'broken-run.lock'
+    $originalLockPath = $script:lockFilePath
+
+    try {
+        $script:lockFilePath = $tempLockPath
+        [System.IO.File]::WriteAllText($tempLockPath, '{broken lock', (New-Object System.Text.UTF8Encoding($false)))
+
+        $state = Get-RunLockState
+        Assert-True -Condition ($state.Classification -eq 'UNREADABLE') -Message "壊れた lock の分類が想定と異なります: $($state.Classification)"
+        Assert-True -Condition ($state.Detail.Contains('内容を読めませんでした')) -Message "壊れた lock の詳細が想定と異なります: $($state.Detail)"
+        return '壊れた lock の unreadable 判定を確認'
+    } finally {
+        $script:lockFilePath = $originalLockPath
+        if (Test-Path -LiteralPath $tempLockPath) {
+            Remove-Item -LiteralPath $tempLockPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+$testResults += Invoke-UnitTest -Name 'Acquire-RunLock は放棄 mutex 回復の catch 分岐を持つ' -Body {
+    $scriptText = Get-Content -LiteralPath $runScript -Raw -Encoding UTF8
+    Assert-True -Condition ($scriptText.Contains('catch [System.Threading.AbandonedMutexException]')) -Message 'AbandonedMutexException の catch が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('自動回復して処理を続行します')) -Message '放棄 mutex 回復時の警告ログが見つかりません。'
+    return '放棄 mutex 回復分岐を確認'
+}
+
 $testResults += Invoke-UnitTest -Name 'テンプレート整合性マニフェストは必要ファイルを持つ' -Body {
     $manifestPath = Join-Path $projectRoot 'config\template-integrity.json'
     Assert-True -Condition (Test-Path -LiteralPath $manifestPath) -Message 'template-integrity.json が見つかりません。'

@@ -35,6 +35,8 @@
   - 版ごとの主な変更点を確認できます。
 - [user-manual.md](user-manual.md)
   - 初回利用、日常運用、確認ポイントまで含めた詳しい手順書です。
+- [v2-sample-walkthrough.md](v2-sample-walkthrough.md)
+  - V2 サンプルを順番に試しながら、`Result` / `Review` / `Errors` の使い分けを体験できる手順書です。
 - [project-layout.md](project-layout.md)
   - フォルダ構成と、どのファイルが何のためにあるかを説明しています。
 - [improvement-proposals.md](improvement-proposals.md)
@@ -103,5 +105,6 @@
 
 1. 全員共通で [README.md](../README.md)
 2. 利用者は [user-manual.md](user-manual.md)
-3. 問題が起きたら [troubleshooting.md](troubleshooting.md)
-4. 改修するなら [maintenance-guide.md](maintenance-guide.md)
+3. V2 を試すなら [v2-sample-walkthrough.md](v2-sample-walkthrough.md)
+4. 問題が起きたら [troubleshooting.md](troubleshooting.md)
+5. 改修するなら [maintenance-guide.md](maintenance-guide.md)

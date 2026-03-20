@@ -72,6 +72,36 @@ function Wait-For-ExcelBaseline {
     return @($finalCurrent | Where-Object { $BaselineIds -notcontains $_ })
 }
 
+function Remove-PathWithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [int]$MaxAttempts = 3
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt += 1) {
+        if (-not (Test-Path -LiteralPath $Path)) {
+            return $true
+        }
+
+        try {
+            $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+            if ($item.PSIsContainer) {
+                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            } else {
+                Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            }
+            return $true
+        } catch {
+            if ($attempt -eq $MaxAttempts) {
+                return $false
+            }
+            Start-Sleep -Milliseconds 300
+        }
+    }
+
+    return $false
+}
+
 $suiteBaselineExcel = @(Get-ExcelProcessIds)
 $script:customProfilePath = Join-Path $workRoot 'profile10.json'
 $script:attendanceProfilePath = Join-Path $projectRoot 'config\profiles\v1\attendance_monthly_jp.json'
@@ -412,7 +442,8 @@ function Invoke-TestCase {
     $baselineExcel = @(Get-ExcelProcessIds)
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     try {
-        $details = & $Body
+        $rawDetails = & $Body
+        $details = Convert-ToReadableNoteText -Value $rawDetails
         $stopwatch.Stop()
         $leaked = @(Wait-For-ExcelBaseline -BaselineIds $baselineExcel -TimeoutSeconds 10)
         Assert-True -Condition ($leaked.Count -eq 0) -Message ("Excel process leak detected: " + ($leaked -join ', '))
@@ -487,7 +518,7 @@ function New-ReportMarkdown {
 
     $index = 1
     foreach ($result in $TestResults) {
-        $detailText = if ($result.ErrorMessage) { $result.ErrorMessage } elseif ($result.Details) { $result.Details } else { '' }
+        $detailText = Convert-ToReadableNoteText -Value $(if ($result.ErrorMessage) { $result.ErrorMessage } elseif ($result.Details) { $result.Details } else { '' })
         $statusLabel = if ($result.Status -eq 'PASS') { '成功' } else { '失敗' }
         $retryLabel = if ([int]$result.RetryCount -gt 0) { "$($result.RetryCount)回 ($($result.RetriedBy))" } else { 'なし' }
         $lines += "| $index | $($result.Name) | $statusLabel | $($result.DurationMs) ms | $retryLabel | $detailText |"
@@ -655,6 +686,80 @@ function Initialize-TestFixtures {
     $customProfileJson | Set-Content -LiteralPath $script:customProfilePath -Encoding UTF8
 }
 
+function Convert-ToReadableNoteText {
+    param(
+        $Value,
+        [int]$MaxLength = 180
+    )
+
+    $candidates = @()
+    foreach ($item in @($Value)) {
+        if ($null -eq $item) {
+            continue
+        }
+
+        $text = [string]$item
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            continue
+        }
+
+        $lastLine = @($text -split "\r?\n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Last 1)
+        if ($lastLine.Count -gt 0) {
+            $candidates += $lastLine[0]
+        }
+    }
+
+    if ($candidates.Count -eq 0) {
+        return ''
+    }
+
+    $selected = ($candidates[-1] -replace '[\x00-\x08\x0B\x0C\x0E-\x1F]', '')
+    $selected = ($selected -replace '\s+', ' ').Trim()
+    if ($selected.Length -gt $MaxLength) {
+        return ($selected.Substring(0, $MaxLength) + ' ...')
+    }
+
+    return $selected
+}
+
+function Read-ProcessOutputText {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return ''
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -eq 0) {
+        return ''
+    }
+
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        return [System.Text.Encoding]::UTF8.GetString($bytes, 3, $bytes.Length - 3)
+    }
+
+    if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+        return [System.Text.Encoding]::Unicode.GetString($bytes, 2, $bytes.Length - 2)
+    }
+
+    $nullByteCount = 0
+    for ($index = 1; $index -lt $bytes.Length; $index += 2) {
+        if ($bytes[$index] -eq 0x00) {
+            $nullByteCount += 1
+        }
+    }
+    if ($nullByteCount -ge [Math]::Floor($bytes.Length / 4)) {
+        return [System.Text.Encoding]::Unicode.GetString($bytes)
+    }
+
+    $utf8Strict = New-Object System.Text.UTF8Encoding($false, $true)
+    try {
+        return $utf8Strict.GetString($bytes)
+    } catch {
+        return [System.Text.Encoding]::GetEncoding(932).GetString($bytes)
+    }
+}
+
 function Invoke-TestProcess {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
@@ -674,8 +779,8 @@ function Invoke-TestProcess {
 
         return [pscustomobject]@{
             ExitCode = $process.ExitCode
-            StdOut   = if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw -Encoding UTF8 } else { '' }
-            StdErr   = if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath -Raw -Encoding UTF8 } else { '' }
+            StdOut   = Read-ProcessOutputText -Path $stdoutPath
+            StdErr   = Read-ProcessOutputText -Path $stderrPath
         }
     } finally {
         foreach ($path in @($stdoutPath, $stderrPath)) {
@@ -706,7 +811,15 @@ function Invoke-CmdBatchCapture {
         }
 
         if ([string]::IsNullOrEmpty($StdInText)) {
-            $commandLine = @('/c', $BatchPath) + $Arguments
+            $escapedBatchPath = $BatchPath.Replace('"', '""')
+            $escapedArguments = @($Arguments | ForEach-Object {
+                if ($_ -match '\s') {
+                    '"' + ($_.Replace('"', '""')) + '"'
+                } else {
+                    $_
+                }
+            })
+            $commandLine = @('/d', '/c', ('chcp 65001 > nul & "{0}" {1}' -f $escapedBatchPath, ($escapedArguments -join ' ')))
             return Invoke-TestProcess -FilePath 'cmd.exe' -ArgumentList $commandLine -TimeoutSeconds $TimeoutSeconds
         }
 
@@ -724,8 +837,8 @@ function Invoke-CmdBatchCapture {
                 }
             })
             $escapedInputPath = $tempInputPath.Replace('"', '""')
-            $commandString = '(type "{0}") | "{1}" {2}' -f $escapedInputPath, $escapedBatchPath, ($escapedArguments -join ' ')
-            return Invoke-TestProcess -FilePath 'cmd.exe' -ArgumentList @('/c', $commandString) -TimeoutSeconds $TimeoutSeconds
+            $commandString = 'chcp 65001 > nul & (type "{0}") | "{1}" {2}' -f $escapedInputPath, $escapedBatchPath, ($escapedArguments -join ' ')
+            return Invoke-TestProcess -FilePath 'cmd.exe' -ArgumentList @('/d', '/c', $commandString) -TimeoutSeconds $TimeoutSeconds
         } finally {
             if (Test-Path -LiteralPath $tempInputPath) {
                 Remove-Item -LiteralPath $tempInputPath -Force -ErrorAction SilentlyContinue
@@ -747,13 +860,18 @@ function Get-TestCases {
         [pscustomobject]@{ Name = '50件一括変換性能'; Scenario = '50 件の PDF を許容時間内に変換し、行数が崩れないこと'; TimeoutSeconds = 540 },
         [pscustomobject]@{ Name = 'KeepInput の隔離動作'; Scenario = 'KeepInput を使っても今回分だけが専用 staging で処理されること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = '同時実行ロック'; Scenario = '別実行中は 2 本目が即時失敗すること'; TimeoutSeconds = 180 },
+        [pscustomobject]@{ Name = '放棄 mutex から自動回復'; Scenario = '前回異常終了で放棄された mutex と stale run.lock から自動回復できること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'BAT 経由の変換'; Scenario = '同じ PDF 群を BAT から正常に変換できること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'BAT 直実行で待機しない'; Scenario = '引数付き BAT 実行で pause せず終了すること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = '環境チェック'; Scenario = '環境チェックが成功し、レポートを保存すること'; TimeoutSeconds = 120 },
+        [pscustomobject]@{ Name = '環境チェックで stale lock を識別'; Scenario = 'stale run.lock を実行中と誤認せず、異常終了由来の警告として表示できること'; TimeoutSeconds = 120 },
+        [pscustomobject]@{ Name = '環境チェックで壊れた lock を識別'; Scenario = '壊れた run.lock を内容読取不可として表示できること'; TimeoutSeconds = 120 },
         [pscustomobject]@{ Name = '実行履歴台帳'; Scenario = '変換結果が run-history.csv に記録されること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = 'V2 プロファイル Wizard 生成'; Scenario = 'v2 プロファイルを対話ウィザードで生成できること'; TimeoutSeconds = 120 },
         [pscustomobject]@{ Name = 'V2 BAT ダブルクリックでメニュー表示'; Scenario = 'V2 BAT を無引数で起動すると最初にメニューが表示されること'; TimeoutSeconds = 60 },
         [pscustomobject]@{ Name = 'V2 BAT 引数付きで直接変換'; Scenario = 'V2 BAT を引数付きで起動するとメニューを介さず直接変換できること'; TimeoutSeconds = 300 },
+        [pscustomobject]@{ Name = '壊れた RunReport をメニューで通知'; Scenario = 'menu が壊れた RunReport JSON を黙殺せず利用者へ通知すること'; TimeoutSeconds = 120 },
+        [pscustomobject]@{ Name = '統合テスト補足は要約表示'; Scenario = 'レポート補足欄が生ログ全文ではなく最後の要約だけを使うこと'; TimeoutSeconds = 30 },
         [pscustomobject]@{ Name = 'input 自己参照'; Scenario = 'input 自体を入力フォルダにしても自己削除せず処理できること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = '同名ファイル拒否'; Scenario = '別フォルダの同名 PDF を明示的に拒否すること'; TimeoutSeconds = 120 },
         [pscustomobject]@{ Name = '壊れた PDF の処理'; Scenario = '壊れた PDF が全体を止めず Errors に出ること'; TimeoutSeconds = 180 },
@@ -931,6 +1049,63 @@ function Invoke-NamedScenario {
                 }
             }
         }
+        '放棄 mutex から自動回復' {
+            $secureRuntimeRoot = Join-Path $env:LOCALAPPDATA 'PDF2Excel\runtime'
+            $secureLockPath = Join-Path $secureRuntimeRoot 'run.lock'
+            Ensure-Directory -Path $secureRuntimeRoot
+
+            $abandonScriptPath = Join-Path $resultsRoot 'abandon_mutex_helper.ps1'
+            $abandonScript = @'
+param([string]$LockPath)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$runtimeRoot = Split-Path -Path $LockPath -Parent
+if (-not (Test-Path -LiteralPath $runtimeRoot)) {
+    New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
+}
+
+$createdNew = $false
+$mutex = New-Object System.Threading.Mutex($false, 'Global\PDF2Excel_RunMutex', [ref]$createdNew)
+try {
+    if (-not $mutex.WaitOne(0, $false)) {
+        throw 'mutex acquire failed'
+    }
+} catch [System.Threading.AbandonedMutexException] {
+}
+
+$payload = [ordered]@{
+    runInstanceId = 'abandoned-test'
+    pid           = $PID
+    startedAt     = (Get-Date).AddMinutes(-5).ToString('yyyy-MM-dd HH:mm:ss')
+} | ConvertTo-Json
+[System.IO.File]::WriteAllText($LockPath, $payload, (New-Object System.Text.UTF8Encoding($false)))
+Stop-Process -Id $PID -Force
+'@
+            [System.IO.File]::WriteAllText($abandonScriptPath, $abandonScript, (New-Object System.Text.UTF8Encoding($false)))
+
+            try {
+                $null = Invoke-TestProcess -FilePath 'powershell' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', $abandonScriptPath, '-LockPath', $secureLockPath) -TimeoutSeconds 30
+                Start-Sleep -Seconds 1
+                Assert-True -Condition (Test-Path -LiteralPath $secureLockPath) -Message '放棄 mutex 用 run.lock が作成されていません。'
+
+                $outputPath = Join-Path $resultsRoot 'recover_abandoned_mutex.xlsx'
+                $runOutput = & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -InputFolder $sampleConstructionPocPdfDir -ProfilePath $script:constructionPocProfilePath -OutputFile $outputPath -NoConfirm 2>&1 | Out-String
+                $runExitCode = $LASTEXITCODE
+                Assert-True -Condition ($runExitCode -eq 0) -Message "放棄 mutex から回復できませんでした (ExitCode=$runExitCode): $runOutput"
+                Assert-True -Condition (Test-Path -LiteralPath $outputPath) -Message '回復後の出力ブックが作成されていません。'
+                Assert-True -Condition (-not (Test-Path -LiteralPath $secureLockPath)) -Message '回復後も run.lock が残っています。'
+                return '放棄 mutex と stale run.lock から自動回復'
+            } finally {
+                if (Test-Path -LiteralPath $abandonScriptPath) {
+                    Remove-Item -LiteralPath $abandonScriptPath -Force -ErrorAction SilentlyContinue
+                }
+                if (Test-Path -LiteralPath $secureLockPath) {
+                    Remove-Item -LiteralPath $secureLockPath -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
         'BAT 経由の変換' {
             $outputPath = Join-Path $resultsRoot 'bat_success.xlsx'
             $singlePdfDir = Join-Path $fixturesRoot 'construction_single_root_bat'
@@ -967,6 +1142,55 @@ function Invoke-NamedScenario {
             Assert-True -Condition ($reportText.Contains('実行競合状態')) -Message '環境チェックレポートに実行競合状態がありません。'
             Assert-True -Condition ($reportText.Contains('テンプレート再生成導線')) -Message '環境チェックレポートにテンプレート再生成導線がありません。'
             return '環境チェックレポートを確認'
+        }
+        '環境チェックで stale lock を識別' {
+            $secureRuntimeRoot = Join-Path $env:LOCALAPPDATA 'PDF2Excel\runtime'
+            $secureLockPath = Join-Path $secureRuntimeRoot 'run.lock'
+            $reportPath = Join-Path $reportsRoot 'environment-check.md'
+            Ensure-Directory -Path $secureRuntimeRoot
+
+            $stalePayload = [ordered]@{
+                runInstanceId = 'stale-lock-test'
+                pid           = 999999
+                startedAt     = (Get-Date).AddHours(-2).ToString('yyyy-MM-dd HH:mm:ss')
+            } | ConvertTo-Json
+            [System.IO.File]::WriteAllText($secureLockPath, $stalePayload, (New-Object System.Text.UTF8Encoding($false)))
+
+            try {
+                $resultOutput = & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -CheckEnvironment 2>&1 | Out-String
+                $resultExitCode = $LASTEXITCODE
+                Assert-True -Condition ($resultExitCode -eq 0) -Message "環境チェックが失敗しました: $resultOutput"
+                Assert-True -Condition (Test-Path -LiteralPath $reportPath) -Message 'stale lock 環境チェックレポートが作成されていません。'
+                $reportText = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8
+                Assert-True -Condition ($reportText.Contains('前回異常終了の可能性')) -Message "stale lock の識別結果がレポートにありません: $reportText"
+                return 'stale run.lock を異常終了由来として識別'
+            } finally {
+                if (Test-Path -LiteralPath $secureLockPath) {
+                    Remove-Item -LiteralPath $secureLockPath -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        '環境チェックで壊れた lock を識別' {
+            $secureRuntimeRoot = Join-Path $env:LOCALAPPDATA 'PDF2Excel\runtime'
+            $secureLockPath = Join-Path $secureRuntimeRoot 'run.lock'
+            $reportPath = Join-Path $reportsRoot 'environment-check.md'
+            Ensure-Directory -Path $secureRuntimeRoot
+
+            [System.IO.File]::WriteAllText($secureLockPath, '{broken lock', (New-Object System.Text.UTF8Encoding($false)))
+
+            try {
+                $resultOutput = & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $runScriptV2 -CheckEnvironment 2>&1 | Out-String
+                $resultExitCode = $LASTEXITCODE
+                Assert-True -Condition ($resultExitCode -eq 0) -Message "環境チェックが失敗しました: $resultOutput"
+                Assert-True -Condition (Test-Path -LiteralPath $reportPath) -Message 'broken lock 環境チェックレポートが作成されていません。'
+                $reportText = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8
+                Assert-True -Condition ($reportText.Contains('内容を読めませんでした')) -Message "broken lock の識別結果がレポートにありません: $reportText"
+                return '壊れた run.lock を内容読取不可として識別'
+            } finally {
+                if (Test-Path -LiteralPath $secureLockPath) {
+                    Remove-Item -LiteralPath $secureLockPath -Force -ErrorAction SilentlyContinue
+                }
+            }
         }
         '実行履歴台帳' {
             $historyPath = Join-Path $reportsRoot 'run-history.csv'
@@ -1039,6 +1263,59 @@ function Invoke-NamedScenario {
             Assert-True -Condition ($snapshot.ControlVersion -eq 'VER2') -Message "V2 BAT 直接変換の版表示が想定と異なります: $($snapshot.ControlVersion)"
             Assert-True -Condition ($snapshot.ResultRows -eq 6) -Message "V2 BAT 直接変換の行数が想定と異なります: $($snapshot.ResultRows)"
             return 'V2 BAT 引数付き直接変換に成功'
+        }
+        '壊れた RunReport をメニューで通知' {
+            $stubScriptPath = Join-Path $resultsRoot 'broken_run_report_stub.ps1'
+            $stubScript = @'
+param(
+    [string]$RunReportPath,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$IgnoredArgs
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$parent = Split-Path -Path $RunReportPath -Parent
+if (-not [string]::IsNullOrWhiteSpace($parent) -and -not (Test-Path -LiteralPath $parent)) {
+    New-Item -ItemType Directory -Path $parent -Force | Out-Null
+}
+[System.IO.File]::WriteAllText($RunReportPath, '{broken json', (New-Object System.Text.UTF8Encoding($false)))
+exit 0
+'@
+            [System.IO.File]::WriteAllText($stubScriptPath, $stubScript, (New-Object System.Text.UTF8Encoding($false)))
+
+            try {
+                $menuScript = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
+                $capture = Invoke-TestProcess -FilePath 'powershell' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', $menuScript, '-VersionMode', 'v2', '-RunScriptPath', $stubScriptPath, '-dummy') -TimeoutSeconds 120
+                $combined = (($capture.StdOut + [Environment]::NewLine + $capture.StdErr).Trim())
+                Assert-True -Condition ($combined.Contains('実行レポートを読み取れませんでした')) -Message "壊れた RunReport の通知が出ていません: $combined"
+                return '壊れた RunReport を利用者へ通知'
+            } finally {
+                if (Test-Path -LiteralPath $stubScriptPath) {
+                    Remove-Item -LiteralPath $stubScriptPath -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        '統合テスト補足は要約表示' {
+            $report = New-ReportMarkdown -StartedAt (Get-Date).AddSeconds(-5) -FinishedAt (Get-Date) -TestResults @(
+                [pscustomobject]@{
+                    Name         = 'noisy'
+                    Scenario     = 'dummy'
+                    Status       = 'PASS'
+                    DurationMs   = 10
+                    Details      = @(
+                        '2026-03-20 10:00:00 [INFO] 長いログ行'
+                        '最終的な要約メッセージ'
+                    )
+                    ErrorMessage = $null
+                    RetryCount   = 0
+                    RetriedBy    = ''
+                }
+            )
+            Assert-True -Condition ($report.Contains('最終的な要約メッセージ')) -Message "要約メッセージがレポートに反映されていません: $report"
+            Assert-True -Condition (-not $report.Contains('2026-03-20 10:00:00 [INFO] 長いログ行')) -Message "生ログがレポート補足欄へ残っています: $report"
+            return '補足欄は最後の要約だけを表示'
         }
         'input 自己参照' {
             Get-ChildItem -LiteralPath (Join-Path $projectRoot 'input') -Filter '*.pdf' -File -ErrorAction SilentlyContinue | Remove-Item -Force
