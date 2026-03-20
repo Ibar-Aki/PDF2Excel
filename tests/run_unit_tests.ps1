@@ -607,6 +607,15 @@ $testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 既定生成
     return 'TargetVersion 既定値 v2 と legacy v1 配布元を確認'
 }
 
+$testResults += Invoke-UnitTest -Name 'build_sample_pdfs は Wizard 体験用 V2 サンプルを生成する' -Body {
+    $scriptPath = Join-Path $projectRoot 'scripts\build_sample_pdfs.ps1'
+    $scriptText = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
+    Assert-True -Condition ($scriptText.Contains('function New-ProfileWizardDemoWorkbookAndPdf')) -Message 'Wizard 体験用サンプル生成関数が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains("'profile_wizard_demo'")) -Message 'profile_wizard_demo ディレクトリ定義が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('2026年03月_職人別作業日報_Wizard体験.pdf')) -Message 'Wizard 体験用 PDF 名が見つかりません。'
+    return 'profile_wizard_demo sample generation ready'
+}
+
 $testResults += Invoke-UnitTest -Name 'run_integration_tests は Suite 指定で smoke full legacy を切り替えられる' -Body {
     $integrationText = Get-Content -LiteralPath (Join-Path $projectRoot 'tests\run_integration_tests.ps1') -Raw -Encoding UTF8
     Assert-True -Condition ($integrationText.Contains("[ValidateSet('smoke', 'full', 'legacy', 'all')]")) -Message 'Suite の ValidateSet が見つかりません。'

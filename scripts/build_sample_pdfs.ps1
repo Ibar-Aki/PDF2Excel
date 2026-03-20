@@ -523,12 +523,46 @@ function New-ConstructionTransferReviewNegativeWorkbookAndPdf {
     }
 }
 
+function New-ProfileWizardDemoWorkbookAndPdf {
+    param(
+        [Parameter(Mandatory = $true)][string]$WorkbookPath,
+        [Parameter(Mandatory = $true)][string]$PdfPath
+    )
+
+    $headers = @('日付', '氏名', '班', '現場', '入場', '退場', '作業内容', '備考')
+    $rows = @(
+        @('2026/03/11', '佐藤悠', '鉄筋班A', '北棟1F', '8:20', '17:35', '配筋', '通常作業'),
+        @('2026/03/11', '高田葵', '型枠班B', '北棟2F', '8時30分', '18:00', '型枠調整', '午後から雨'),
+        @('2026/03/11', '村上蓮', '設備班C', '南棟B1', '09：05', '17：45', '配管確認', ''),
+        @('2026/03/11', '中村凛', '仕上班A', '南棟3F', '7:55', '16:40', '養生撤去', '翌日も継続')
+    )
+
+    Export-WorkbookAsSample -WorkbookPath $WorkbookPath -PdfPath $PdfPath -PopulateWorkbook {
+        param($worksheet)
+
+        $worksheet.Name = '職人別作業日報'
+        for ($column = 1; $column -le $headers.Count; $column += 1) {
+            $worksheet.Cells.Item(2, $column).Value2 = $headers[$column - 1]
+        }
+
+        for ($rowIndex = 0; $rowIndex -lt $rows.Count; $rowIndex += 1) {
+            $excelRow = $rowIndex + 3
+            for ($column = 1; $column -le $headers.Count; $column += 1) {
+                $worksheet.Cells.Item($excelRow, $column).Value2 = $rows[$rowIndex][$column - 1]
+            }
+        }
+
+        Apply-StandardLayout -Worksheet $worksheet -TitleText '2026年03月 職人別作業日報 (プロファイル雛形体験用)' -LastColumn 8 -LastRow 6
+    }
+}
+
 $managedDirectories = @(
     'attendance_jp',
     'sales_daily_jp',
     'inventory_jp',
     'inquiry_jp',
-    'construction_transfer_poc'
+    'construction_transfer_poc',
+    'profile_wizard_demo'
 )
 
 Ensure-Directory -Path $pdfRoot
@@ -634,6 +668,13 @@ $sampleDefinitions = @(
         WorkbookName      = '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.xlsx'
         PdfName           = '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf'
         CreateSample      = { param($workbookPath, $pdfPath) New-ConstructionTransferReviewNegativeWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath }
+    },
+    [pscustomobject]@{
+        PdfDirectory      = 'profile_wizard_demo'
+        SourceDirectory   = 'profile_wizard_demo'
+        WorkbookName      = '2026年03月_職人別作業日報_Wizard体験.xlsx'
+        PdfName           = '2026年03月_職人別作業日報_Wizard体験.pdf'
+        CreateSample      = { param($workbookPath, $pdfPath) New-ProfileWizardDemoWorkbookAndPdf -WorkbookPath $workbookPath -PdfPath $pdfPath }
     }
 )
 
@@ -649,7 +690,7 @@ foreach ($definition in $sampleDefinitions) {
 }
 
 $v1SampleDirectories = @('attendance_jp', 'sales_daily_jp', 'inventory_jp', 'inquiry_jp')
-$v2SampleDirectories = @('construction_transfer_poc')
+$v2SampleDirectories = @('construction_transfer_poc', 'profile_wizard_demo')
 
 foreach ($directoryName in $v1SampleDirectories) {
     $targetPdfDir = Join-Path (Join-Path $versionedSamplesRoot 'pdf') $directoryName

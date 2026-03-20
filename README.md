@@ -23,7 +23,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - 生データ転記案: [v2-data-transfer-proposal.md](docs/03-plans/03-v2-data-transfer-proposal.md)
 
 詳しい使い方は [ユーザーマニュアル](docs/01-current/01-user-manual.md) を参照してください。
-まず V2 を体験したい場合は [V2 サンプル体験ガイド](docs/02-guides/01-v2-sample-walkthrough.md) を参照してください。
+まず V2 を体験したい場合は [V2 サンプル体験ガイド](docs/02-guides/01-v2-sample-walkthrough.md) を参照してください。基本変換だけでなく、プロファイル雛形生成の体験も含みます。
 フォルダ構成は [project-layout.md](docs/01-current/03-project-layout.md) を参照してください。
 
 ## はじめに

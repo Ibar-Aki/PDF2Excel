@@ -67,8 +67,18 @@
   - 時刻表記ゆれあり
   - 現場名と氏名の微妙な揺れあり
   - `2ページ同一列` と `6ページ同一列` のパターンを同梱
-  - `ヘッダー不一致負例` で sameHeader 拒否を確認可能
-  - `時刻確認負例` で `24:30` と片側空の Review を確認可能
+- `ヘッダー不一致負例` で sameHeader 拒否を確認可能
+- `時刻確認負例` で `24:30` と片側空の Review を確認可能
+
+## プロファイル雛形生成体験サンプル
+
+- PDF: `common/pdf/profile_wizard_demo/2026年03月_職人別作業日報_Wizard体験.pdf`
+- 元Excel: `common/source/profile_wizard_demo/2026年03月_職人別作業日報_Wizard体験.xlsx`
+- 利用場所: `samples/v2/pdf/profile_wizard_demo`, `samples/v2/source/profile_wizard_demo`
+- 使いどころ:
+  - `VER2` の `[6] プロファイル雛形を作成` を体験したいとき
+  - 新しい 8 列帳票へ最小手順で対応を始める練習をしたいとき
+  - `正規化入場` / `正規化退場` の設定例を学びたいとき
 
 ## 再生成方法
 

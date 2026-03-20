@@ -13,6 +13,7 @@
 - `construction_transfer_poc` プロファイルで複数ページ帳票をまとめて扱えること
 - 正常行は `Result`、確認が必要な行は `Review`、処理不能な帳票は `Errors` に分かれること
 - `sameHeader` により、危ない自動結合を避けながら転記できること
+- `プロファイル雛形生成` を使って、新しい帳票へ最小手順で対応を始められること
 
 ## 2. 事前準備
 
@@ -22,6 +23,8 @@
 4. V2 サンプルの置き場所を確認します。
    - PDF: [samples/v2/pdf/construction_transfer_poc](../samples/v2/pdf/construction_transfer_poc)
    - 元帳票: [samples/v2/source/construction_transfer_poc](../samples/v2/source/construction_transfer_poc)
+   - 雛形生成体験用 PDF: [samples/v2/pdf/profile_wizard_demo](../../samples/v2/pdf/profile_wizard_demo)
+   - 雛形生成体験用 元帳票: [samples/v2/source/profile_wizard_demo](../../samples/v2/source/profile_wizard_demo)
    - プロファイル: [construction_transfer_poc.json](../../config/profiles/v2/construction_transfer_poc.json)
 
 ## 3. まず試すサンプル
@@ -33,6 +36,7 @@
 | 基本成功 | `2026年02月_作業員勤怠一覧_PoC.pdf` | 1 帳票を素直に取り込める | `Summary`, `Result` |
 | 複数ページ結合 | `2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf` | 同じ列の連続ページを 1 つの結果として扱える | `Summary`, `Result` |
 | 確認対象の分離 | `2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf` | 曖昧な時刻を `Review` へ逃がせる | `Review`, `Result` |
+| 新規帳票対応の入口 | `2026年03月_職人別作業日報_Wizard体験.pdf` | プロファイル雛形生成で新しい帳票に対応し始められる | `Result`, 生成した JSON |
 
 慣れたら次も試してください。
 
@@ -88,6 +92,47 @@
 - `Result` には通常処理できた行が残り、全件停止にならないこと
 - `時刻確認メモ` を見れば、どこを人が確認すべきか分かること
 
+### 4-4. プロファイル雛形生成パターン
+
+この体験では、既存の `construction_transfer_poc` ではなく、新しい帳票に対して `VER2` の雛形生成ウィザードを使います。  
+「新しい帳票が来たとき、どこから手を付ければよいか」を短時間で把握するためのサンプルです。
+
+使う PDF:
+
+- [2026年03月_職人別作業日報_Wizard体験.pdf](../../samples/v2/pdf/profile_wizard_demo/2026年03月_職人別作業日報_Wizard体験.pdf)
+
+1. [run_pdf2excel.bat](../../run_pdf2excel.bat) を起動し、`[6] プロファイル雛形を作成` を選びます。
+2. 次の内容で入力します。
+
+| 項目 | 入力例 |
+| --- | --- |
+| `ProfileName` | `wizard_shift_demo` |
+| `DisplayName` | `職人別作業日報 体験プロファイル` |
+| `ExpectedColumns` | `8` |
+| `HeaderRowsToSkip` | `1` |
+| `TargetRowCount` | `4` |
+| `AllowMoreColumns` | `N` |
+| `MultiPageMergeMode` | `single` |
+| `SourceFileColumnName` | `元ファイル名` |
+| `DataColumnPrefix` | `項目` |
+| `PreferredTableNameContains` | `職人別作業日報` |
+| `ReviewPersonColumn` | `2` |
+| `ReviewSiteColumn` | `4` |
+| `ReviewInTimeColumn` | `5` |
+| `ReviewOutTimeColumn` | `6` |
+| `NormalizedTimeColumns` | `5:正規化入場,6:正規化退場` |
+
+3. 作成後、`[9] プロファイルを選ぶ` から `職人別作業日報 体験プロファイル` を選びます。
+4. `[1] PDFファイルを選んで変換` を押し、[2026年03月_職人別作業日報_Wizard体験.pdf](../../samples/v2/pdf/profile_wizard_demo/2026年03月_職人別作業日報_Wizard体験.pdf) を選びます。
+5. 保存先を `output\\v2_sample_wizard_demo.xlsx` などで指定し、実行前チェックを確認して続行します。
+
+確認ポイント:
+
+- 生成した JSON が `config/profiles/v2` に保存されること
+- 8 列帳票でも、既存プロファイルを手編集せずに取り込みを始められること
+- `Result` に `元ファイル名`、8 列分の raw 値、`正規化入場`、`正規化退場`、`*_分` が出ること
+- `8時30分` や `09：05` のような表記ゆれでも、正規化列で扱いやすくなること
+
 ## 5. V2 の利便性を実感しやすい見どころ
 
 ### 見どころ 1: 1 回の操作で完了する
@@ -131,6 +176,7 @@ V2 は「何でも自動結合」ではありません。
 2. 複数ページ結合パターンで、V2 がページをまたいで使えることを確認する
 3. Review 分離パターンで、人が見るべき行だけ切り出せることを確認する
 4. ヘッダー不一致負例で、危ない帳票を無理に混ぜないことを理解する
+5. プロファイル雛形生成パターンで、新規帳票対応の入口を覚える
 
 ## 7. 利用者向けの説明で使いやすい要約
 
@@ -138,6 +184,8 @@ V2 は、PDF を Excel に変えるだけのツールではありません。
 「そのまま使える行」は `Result`、  
 「人が見るべき行」は `Review`、  
 「処理不能な帳票」は `Errors` に分けることで、現場確認を前提にした安全な転記ができます。
+
+さらに、新しい帳票が来たときも、`[6] プロファイル雛形を作成` から開始すれば、JSON をゼロから書かなくても初期対応に入れます。
 
 ## 8. 次に読む文書
 
