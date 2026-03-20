@@ -267,6 +267,62 @@ $testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は生データ�
     return "$($profile.DisplayName) / $($profile.ExpectedColumns)"
 }
 
+$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は危険な ProfileName を拒否する' -Body {
+    $thrown = $false
+    try {
+        Get-ProfileConfiguration -RequestedProfileName '..\default' | Out-Null
+    } catch {
+        $thrown = $true
+        Assert-True -Condition ($_.Exception.Message.Contains('使用できない文字')) -Message "例外メッセージが想定と異なります: $($_.Exception.Message)"
+    }
+
+    Assert-True -Condition $thrown -Message '危険な ProfileName が拒否されませんでした。'
+    return '危険な ProfileName を拒否'
+}
+
+$testResults += Invoke-UnitTest -Name 'Get-ProfileConfiguration は外部 ProfilePath を既定拒否し明示許可で読み込む' -Body {
+    $externalProfilePath = Join-Path $resultsRoot 'external-profile.json'
+    $externalProfileJson = @'
+{
+  "name": "external_profile",
+  "displayName": "External Profile",
+  "description": "External test profile",
+  "expectedColumns": 2,
+  "headerRowsToSkip": 0,
+  "targetRowCount": 1,
+  "allowMoreColumns": false,
+  "preferredTableKinds": [],
+  "preferredTableNameContains": [],
+  "preferredTableIdContains": [],
+  "sourceFileColumnName": "SourceFile",
+  "dataColumnPrefix": "Column"
+}
+'@
+
+    try {
+        [System.IO.File]::WriteAllText($externalProfilePath, $externalProfileJson, (New-Object System.Text.UTF8Encoding($false)))
+
+        $thrown = $false
+        try {
+            Get-ProfileConfiguration -RequestedProfilePath $externalProfilePath | Out-Null
+        } catch {
+            $thrown = $true
+            Assert-True -Condition ($_.Exception.Message.Contains('config/profiles 配下以外')) -Message "例外メッセージが想定と異なります: $($_.Exception.Message)"
+        }
+
+        Assert-True -Condition $thrown -Message '外部 ProfilePath が既定で拒否されませんでした。'
+
+        $profile = Get-ProfileConfiguration -RequestedProfilePath $externalProfilePath -AllowExternalProfilePath
+        Assert-True -Condition ($profile.Name -eq 'external_profile') -Message "外部 profile 名が想定と異なります: $($profile.Name)"
+        Assert-True -Condition ($profile.ProfilePath -eq $externalProfilePath) -Message "外部 profile の解決パスが想定と異なります: $($profile.ProfilePath)"
+        return $profile.Name
+    } finally {
+        if (Test-Path -LiteralPath $externalProfilePath) {
+            Remove-Item -LiteralPath $externalProfilePath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 $testResults += Invoke-UnitTest -Name 'TemplateBuilder VBA は V2 テンプレート生成マクロを持つ' -Body {
     $builderPath = Join-Path $projectRoot 'template\vba\PDF2ExcelTemplateBuilder.bas'
     $builderText = Get-Content -LiteralPath $builderPath -Raw -Encoding UTF8
@@ -280,7 +336,7 @@ $testResults += Invoke-UnitTest -Name 'TemplateBuilder VBA は V2 テンプレ�
 
 $testResults += Invoke-UnitTest -Name 'テンプレート再作成手順は配置先を明記する' -Body {
     $readmePath = Join-Path $projectRoot 'README.md'
-    $manualPath = Join-Path $projectRoot 'docs\user-manual.md'
+    $manualPath = Join-Path $projectRoot 'docs\01-current\01-user-manual.md'
     $handoffReadmePath = Join-Path $projectRoot 'handoff\sources\HANDOFF_README_V2_SOURCE.md'
     $readmeText = Get-Content -LiteralPath $readmePath -Raw -Encoding UTF8
     $manualText = Get-Content -LiteralPath $manualPath -Raw -Encoding UTF8
@@ -298,6 +354,7 @@ $testResults += Invoke-UnitTest -Name 'run_pdf2excel.ps1 は Secure モードで
     Assert-True -Condition ($scriptText.Contains("Get-LocalAppDataPdf2ExcelPath -ChildPath 'runtime'")) -Message 'LOCALAPPDATA 配下の runtime ルート解決が見つかりません。'
     Assert-True -Condition ($scriptText.Contains("Get-LocalAppDataPdf2ExcelPath -ChildPath 'logs'")) -Message 'LOCALAPPDATA 配下の logs ルート解決が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('[switch]$CheckEnvironment')) -Message 'CheckEnvironment オプションが見つかりません。'
+    Assert-True -Condition ($scriptText.Contains('[switch]$AllowExternalProfilePath')) -Message 'AllowExternalProfilePath オプションが見つかりません。'
     Assert-True -Condition ($scriptText.Contains('[string]$RunReportPath')) -Message 'RunReportPath オプションが見つかりません。'
     Assert-True -Condition ($scriptText.Contains('Join-Path $reportsDir ''run-history.csv''')) -Message 'run-history.csv の出力先が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('Join-Path $reportsDir ''environment-check.md''')) -Message 'environment-check.md の出力先が見つかりません。'
@@ -591,6 +648,47 @@ $testResults += Invoke-UnitTest -Name 'Write-RunReport は既存ファイルを�
         $script:logPath = $originalLogPath
         if (Test-Path -LiteralPath $tempReportPath) {
             Remove-Item -LiteralPath $tempReportPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+$testResults += Invoke-UnitTest -Name 'Append-RunHistory は既存 CSV を原子的に追記する' -Body {
+    $historyTestRoot = Join-Path $resultsRoot 'atomic-run-history'
+    $tempHistoryPath = Join-Path $historyTestRoot 'run-history.csv'
+    $originalRunHistoryPath = $script:runHistoryPath
+    $originalOutputFile = $OutputFile
+
+    try {
+        if (Test-Path -LiteralPath $historyTestRoot) {
+            Remove-Item -LiteralPath $historyTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        Ensure-Directory -Path $historyTestRoot
+        $script:runHistoryPath = $tempHistoryPath
+        $OutputFile = 'C:\Temp\first.xlsx'
+
+        Append-RunHistory -Status 'SUCCESS'
+        $runPlan = [pscustomobject]@{
+            Profile     = [pscustomobject]@{ Name = 'profile_b'; DisplayName = 'Profile B' }
+            SourceFiles = @('a.pdf', 'b.pdf')
+            OutputPath  = 'C:\Temp\second.xlsx'
+        }
+        Append-RunHistory -Status 'SUCCESS' -RunPlan $runPlan -SuccessPdfCount 2
+
+        $rows = @(Import-Csv -LiteralPath $tempHistoryPath)
+        Assert-True -Condition ($rows.Count -eq 2) -Message "run-history の件数が想定と異なります: $($rows.Count)"
+        Assert-True -Condition ($rows[0].Status -eq 'SUCCESS') -Message "1件目の Status が想定と異なります: $($rows[0].Status)"
+        Assert-True -Condition ($rows[1].ProfileName -eq 'profile_b') -Message "2件目の ProfileName が想定と異なります: $($rows[1].ProfileName)"
+        Assert-True -Condition ($rows[1].OutputPath -eq 'C:\Temp\second.xlsx') -Message "2件目の OutputPath が想定と異なります: $($rows[1].OutputPath)"
+
+        $tempFiles = @(Get-ChildItem -LiteralPath $historyTestRoot -Filter '*.tmp' -File -ErrorAction SilentlyContinue)
+        Assert-True -Condition ($tempFiles.Count -eq 0) -Message 'run-history の一時ファイルが残っています。'
+        return 'run-history の原子的追記を確認'
+    } finally {
+        $script:runHistoryPath = $originalRunHistoryPath
+        $OutputFile = $originalOutputFile
+        if (Test-Path -LiteralPath $historyTestRoot) {
+            Remove-Item -LiteralPath $historyTestRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }

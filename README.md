@@ -160,8 +160,13 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2exce
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\profile-v2.json -OutputFile C:\Work\result_v2.xlsx -NoConfirm
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2excel_v2.ps1 -InputFolder C:\Work\pdf -ProfilePath C:\Work\profile-v2.json -AllowExternalProfilePath -OutputFile C:\Work\result_v2.xlsx -NoConfirm
 ```
+
+補足:
+
+- `-ProfilePath` は既定では `config/profiles` 配下のみ許可します。
+- それ以外の場所にある一時 JSON を使うときだけ `-AllowExternalProfilePath` を付けてください。
 
 ## テンプレートを空ブックから再作成する
 

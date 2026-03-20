@@ -89,6 +89,10 @@
   - セキュリティ監査の詳細所見です。
 - [04-strict-security-audit-report.md](05-security/04-strict-security-audit-report.md)
   - 厳しめ評価での監査所見です。
+- [05-current-security-audit-report.md](05-security/05-current-security-audit-report.md)
+  - 2026-03-20 時点の現行実装に対するセキュリティ監査です。
+- [06-security-and-reliability-control-matrix.md](05-security/06-security-and-reliability-control-matrix.md)
+  - セキュリティ、バグ、エラー対策を一覧表で整理した台帳です。
 
 ## 90-internal
 

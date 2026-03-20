@@ -4,6 +4,7 @@
     [string]$OutputFile,
     [string]$ProfileName = 'default',
     [string]$ProfilePath,
+    [switch]$AllowExternalProfilePath,
     [ValidateSet('v1', 'v2')]
     [string]$VersionMode = 'v1',
     [ValidateSet('Standard', 'Secure')]
@@ -100,7 +101,8 @@ function Show-Usage {
         '  -InputFiles          変換対象の PDF ファイルを個別指定します。',
         '  -OutputFile          出力する xlsx の保存先を指定します。',
         '  -ProfileName         使用する帳票プロファイル名を指定します。ラッパー経由では版ごとの既定値が使われます。',
-        '  -ProfilePath         使用する帳票プロファイル JSON のフルパスを指定します。',
+        '  -ProfilePath         使用する帳票プロファイル JSON のフルパスを指定します。既定では config/profiles 配下のみ許可します。',
+        '  -AllowExternalProfilePath config/profiles 配下以外の JSON を明示的に許可します。保守用途向けです。',
         '  -LogLevel           ログの詳細度を INFO または DEBUG で指定します。既定値は INFO です。',
         '  -KeepInput           input 内の過去PDFを保持します。実際の変換は今回分だけ別 staging で実行します。VER2 Secure では無効です。',
         '  -RebuildTemplate     xlsm テンプレートを再生成します。',
@@ -510,6 +512,27 @@ function Write-TextFileAtomically {
     }
 }
 
+function Write-CsvRecordAtomically {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$CsvLines
+    )
+
+    $newContent = $null
+    if (-not (Test-Path -LiteralPath $Path)) {
+        $newContent = ($CsvLines -join [Environment]::NewLine)
+    } else {
+        $existingContent = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+        if ([string]::IsNullOrWhiteSpace($existingContent)) {
+            $newContent = ($CsvLines -join [Environment]::NewLine)
+        } else {
+            $newContent = $existingContent.TrimEnd("`r", "`n") + [Environment]::NewLine + $CsvLines[1]
+        }
+    }
+
+    Write-TextFileAtomically -Path $Path -Content $newContent
+}
+
 function Test-DirectoryWritable {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -561,11 +584,7 @@ function Append-RunHistory {
     }
 
     $csvLine = $record | ConvertTo-Csv -NoTypeInformation
-    if (-not (Test-Path -LiteralPath $script:runHistoryPath)) {
-        Set-Content -LiteralPath $script:runHistoryPath -Value ($csvLine -join [Environment]::NewLine) -Encoding UTF8
-    } else {
-        Add-Content -LiteralPath $script:runHistoryPath -Value $csvLine[1] -Encoding UTF8
-    }
+    Write-CsvRecordAtomically -Path $script:runHistoryPath -CsvLines $csvLine
 }
 
 function Test-ProcessIdAlive {
@@ -765,7 +784,8 @@ function Write-EnvironmentCheckReport {
 function Invoke-EnvironmentCheck {
     param(
         [string]$SelectedProfileName,
-        [string]$SelectedProfilePath
+        [string]$SelectedProfilePath,
+        [switch]$AllowExternalProfilePath
     )
 
     Set-RunStage -StageName '診断' -ConsoleMessage '実行環境を確認しています。'
@@ -806,7 +826,7 @@ function Invoke-EnvironmentCheck {
     $profileStatus = 'OK'
     $profileAction = ''
     try {
-        $resolvedProfile = Get-ProfileConfiguration -RequestedProfileName $SelectedProfileName -RequestedProfilePath $SelectedProfilePath
+        $resolvedProfile = Get-ProfileConfiguration -RequestedProfileName $SelectedProfileName -RequestedProfilePath $SelectedProfilePath -AllowExternalProfilePath:$AllowExternalProfilePath
         $profileDetail = "{0} ({1})" -f $resolvedProfile.DisplayName, $resolvedProfile.ProfilePath
     } catch {
         $profileStatus = 'FAIL'
@@ -1190,19 +1210,87 @@ function Get-OptionalProfileValue {
     return $property.Value
 }
 
+function Test-SafeProfileName {
+    param([string]$ProfileName)
+
+    if ([string]::IsNullOrWhiteSpace($ProfileName)) {
+        return $true
+    }
+
+    return $ProfileName -match '^[A-Za-z0-9_-]+$'
+}
+
+function Test-PathUnderRoot {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Root
+    )
+
+    $normalizedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $normalizedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+
+    if ($normalizedPath.Length -eq $normalizedRoot.Length) {
+        return [string]::Equals($normalizedPath, $normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)
+    }
+
+    return $normalizedPath.StartsWith($normalizedRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-AllowedProfileRoots {
+    $roots = New-Object System.Collections.Generic.List[string]
+    foreach ($candidate in @($profilesDir, (Join-Path $configDir 'profiles'))) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+
+        $normalized = [System.IO.Path]::GetFullPath($candidate).TrimEnd('\')
+        if (-not $roots.Contains($normalized)) {
+            $roots.Add($normalized)
+        }
+    }
+
+    return @($roots)
+}
+
 function Get-ProfileConfiguration {
     param(
         [string]$RequestedProfileName,
-        [string]$RequestedProfilePath
+        [string]$RequestedProfilePath,
+        [switch]$AllowExternalProfilePath
     )
 
     $resolvedProfilePath = $null
+    $allowedRoots = @(Get-AllowedProfileRoots)
     if (-not [string]::IsNullOrWhiteSpace($RequestedProfilePath)) {
         if (-not (Test-Path -LiteralPath $RequestedProfilePath)) {
             throw "指定したプロファイルが存在しません: $RequestedProfilePath"
         }
+
+        if (-not [string]::Equals([System.IO.Path]::GetExtension($RequestedProfilePath), '.json', [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "指定したプロファイルは JSON ではありません: $RequestedProfilePath"
+        }
+
         $resolvedProfilePath = (Resolve-Path -LiteralPath $RequestedProfilePath).Path
+        $isUnderAllowedRoots = $false
+        foreach ($allowedRoot in $allowedRoots) {
+            if (Test-PathUnderRoot -Path $resolvedProfilePath -Root $allowedRoot) {
+                $isUnderAllowedRoots = $true
+                break
+            }
+        }
+
+        if (-not $isUnderAllowedRoots) {
+            if (-not $AllowExternalProfilePath) {
+                throw "config/profiles 配下以外のプロファイルは既定では読み込めません: $resolvedProfilePath"
+            }
+
+            Write-Log ("外部プロファイル JSON を明示許可で読み込みます: {0}" -f $resolvedProfilePath) 'INFO'
+        }
     } else {
+        if (-not (Test-SafeProfileName -ProfileName $RequestedProfileName)) {
+            throw "プロファイル名に使用できない文字が含まれています: $RequestedProfileName"
+        }
+
         $profileFileName = if ([string]::IsNullOrWhiteSpace($RequestedProfileName)) { 'default.json' } else { "$RequestedProfileName.json" }
         $resolvedProfilePath = Join-Path $profilesDir $profileFileName
         if (-not (Test-Path -LiteralPath $resolvedProfilePath)) {
@@ -3195,7 +3283,7 @@ function Resolve-ExecutionPlan {
     $sourceFiles = @(Resolve-InputPdfFiles -SourceFolder $InputFolder -SourceFiles $inputFileCandidates)
     Write-Log ("対象 PDF 数: {0}" -f $sourceFiles.Count)
 
-    $profile = Get-ProfileConfiguration -RequestedProfileName $ProfileName -RequestedProfilePath $ProfilePath
+    $profile = Get-ProfileConfiguration -RequestedProfileName $ProfileName -RequestedProfilePath $ProfilePath -AllowExternalProfilePath:$AllowExternalProfilePath
     Register-SensitivePaths -Paths @($profile.ProfilePath)
     Write-Log ("使用プロファイル: {0}" -f $profile.DisplayName)
     Write-Log ("使用プロファイル JSON: {0}" -f $profile.ProfilePath) 'DEBUG'
@@ -3737,7 +3825,7 @@ $runErrorInfo = $null
 try {
     Write-Banner
     if ($CheckEnvironment) {
-        $environmentResult = Invoke-EnvironmentCheck -SelectedProfileName $ProfileName -SelectedProfilePath $ProfilePath
+    $environmentResult = Invoke-EnvironmentCheck -SelectedProfileName $ProfileName -SelectedProfilePath $ProfilePath -AllowExternalProfilePath:$AllowExternalProfilePath
         Write-RunReport -Status $(if ($environmentResult.HasFailures) { 'EnvironmentCheckFailed' } else { 'EnvironmentCheckSuccess' }) -Profile $null -ErrorMessage $(if ($environmentResult.HasFailures) { $environmentResult.Summary } else { $null }) -ActionHint $(if ($environmentResult.HasFailures) { '環境チェックレポートの対処欄を確認してください。' } else { '診断は正常終了しました。' }) -EnvironmentReportPath $script:environmentReportPath -RunHistoryPath $script:runHistoryPath
         if ($environmentResult.HasFailures) {
             throw '環境チェックで失敗項目が見つかりました。'

@@ -855,6 +855,7 @@ md は人間確認用、json は再利用・機械処理用という位置づけ
 - `-OutputFile`
 - `-ProfileName`
 - `-ProfilePath`
+- `-AllowExternalProfilePath`
 - `-KeepInput`
 - `-RebuildTemplate`
 - `-OpenOutput`
