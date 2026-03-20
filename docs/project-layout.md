@@ -17,7 +17,9 @@ PDF2Excel
 ├─ README.md                最初に読む概要
 ├─ docs/                    マニュアルと構成説明
 ├─ config/                  帳票プロファイルと整合性マニフェスト
+├─ handoff/                 配布 README ソースと生成済み配布物
 ├─ legacy/v1/               VER1 の旧導線・旧サンプル・旧プロファイル
+├─ samples/common/          共通サンプルの正本
 ├─ samples/v2/              VER2 サンプル
 ├─ scripts/                 PowerShell 本体と共通関数
 ├─ template/                Excel テンプレートと VBA
@@ -44,8 +46,14 @@ PDF2Excel
   - `VER2` 用プロファイルです。
 - `samples/v2`
   - `VER2` の生データ転記サンプルです。
+- `samples/common`
+  - 共通サンプルの正本です。再生成スクリプトはここを更新します。
 - `legacy/v1`
   - `VER1` の BAT、PowerShell ラッパー、旧プロファイル、旧サンプル、旧 handoff 定義を置きます。
+- `handoff/sources`
+  - 配布 README のソース文書です。
+- `handoff/generated`
+  - 生成済み配布フォルダと ZIP を置きます。
 - `output`
   - 変換後の Excel が出ます。
 - `%LOCALAPPDATA%\PDF2Excel\logs`
@@ -97,6 +105,8 @@ PDF2Excel
 - `logs` は主に開発・検証導線で使います。`VER2 Secure` の既定ログは `%LOCALAPPDATA%\PDF2Excel\logs` に出ます。
 - `config/profiles` は帳票ごとの設定置き場です。新しい帳票を増やすときはここへ JSON を追加します。
 - `legacy/v1` は通常運用で触らない領域です。`VER1` 保守が必要なときだけ参照してください。
+- `samples/common` は共通サンプルの正本です。`samples/v2` は利用者導線、`legacy/v1/samples` は互換確認用です。
+- `handoff/sources` と `handoff/generated` は混同しないでください。編集対象は source、配布対象は generated です。
 - `config/template-integrity.json` はテンプレートと VBA モジュールの整合性確認に使います。
 - `reports/run-history.csv` と `reports/environment-check.md` は運用レポートです。追跡対象にしない前提で扱います。
 - `tests/results` と `tests/work` はテストの生成物です。通常は空で問題ありません。

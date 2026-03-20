@@ -144,9 +144,9 @@
 実現性確認のため、1 件の PoC 帳票を作成しました。
 
 - PDF:
-  - [2026年02月_作業員勤怠一覧_PoC.pdf](../samples/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.pdf)
+  - [2026年02月_作業員勤怠一覧_PoC.pdf](../samples/common/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.pdf)
 - 元Excel:
-  - [2026年02月_作業員勤怠一覧_PoC.xlsx](../samples/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.xlsx)
+  - [2026年02月_作業員勤怠一覧_PoC.xlsx](../samples/common/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.xlsx)
 - プロファイル:
   - [construction_transfer_poc.json](../config/profiles/v2/construction_transfer_poc.json)
 
@@ -165,13 +165,13 @@
 
 追加サンプル:
 
-- [2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf](../samples/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf)
+- [2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf](../samples/common/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf)
   - 1 ページ目と 2 ページ目で同じ列構成を持つサンプルです。
-- [2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf](../samples/pdf/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf)
+- [2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf](../samples/common/pdf/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf)
   - 4 月、5 月、6 月分を想定した 6 ページ構成サンプルです。
-- [2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf](../samples/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf)
+- [2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf](../samples/common/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf)
   - 途中ページだけヘッダーを変え、sameHeader 拒否を確認する負例です。
-- [2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf](../samples/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf)
+- [2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf](../samples/common/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf)
   - `24:30` と片側時刻のみの行を入れ、Review の確認導線を検証する負例です。
 
 ## 7. 今回の PoC で確認したいこと

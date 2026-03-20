@@ -74,10 +74,16 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
   - 共通コア `run_pdf2excel.ps1` を `VER2 Secure` 既定で起動するラッパーです。
 - `legacy/v1/`
   - `VER1` の旧導線、旧プロファイル、旧サンプル、旧 handoff 定義をまとめた保守専用領域です。
+- `samples/common/`
+  - 共通のサンプル PDF と元 Excel の正本です。再生成スクリプトはここを更新します。
 - `docs/`
   - 利用マニュアルとフォルダ構成ガイドを置いています。
 - `samples/v2/`
   - `VER2` 用の生データ転記サンプルです。`2ページ同一列`、`6ページ同一列`、`ヘッダー不一致負例`、`時刻確認負例` を含みます。
+- `handoff/sources/`
+  - 配布 README のソース文書です。
+- `handoff/generated/`
+  - 生成済み配布フォルダと ZIP を置きます。
 - `scripts/run_pdf2excel.ps1`
   - PDF の staging、Excel 起動、Power Query 更新、xlsx 出力を行います。
 - `scripts/build_excel_template.ps1`
@@ -112,6 +118,7 @@ PDF2Excel
 ├─ run_pdf2excel_v2.bat
 ├─ README.md
 ├─ docs/
+├─ handoff/
 ├─ legacy/v1/
 ├─ samples/
 ├─ scripts/

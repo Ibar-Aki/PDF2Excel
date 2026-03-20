@@ -22,6 +22,8 @@ $japanesePdfDir = Join-Path $fixturesRoot 'japanese'
 $bulkPdfDir = Join-Path $fixturesRoot 'bulk50'
 $attendancePdfDir = Join-Path $fixturesRoot 'attendance_jp'
 $legacyRoot = Join-Path $projectRoot 'legacy\v1'
+$commonSamplesRoot = Join-Path $projectRoot 'samples\common'
+$commonSamplePdfRoot = Join-Path $commonSamplesRoot 'pdf'
 $sampleAttendancePdfDir = Join-Path $legacyRoot 'samples\pdf\attendance_jp'
 $sampleSalesPdfDir = Join-Path $legacyRoot 'samples\pdf\sales_daily_jp'
 $sampleInventoryPdfDir = Join-Path $legacyRoot 'samples\pdf\inventory_jp'
@@ -610,15 +612,15 @@ function Initialize-TestFixtures {
         (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf')
     )
     $sampleFallbackMap = [ordered]@{
-        (Join-Path $sampleAttendancePdfDir '2026年03月_勤怠管理表.pdf') = Join-Path $projectRoot 'samples\pdf\attendance_jp\2026年03月_勤怠管理表.pdf'
-        (Join-Path $sampleSalesPdfDir '2026-03-15_売上日報_東京店.pdf') = Join-Path $projectRoot 'samples\pdf\sales_daily_jp\2026-03-15_売上日報_東京店.pdf'
-        (Join-Path $sampleInventoryPdfDir '春季_在庫一覧_倉庫A.pdf') = Join-Path $projectRoot 'samples\pdf\inventory_jp\春季_在庫一覧_倉庫A.pdf'
-        (Join-Path $sampleInquiryPdfDir '2026年03月_問い合わせ管理表_第1週.pdf') = Join-Path $projectRoot 'samples\pdf\inquiry_jp\2026年03月_問い合わせ管理表_第1週.pdf'
-        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC.pdf') = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC.pdf'
-        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf') = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf'
-        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf') = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf'
-        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf') = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf'
-        (Join-Path $sampleConstructionPocPdfDir '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf') = Join-Path $projectRoot 'samples\pdf\construction_transfer_poc\2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf'
+        (Join-Path $sampleAttendancePdfDir '2026年03月_勤怠管理表.pdf') = Join-Path $commonSamplePdfRoot 'attendance_jp\2026年03月_勤怠管理表.pdf'
+        (Join-Path $sampleSalesPdfDir '2026-03-15_売上日報_東京店.pdf') = Join-Path $commonSamplePdfRoot 'sales_daily_jp\2026-03-15_売上日報_東京店.pdf'
+        (Join-Path $sampleInventoryPdfDir '春季_在庫一覧_倉庫A.pdf') = Join-Path $commonSamplePdfRoot 'inventory_jp\春季_在庫一覧_倉庫A.pdf'
+        (Join-Path $sampleInquiryPdfDir '2026年03月_問い合わせ管理表_第1週.pdf') = Join-Path $commonSamplePdfRoot 'inquiry_jp\2026年03月_問い合わせ管理表_第1週.pdf'
+        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC.pdf') = Join-Path $commonSamplePdfRoot 'construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC.pdf'
+        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf') = Join-Path $commonSamplePdfRoot 'construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf'
+        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf') = Join-Path $commonSamplePdfRoot 'construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf'
+        (Join-Path $sampleConstructionPocPdfDir '2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf') = Join-Path $commonSamplePdfRoot 'construction_transfer_poc\2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf'
+        (Join-Path $sampleConstructionPocPdfDir '2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf') = Join-Path $commonSamplePdfRoot 'construction_transfer_poc\2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf'
     }
     foreach ($destinationPath in $sampleFallbackMap.Keys) {
         $sourcePath = $sampleFallbackMap[$destinationPath]

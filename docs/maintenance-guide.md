@@ -40,6 +40,7 @@
 - 利用者の正式入口は `run_pdf2excel.bat` (`VER2 Secure`) を維持する
 - 実行時生成物は `output`、`%LOCALAPPDATA%\PDF2Excel\logs`、`reports`、`tests/results` に閉じ込める
 - `VER1` は [legacy/v1](../legacy/v1) に隔離し、通常導線・通常配布・通常回帰から外す
+- handoff は `sources` と `generated` に分け、編集対象と生成物を混在させない
 - ドキュメント更新をコード変更と同じタイミングで行う
 - 帳票認識精度の変更は、実PDFを使った目視確認まで行う
 - handoff 配布物はコード変更後に必ず再同期する
@@ -132,6 +133,8 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\build_handof
 - `legacy/v1` には `VER1` の BAT、PowerShell ラッパー、旧プロファイル、旧サンプル、旧 handoff README を残しています。
 - `VER1` を直す場合でも、正式導線の `run_pdf2excel.bat` や利用者向け文書を `VER1` 中心に戻さないでください。
 - `Shift_JIS` ミラーの `.sjis.bas` は配布時に必要なため維持します。正本は UTF-8 の `.bas` です。
+- `handoff/sources` は README ソース、`handoff/generated` は生成済み配布フォルダと ZIP です。
+- `samples/common` は共通サンプルの正本、`samples/v2` は利用者向け導線、`legacy/v1/samples` は互換確認用です。
 
 ## テスト手順
 

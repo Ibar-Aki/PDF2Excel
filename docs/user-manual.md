@@ -305,24 +305,24 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2exce
 1. `attendance_monthly_jp.json` をそのまま使って試します。
 2. 列数が 35 列前後、氏名や日別勤怠が横に並ぶ帳票に向いています。
 3. 6 人前後の月次勤怠表でまず少数テストしてから本番投入してください。
-4. すぐ試す場合は `samples/pdf/attendance_jp` のサンプル PDF を使えます。
+4. すぐ試す場合は `legacy/v1/samples/pdf/attendance_jp` のサンプル PDF を使えます。
 
 日本語売上日報を試す場合:
 
 1. `sales_daily_jp.json` を使います。
-2. `samples/pdf/sales_daily_jp` のサンプル PDF を使えます。
+2. `legacy/v1/samples/pdf/sales_daily_jp` のサンプル PDF を使えます。
 3. 店舗名、商品名、売上金額が `Result` に入るか確認します。
 
 日本語在庫一覧を試す場合:
 
 1. `inventory_list_jp.json` を使います。
-2. `samples/pdf/inventory_jp` のサンプル PDF を使えます。
+2. `legacy/v1/samples/pdf/inventory_jp` のサンプル PDF を使えます。
 3. 品番、品名、倉庫、在庫数が `Result` に入るか確認します。
 
 日本語問い合わせ管理表を試す場合:
 
 1. `inquiry_weekly_jp.json` を使います。
-2. `samples/pdf/inquiry_jp` のサンプル PDF を使えます。
+2. `legacy/v1/samples/pdf/inquiry_jp` のサンプル PDF を使えます。
 3. 顧客名、件名、状態が `Result` に入るか確認します。
 
 ## 7. 実行中に表示される内容の見方

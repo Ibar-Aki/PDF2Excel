@@ -5,8 +5,9 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $samplesRoot = Join-Path $projectRoot 'samples'
-$pdfRoot = Join-Path $samplesRoot 'pdf'
-$sourceRoot = Join-Path $samplesRoot 'source'
+$commonSamplesRoot = Join-Path $samplesRoot 'common'
+$pdfRoot = Join-Path $commonSamplesRoot 'pdf'
+$sourceRoot = Join-Path $commonSamplesRoot 'source'
 $versionedSamplesRoot = Join-Path $projectRoot 'legacy\v1\samples'
 $versionedSamplesRootV2 = Join-Path $samplesRoot 'v2'
 
@@ -669,7 +670,7 @@ foreach ($directoryName in $v2SampleDirectories) {
 }
 
 Write-Host '日本語サンプル帳票を作成しました。'
-Write-Host "PDF: $pdfRoot"
-Write-Host "元Excel: $sourceRoot"
+Write-Host "共通 PDF: $pdfRoot"
+Write-Host "共通 元Excel: $sourceRoot"
 Write-Host "V1 PDF: $(Join-Path $versionedSamplesRoot 'pdf')"
 Write-Host "V2 PDF: $(Join-Path $versionedSamplesRootV2 'pdf')"

@@ -6,6 +6,8 @@
 
 `samples` フォルダには、PDF2Excel の動作確認に使えるサンプル帳票を置いています。
 
+- `samples/common`
+  - 共通サンプルの正本です。再生成スクリプトはここを更新します。
 - `samples/v2`
   - 生データ転記向けサンプルです。
   - 最初に試す順番は [samples/v2/README.md](v2/README.md) を参照してください。
@@ -15,48 +17,48 @@
 
 ## legacy 用 日本語勤怠管理表サンプル
 
-- PDF: `pdf/attendance_jp/2026年03月_勤怠管理表.pdf`
-- PDF: `pdf/attendance_jp/2026年04月_勤怠管理表.pdf`
-- 元Excel: `source/attendance_jp/2026年03月_勤怠管理表.xlsx`
-- 元Excel: `source/attendance_jp/2026年04月_勤怠管理表.xlsx`
+- PDF: `../legacy/v1/samples/pdf/attendance_jp/2026年03月_勤怠管理表.pdf`
+- PDF: `../legacy/v1/samples/pdf/attendance_jp/2026年04月_勤怠管理表.pdf`
+- 元Excel: `../legacy/v1/samples/source/attendance_jp/2026年03月_勤怠管理表.xlsx`
+- 元Excel: `../legacy/v1/samples/source/attendance_jp/2026年04月_勤怠管理表.xlsx`
 - 推奨プロファイル: `../legacy/v1/config/profiles/attendance_monthly_jp.json`
 
 ## legacy 用 日本語売上日報サンプル
 
-- PDF: `pdf/sales_daily_jp/2026-03-15_売上日報_東京店.pdf`
-- PDF: `pdf/sales_daily_jp/2026-03-16_売上日報_横浜店.pdf`
-- 元Excel: `source/sales_daily_jp/2026-03-15_売上日報_東京店.xlsx`
-- 元Excel: `source/sales_daily_jp/2026-03-16_売上日報_横浜店.xlsx`
+- PDF: `../legacy/v1/samples/pdf/sales_daily_jp/2026-03-15_売上日報_東京店.pdf`
+- PDF: `../legacy/v1/samples/pdf/sales_daily_jp/2026-03-16_売上日報_横浜店.pdf`
+- 元Excel: `../legacy/v1/samples/source/sales_daily_jp/2026-03-15_売上日報_東京店.xlsx`
+- 元Excel: `../legacy/v1/samples/source/sales_daily_jp/2026-03-16_売上日報_横浜店.xlsx`
 - 推奨プロファイル: `../legacy/v1/config/profiles/sales_daily_jp.json`
 
 ## legacy 用 日本語在庫一覧サンプル
 
-- PDF: `pdf/inventory_jp/春季_在庫一覧_倉庫A.pdf`
-- PDF: `pdf/inventory_jp/春季_在庫一覧_倉庫B.pdf`
-- 元Excel: `source/inventory_jp/春季_在庫一覧_倉庫A.xlsx`
-- 元Excel: `source/inventory_jp/春季_在庫一覧_倉庫B.xlsx`
+- PDF: `../legacy/v1/samples/pdf/inventory_jp/春季_在庫一覧_倉庫A.pdf`
+- PDF: `../legacy/v1/samples/pdf/inventory_jp/春季_在庫一覧_倉庫B.pdf`
+- 元Excel: `../legacy/v1/samples/source/inventory_jp/春季_在庫一覧_倉庫A.xlsx`
+- 元Excel: `../legacy/v1/samples/source/inventory_jp/春季_在庫一覧_倉庫B.xlsx`
 - 推奨プロファイル: `../legacy/v1/config/profiles/inventory_list_jp.json`
 
 ## legacy 用 日本語問い合わせ管理表サンプル
 
-- PDF: `pdf/inquiry_jp/2026年03月_問い合わせ管理表_第1週.pdf`
-- PDF: `pdf/inquiry_jp/2026年03月_問い合わせ管理表_第2週.pdf`
-- 元Excel: `source/inquiry_jp/2026年03月_問い合わせ管理表_第1週.xlsx`
-- 元Excel: `source/inquiry_jp/2026年03月_問い合わせ管理表_第2週.xlsx`
+- PDF: `../legacy/v1/samples/pdf/inquiry_jp/2026年03月_問い合わせ管理表_第1週.pdf`
+- PDF: `../legacy/v1/samples/pdf/inquiry_jp/2026年03月_問い合わせ管理表_第2週.pdf`
+- 元Excel: `../legacy/v1/samples/source/inquiry_jp/2026年03月_問い合わせ管理表_第1週.xlsx`
+- 元Excel: `../legacy/v1/samples/source/inquiry_jp/2026年03月_問い合わせ管理表_第2週.xlsx`
 - 推奨プロファイル: `../legacy/v1/config/profiles/inquiry_weekly_jp.json`
 
 ## 生データ転記サンプル
 
-- PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.pdf`
-- PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf`
-- PDF: `pdf/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf`
-- PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf`
-- PDF: `pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf`
-- 元Excel: `source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.xlsx`
-- 元Excel: `source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.xlsx`
-- 元Excel: `source/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.xlsx`
-- 元Excel: `source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.xlsx`
-- 元Excel: `source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_時刻確認負例.xlsx`
+- PDF: `common/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.pdf`
+- PDF: `common/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.pdf`
+- PDF: `common/pdf/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.pdf`
+- PDF: `common/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.pdf`
+- PDF: `common/pdf/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_時刻確認負例.pdf`
+- 元Excel: `common/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.xlsx`
+- 元Excel: `common/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_2ページ同一列.xlsx`
+- 元Excel: `common/source/construction_transfer_poc/2026年04月-06月_作業員勤怠一覧_PoC_6ページ同一列.xlsx`
+- 元Excel: `common/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_ヘッダー不一致負例.xlsx`
+- 元Excel: `common/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC_時刻確認負例.xlsx`
 - 推奨プロファイル: `../config/profiles/v2/construction_transfer_poc.json`
 - 特徴:
   - タイトル 3 行 + 4 行目ヘッダー

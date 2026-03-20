@@ -228,8 +228,8 @@ Power Query では生データ転記を優先し、正規化列は Excel 読込�
 - [README.md](/C:/Work_Codex/PDF2Excel/README.md)
 - [user-manual.md](/C:/Work_Codex/PDF2Excel/docs/user-manual.md)
 - [v2-data-transfer-proposal.md](/C:/Work_Codex/PDF2Excel/docs/v2-data-transfer-proposal.md)
-- `handoff/PDF2Excel_V1_Minimal`
-- `handoff/PDF2Excel_V2_Minimal`
+- `handoff/generated/PDF2Excel_V1_Minimal`
+- `handoff/generated/PDF2Excel_V2_Minimal`
 - 各 zip 配布物
 
 ## 8. 残課題

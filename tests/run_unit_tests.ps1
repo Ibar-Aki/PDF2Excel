@@ -281,7 +281,7 @@ $testResults += Invoke-UnitTest -Name 'TemplateBuilder VBA は V2 テンプレ�
 $testResults += Invoke-UnitTest -Name 'テンプレート再作成手順は配置先を明記する' -Body {
     $readmePath = Join-Path $projectRoot 'README.md'
     $manualPath = Join-Path $projectRoot 'docs\user-manual.md'
-    $handoffReadmePath = Join-Path $projectRoot 'handoff\HANDOFF_README_V2_SOURCE.md'
+    $handoffReadmePath = Join-Path $projectRoot 'handoff\sources\HANDOFF_README_V2_SOURCE.md'
     $readmeText = Get-Content -LiteralPath $readmePath -Raw -Encoding UTF8
     $manualText = Get-Content -LiteralPath $manualPath -Raw -Encoding UTF8
     $handoffReadmeText = Get-Content -LiteralPath $handoffReadmePath -Raw -Encoding UTF8
@@ -431,10 +431,10 @@ $testResults += Invoke-UnitTest -Name 'handoff ビルドは VBA モジュール�
 }
 
 $testResults += Invoke-UnitTest -Name '生成済み V2 handoff は配布元ソースと同期している' -Body {
-    $handoffRoot = Join-Path $projectRoot 'handoff\PDF2Excel_V2_Minimal'
+    $handoffRoot = Join-Path $projectRoot 'handoff\generated\PDF2Excel_V2_Minimal'
     $pairs = @(
         @{
-            Source = Join-Path $projectRoot 'handoff\HANDOFF_README_V2_SOURCE.md'
+            Source = Join-Path $projectRoot 'handoff\sources\HANDOFF_README_V2_SOURCE.md'
             Generated = Join-Path $handoffRoot 'HANDOFF_README.md'
         },
         @{
@@ -539,14 +539,14 @@ $testResults += Invoke-UnitTest -Name 'new_profile_scaffold は v2 Wizard で主
     return 'v2 Wizard 雛形生成を確認'
 }
 
-$testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 限定再生成を受け付ける' -Body {
+$testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 既定生成と legacy v1 参照を持つ' -Body {
     $scriptPath = Join-Path $projectRoot 'scripts\build_handoff_package.ps1'
     $scriptText = Get-Content -LiteralPath $scriptPath -Raw -Encoding UTF8
     Assert-True -Condition ($scriptText.Contains("[ValidateSet('all', 'v1', 'v2')]")) -Message 'TargetVersion の ValidateSet が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('[string]$TargetVersion = ''v2''')) -Message 'TargetVersion の既定値が v2 ではありません。'
     Assert-True -Condition ($scriptText.Contains('$TargetVersion -ne ''all''')) -Message 'TargetVersion のフィルタ分岐が見つかりません。'
     Assert-True -Condition ($scriptText.Contains("RunBat = 'legacy\v1\run_pdf2excel_v1.bat'")) -Message 'legacy v1 BAT の参照が見つかりません。'
-    Assert-True -Condition ($scriptText.Contains("ReadmeSource = 'legacy\v1\handoff\HANDOFF_README_SOURCE.md'")) -Message 'legacy v1 handoff README の参照が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains("ReadmeSource = 'legacy\v1\handoff\sources\HANDOFF_README_SOURCE.md'")) -Message 'legacy v1 handoff README の参照が見つかりません。'
     return 'TargetVersion 既定値 v2 と legacy v1 配布元を確認'
 }
 

@@ -29,7 +29,11 @@ function Sync-VbaModuleEncodingMirror {
 }
 
 $handoffRoot = Join-Path $projectRoot 'handoff'
+$handoffSourcesRoot = Join-Path $handoffRoot 'sources'
+$handoffGeneratedRoot = Join-Path $handoffRoot 'generated'
 Ensure-Directory -Path $handoffRoot
+Ensure-Directory -Path $handoffSourcesRoot
+Ensure-Directory -Path $handoffGeneratedRoot
 
 Sync-VbaModuleEncodingMirror -Utf8Path (Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.bas') -ShiftJisPath (Join-Path $projectRoot 'template\vba\PDF2ExcelMacros.sjis.bas')
 Sync-VbaModuleEncodingMirror -Utf8Path (Join-Path $projectRoot 'template\vba\PDF2ExcelTemplateBuilder.bas') -ShiftJisPath (Join-Path $projectRoot 'template\vba\PDF2ExcelTemplateBuilder.sjis.bas')
@@ -37,24 +41,24 @@ Sync-VbaModuleEncodingMirror -Utf8Path (Join-Path $projectRoot 'template\vba\PDF
 $packageDefinitions = @(
     [pscustomobject]@{
         VersionMode = 'v1'
-        PackageRoot = Join-Path $handoffRoot 'PDF2Excel_V1_Minimal'
-        ZipPath = Join-Path $handoffRoot 'PDF2Excel_V1_Minimal.zip'
+        PackageRoot = Join-Path $handoffGeneratedRoot 'PDF2Excel_V1_Minimal'
+        ZipPath = Join-Path $handoffGeneratedRoot 'PDF2Excel_V1_Minimal.zip'
         TemplateFile = 'PDF2Excel_V1_Converter.xlsm'
         RunBat = 'legacy\v1\run_pdf2excel_v1.bat'
         MenuScript = 'legacy\v1\scripts\run_pdf2excel_menu_v1.ps1'
         RunScript = 'legacy\v1\scripts\run_pdf2excel_v1.ps1'
-        ReadmeSource = 'legacy\v1\handoff\HANDOFF_README_SOURCE.md'
+        ReadmeSource = 'legacy\v1\handoff\sources\HANDOFF_README_SOURCE.md'
         ProfileSourceDir = 'legacy\v1\config\profiles'
     },
     [pscustomobject]@{
         VersionMode = 'v2'
-        PackageRoot = Join-Path $handoffRoot 'PDF2Excel_V2_Minimal'
-        ZipPath = Join-Path $handoffRoot 'PDF2Excel_V2_Minimal.zip'
+        PackageRoot = Join-Path $handoffGeneratedRoot 'PDF2Excel_V2_Minimal'
+        ZipPath = Join-Path $handoffGeneratedRoot 'PDF2Excel_V2_Minimal.zip'
         TemplateFile = 'PDF2Excel_V2_Converter.xlsm'
         RunBat = 'run_pdf2excel_v2.bat'
         MenuScript = $null
         RunScript = $null
-        ReadmeSource = 'handoff\HANDOFF_README_V2_SOURCE.md'
+        ReadmeSource = 'handoff\sources\HANDOFF_README_V2_SOURCE.md'
         ProfileSourceDir = 'config\profiles\v2'
     }
 )

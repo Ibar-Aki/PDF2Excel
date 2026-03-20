@@ -84,6 +84,8 @@
 
 - [maintenance-guide.md](maintenance-guide.md)
   - テンプレート更新、`smoke/full/legacy` テスト、`legacy/v1` 保守、リリース前確認のための手順です。
+- [samples/README.md](../samples/README.md)
+  - `samples/common`、`samples/v2`、`legacy/v1/samples` の役割と使い分けをまとめた案内です。
 - [requirements-specification.md](requirements-specification.md)
   - 仕様確認や変更影響の整理を行うときの基準文書です。
 - [technical-description.md](technical-description.md)
