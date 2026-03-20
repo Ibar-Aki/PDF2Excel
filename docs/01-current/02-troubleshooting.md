@@ -1,4 +1,4 @@
-# PDF2Excel トラブルシューティング
+﻿# PDF2Excel トラブルシューティング
 
 - 作成日: 2026-03-13 00:51 JST
 - 作成者: Codex (GPT-5)
@@ -11,7 +11,7 @@
 ## まず最初に確認すること
 
 1. まず BAT メニューの `[0] 環境チェック` を実行し、`reports/environment-check.md` を確認する
-2. [Control シート](user-manual.md) の状態、件数、ログパスを確認する
+2. [Control シート](01-user-manual.md) の状態、件数、ログパスを確認する
 3. `reports/run-history.csv` に直近実行が残っているか確認する
 4. `%LOCALAPPDATA%\PDF2Excel\logs` または `logs` フォルダの最新ログを開く
 5. 元PDFがテキスト選択可能か確認する
@@ -165,7 +165,7 @@
 
 - Excel を手動ですべて閉じる
 - `output/runtime` が空になるか確認する
-- 再現する場合は [test-report.md](../reports/test-report.md) とログをあわせて確認する
+- 再現する場合は [test-report.md](../../reports/test-report.md) とログをあわせて確認する
 
 ### 7. 実行前チェックの内容が想定と違う
 

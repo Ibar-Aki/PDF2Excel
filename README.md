@@ -10,21 +10,21 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 関連ドキュメント:
 
 - 文書一覧: [index.md](docs/index.md)
-- 詳しい使い方: [user-manual.md](docs/user-manual.md)
-- V2 体験ガイド: [v2-sample-walkthrough.md](docs/v2-sample-walkthrough.md)
-- 構成説明: [project-layout.md](docs/project-layout.md)
-- 障害対応: [troubleshooting.md](docs/troubleshooting.md)
-- 保守手順: [maintenance-guide.md](docs/maintenance-guide.md)
-- 改善提案: [improvement-proposals.md](docs/improvement-proposals.md)
+- 詳しい使い方: [user-manual.md](docs/01-current/01-user-manual.md)
+- V2 体験ガイド: [v2-sample-walkthrough.md](docs/02-guides/01-v2-sample-walkthrough.md)
+- 構成説明: [project-layout.md](docs/01-current/03-project-layout.md)
+- 障害対応: [troubleshooting.md](docs/01-current/02-troubleshooting.md)
+- 保守手順: [maintenance-guide.md](docs/01-current/05-maintenance-guide.md)
+- 改善提案: [improvement-proposals.md](docs/03-plans/02-improvement-proposals.md)
 - 変更履歴: [CHANGELOG.md](CHANGELOG.md)
-- Copilot 実装委任: [copilot-implementation-report.md](docs/copilot-implementation-report.md)
-- 要件定義書: [requirements-specification.md](docs/requirements-specification.md)
-- 技術説明書: [technical-description.md](docs/technical-description.md)
-- 生データ転記案: [v2-data-transfer-proposal.md](docs/v2-data-transfer-proposal.md)
+- Copilot 実装委任: [copilot-implementation-report.md](docs/04-reports/04-copilot-implementation-report.md)
+- 要件定義書: [requirements-specification.md](docs/03-plans/01-requirements-specification.md)
+- 技術説明書: [technical-description.md](docs/01-current/04-technical-description.md)
+- 生データ転記案: [v2-data-transfer-proposal.md](docs/03-plans/03-v2-data-transfer-proposal.md)
 
-詳しい使い方は [ユーザーマニュアル](docs/user-manual.md) を参照してください。
-まず V2 を体験したい場合は [V2 サンプル体験ガイド](docs/v2-sample-walkthrough.md) を参照してください。
-フォルダ構成は [project-layout.md](docs/project-layout.md) を参照してください。
+詳しい使い方は [ユーザーマニュアル](docs/01-current/01-user-manual.md) を参照してください。
+まず V2 を体験したい場合は [V2 サンプル体験ガイド](docs/02-guides/01-v2-sample-walkthrough.md) を参照してください。
+フォルダ構成は [project-layout.md](docs/01-current/03-project-layout.md) を参照してください。
 
 ## はじめに
 

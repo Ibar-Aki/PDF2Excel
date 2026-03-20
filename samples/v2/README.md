@@ -5,7 +5,7 @@
 - 更新日: 2026-03-20
 
 このフォルダは、`VER2 Secure` の体験と検証に使うサンプル専用の案内です。  
-最短で試したい場合は、まず [V2 サンプル体験ガイド](../../docs/v2-sample-walkthrough.md) を開いてください。
+最短で試したい場合は、まず [V2 サンプル体験ガイド](../../docs/02-guides/01-v2-sample-walkthrough.md) を開いてください。
 
 ## 1. 使うプロファイル
 
@@ -42,5 +42,5 @@
 
 ## 6. 関連文書
 
-- 体験用手順書: [v2-sample-walkthrough.md](../../docs/v2-sample-walkthrough.md)
-- 利用者向け手順: [user-manual.md](../../docs/user-manual.md)
+- 体験用手順書: [01-v2-sample-walkthrough.md](../../docs/02-guides/01-v2-sample-walkthrough.md)
+- 利用者向け手順: [01-user-manual.md](../../docs/01-current/01-user-manual.md)

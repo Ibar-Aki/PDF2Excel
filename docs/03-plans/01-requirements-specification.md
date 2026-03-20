@@ -1,4 +1,4 @@
-# PDF2Excel 要件定義書
+﻿# PDF2Excel 要件定義書
 
 - 作成日: 2026-03-14 05:30 JST
 - 作成者: Codex (GPT-5)
@@ -7,7 +7,7 @@
 ## 1. 文書の目的
 
 本書は、PDF2Excel システムの目的、対象範囲、利用者価値、機能要件、非機能要件、運用条件を明確にし、利用者、運用担当者、保守担当者の認識をそろえるための要件定義書です。  
-本書は「何を実現するべきか」を定義する文書であり、詳細な実装方法は [technical-description.md](technical-description.md) に記載します。
+本書は「何を実現するべきか」を定義する文書であり、詳細な実装方法は [technical-description.md](../01-current/04-technical-description.md) に記載します。
 
 ## 2. 背景
 

@@ -1,4 +1,4 @@
-# Microsoft Copilot 実装委任レポート
+﻿# Microsoft Copilot 実装委任レポート
 
 - 作成日: 2026-03-13 22:25 JST
 - 作成者: Codex (GPT-5)
@@ -7,7 +7,7 @@
 ## 注記
 
 - 本文は実装委任の進め方メモです。現行の製品仕様そのものではありません。
-- 具体的な現行構成は [README.md](../README.md)、[user-manual.md](user-manual.md)、[technical-description.md](technical-description.md) を参照してください。
+- 具体的な現行構成は [README.md](../../README.md)、[user-manual.md](../01-current/01-user-manual.md)、[technical-description.md](../01-current/04-technical-description.md) を参照してください。
 
 ## 目的
 
@@ -130,7 +130,7 @@ Copilot に 1 回で大きな改修をさせると、次の失敗が起きやす
 - `template/vba/PDF2ExcelMacros.bas`
 - `tests/run_integration_tests.ps1`
 - `README.md`
-- `docs/user-manual.md`
+- `docs/01-current/01-user-manual.md`
 
 期待成果:
 
@@ -198,7 +198,7 @@ Copilot に 1 回で大きな改修をさせると、次の失敗が起きやす
 対象:
 
 - `scripts/run_pdf2excel.ps1`
-- `docs/troubleshooting.md`
+- `docs/01-current/02-troubleshooting.md`
 
 受け入れ条件:
 
@@ -219,9 +219,9 @@ Copilot に 1 回で大きな改修をさせると、次の失敗が起きやす
 
 - `tests/run_integration_tests.ps1`
 - `README.md`
-- `docs/user-manual.md`
-- `docs/project-layout.md`
-- `docs/troubleshooting.md`
+- `docs/01-current/01-user-manual.md`
+- `docs/01-current/03-project-layout.md`
+- `docs/01-current/02-troubleshooting.md`
 
 受け入れ条件:
 
@@ -288,7 +288,7 @@ Copilot に 1 回で大きな改修をさせると、次の失敗が起きやす
 - template/vba/PDF2ExcelMacros.bas
 - tests/run_integration_tests.ps1
 - README.md
-- docs/user-manual.md
+- docs/01-current/01-user-manual.md
 
 出力形式:
 - 変更対象ファイル一覧

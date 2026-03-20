@@ -1,4 +1,4 @@
-# PDF2Excel レビュー対応レポート
+﻿# PDF2Excel レビュー対応レポート
 
 - 作成日: 2026-03-14 09:25 JST
 - 作成者: Codex (GPT-5)
@@ -6,7 +6,7 @@
 
 ## 注記
 
-- 本文は当時のレビュー対応結果です。現在の運用導線と UI は [README.md](../README.md) と [user-manual.md](user-manual.md) を優先してください。
+- 本文は当時のレビュー対応結果です。現在の運用導線と UI は [README.md](../../README.md) と [user-manual.md](../01-current/01-user-manual.md) を優先してください。
 
 ## 目的
 

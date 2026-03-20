@@ -1,4 +1,4 @@
-# PDF2Excel セキュリティリスク対応レポート
+﻿# PDF2Excel セキュリティリスク対応レポート
 
 - 作成日: 2026-03-16 01:02 JST
 - 作成者: Codex (GPT-5)
@@ -8,11 +8,11 @@
 
 - 本文はリスク対応案の整理として残しています。
 - 現在は `VER2 Secure` の正式導線で、runtime / logs のローカル化、共有パス拒否、`input` 非同期、環境チェック、実行履歴の記録まで反映済みです。
-- 現行の運用手順は [README.md](../README.md) と [user-manual.md](user-manual.md) を優先してください。
+- 現行の運用手順は [README.md](../../README.md) と [user-manual.md](../01-current/01-user-manual.md) を優先してください。
 
 ## 1. 目的
 
-本レポートは、[system-risk-evaluation.md](system-risk-evaluation.md) で指摘されているセキュリティリスクについて、現状の問題、対応案、各案のメリット・デメリットを整理するものです。  
+本レポートは、[system-risk-evaluation.md](02-system-risk-evaluation.md) で指摘されているセキュリティリスクについて、現状の問題、対応案、各案のメリット・デメリットを整理するものです。  
 対象は主に次の論点です。
 
 - 一時作業領域 `staging` / `runtime` への機密データ残留

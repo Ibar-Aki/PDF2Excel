@@ -1,4 +1,4 @@
-# V2 TDD 実装報告
+﻿# V2 TDD 実装報告
 
 - 作成日: 2026-03-15 15:35 JST
 - 作成者: Codex (GPT-5)
@@ -6,7 +6,7 @@
 
 ## 注記
 
-- 本文は TDD 導入時点の実装記録です。現行の起動導線、環境チェック、プロファイル設定ウィザードの仕様は [README.md](../README.md) と [user-manual.md](user-manual.md) を優先してください。
+- 本文は TDD 導入時点の実装記録です。現行の起動導線、環境チェック、プロファイル設定ウィザードの仕様は [README.md](../../README.md) と [user-manual.md](../01-current/01-user-manual.md) を優先してください。
 
 ## 1. 概要
 
@@ -226,8 +226,8 @@ Power Query では生データ転記を優先し、正規化列は Excel 読込�
 更新または再生成したもの:
 
 - [README.md](/C:/Work_Codex/PDF2Excel/README.md)
-- [user-manual.md](/C:/Work_Codex/PDF2Excel/docs/user-manual.md)
-- [v2-data-transfer-proposal.md](/C:/Work_Codex/PDF2Excel/docs/v2-data-transfer-proposal.md)
+- [user-manual.md](/C:/Work_Codex/PDF2Excel/docs/01-current/01-user-manual.md)
+- [v2-data-transfer-proposal.md](/C:/Work_Codex/PDF2Excel/docs/03-plans/03-v2-data-transfer-proposal.md)
 - `handoff/generated/PDF2Excel_V1_Minimal`
 - `handoff/generated/PDF2Excel_V2_Minimal`
 - 各 zip 配布物

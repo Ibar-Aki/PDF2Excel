@@ -1,4 +1,4 @@
-# PDF2Excel 保守ガイド
+﻿# PDF2Excel 保守ガイド
 
 - 作成日: 2026-03-13 00:51 JST
 - 作成者: Codex (GPT-5)
@@ -10,37 +10,38 @@
 
 ## 対象ファイル
 
-- [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
+- [run_pdf2excel.ps1](../../scripts/run_pdf2excel.ps1)
   - 変換処理の中核
-- [pdf2excel.common.ps1](../scripts/pdf2excel.common.ps1)
+- [pdf2excel.common.ps1](../../scripts/pdf2excel.common.ps1)
   - 共通関数
-- [build_excel_template.ps1](../scripts/build_excel_template.ps1)
+- [build_excel_template.ps1](../../scripts/build_excel_template.ps1)
   - `xlsm` テンプレートの再生成
-- [new_profile_scaffold.ps1](../scripts/new_profile_scaffold.ps1)
+- [new_profile_scaffold.ps1](../../scripts/new_profile_scaffold.ps1)
   - `VER2` 設定ウィザード付きのプロファイル雛形生成
-- [template-integrity.json](../config/template-integrity.json)
+- [template-integrity.json](../../config/template-integrity.json)
   - テンプレート整合性確認用マニフェスト
-- [PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas)
+- [PDF2ExcelMacros.bas](../../template/vba/PDF2ExcelMacros.bas)
   - Excel マクロ
-- [PDF2ExcelMacros.sjis.bas](../template/vba/PDF2ExcelMacros.sjis.bas)
+- [PDF2ExcelMacros.sjis.bas](../../template/vba/PDF2ExcelMacros.sjis.bas)
   - Excel マクロの Shift_JIS ミラー
-- [PDF2ExcelTemplateBuilder.bas](../template/vba/PDF2ExcelTemplateBuilder.bas)
+- [PDF2ExcelTemplateBuilder.bas](../../template/vba/PDF2ExcelTemplateBuilder.bas)
   - 空ブックからテンプレート相当のシートと基本マクロを生成するブートストラップ用 VBA
-- [PDF2ExcelTemplateBuilder.sjis.bas](../template/vba/PDF2ExcelTemplateBuilder.sjis.bas)
+- [PDF2ExcelTemplateBuilder.sjis.bas](../../template/vba/PDF2ExcelTemplateBuilder.sjis.bas)
   - ブートストラップ用 VBA の Shift_JIS ミラー
-- [run_integration_tests.ps1](../tests/run_integration_tests.ps1)
+- [run_integration_tests.ps1](../../tests/run_integration_tests.ps1)
   - 統合テスト
-- [run_unit_tests.ps1](../tests/run_unit_tests.ps1)
+- [run_unit_tests.ps1](../../tests/run_unit_tests.ps1)
   - ユニットテスト
-- [README.md](../reports/README.md)
+- [README.md](../../reports/README.md)
   - `reports/` 配下の運用ルール
 
 ## 保守の基本方針
 
 - 利用者の正式入口は `run_pdf2excel.bat` (`VER2 Secure`) を維持する
 - 実行時生成物は `output`、`%LOCALAPPDATA%\PDF2Excel\logs`、`reports`、`tests/results` に閉じ込める
-- `VER1` は [legacy/v1](../legacy/v1) に隔離し、通常導線・通常配布・通常回帰から外す
+- `VER1` は [legacy/v1](../../legacy/v1) に隔離し、通常導線・通常配布・通常回帰から外す
 - handoff は `sources` と `generated` に分け、編集対象と生成物を混在させない
+- 文書は `docs/index.md` を入口に、`01-current` を正本、`03-plans` / `04-reports` / `05-security` を記録として扱う
 - ドキュメント更新をコード変更と同じタイミングで行う
 - 帳票認識精度の変更は、実PDFを使った目視確認まで行う
 - handoff 配布物はコード変更後に必ず再同期する
@@ -51,12 +52,12 @@
 
 見るべき場所:
 
-- [run_pdf2excel.bat](../run_pdf2excel.bat)
-- [run_pdf2excel_menu.ps1](../scripts/run_pdf2excel_menu.ps1)
-- [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
-- [legacy/v1/run_pdf2excel_v1.bat](../legacy/v1/run_pdf2excel_v1.bat)
-- [README.md](../README.md)
-- [user-manual.md](user-manual.md)
+- [run_pdf2excel.bat](../../run_pdf2excel.bat)
+- [run_pdf2excel_menu.ps1](../../scripts/run_pdf2excel_menu.ps1)
+- [run_pdf2excel.ps1](../../scripts/run_pdf2excel.ps1)
+- [legacy/v1/run_pdf2excel_v1.bat](../../legacy/v1/run_pdf2excel_v1.bat)
+- [README.md](../../README.md)
+- [01-user-manual.md](01-user-manual.md)
 
 注意:
 
@@ -67,12 +68,12 @@
 
 見るべき場所:
 
-- [build_excel_template.ps1](../scripts/build_excel_template.ps1)
-- [template-integrity.json](../config/template-integrity.json)
-- [PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas)
-- [PDF2ExcelMacros.sjis.bas](../template/vba/PDF2ExcelMacros.sjis.bas)
-- [PDF2ExcelTemplateBuilder.bas](../template/vba/PDF2ExcelTemplateBuilder.bas)
-- [PDF2ExcelTemplateBuilder.sjis.bas](../template/vba/PDF2ExcelTemplateBuilder.sjis.bas)
+- [build_excel_template.ps1](../../scripts/build_excel_template.ps1)
+- [template-integrity.json](../../config/template-integrity.json)
+- [PDF2ExcelMacros.bas](../../template/vba/PDF2ExcelMacros.bas)
+- [PDF2ExcelMacros.sjis.bas](../../template/vba/PDF2ExcelMacros.sjis.bas)
+- [PDF2ExcelTemplateBuilder.bas](../../template/vba/PDF2ExcelTemplateBuilder.bas)
+- [PDF2ExcelTemplateBuilder.sjis.bas](../../template/vba/PDF2ExcelTemplateBuilder.sjis.bas)
 
 手順:
 
@@ -104,7 +105,7 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\build_handof
 
 見るべき場所:
 
-- [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
+- [run_pdf2excel.ps1](../../scripts/run_pdf2excel.ps1)
   - `Get-StagingQueryFormula`
   - `Get-ResultQueryFormula`
   - `Get-ErrorsQueryFormula`
@@ -118,10 +119,10 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\build_handof
 
 見るべき場所:
 
-- [new_profile_scaffold.ps1](../scripts/new_profile_scaffold.ps1)
-- [run_pdf2excel_menu.ps1](../scripts/run_pdf2excel_menu.ps1)
-- [README.md](../README.md)
-- [user-manual.md](user-manual.md)
+- [new_profile_scaffold.ps1](../../scripts/new_profile_scaffold.ps1)
+- [run_pdf2excel_menu.ps1](../../scripts/run_pdf2excel_menu.ps1)
+- [README.md](../../README.md)
+- [01-user-manual.md](01-user-manual.md)
 
 注意:
 
@@ -135,6 +136,7 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\build_handof
 - `Shift_JIS` ミラーの `.sjis.bas` は配布時に必要なため維持します。正本は UTF-8 の `.bas` です。
 - `handoff/sources` は README ソース、`handoff/generated` は生成済み配布フォルダと ZIP です。
 - `samples/common` は共通サンプルの正本、`samples/v2` は利用者向け導線、`legacy/v1/samples` は互換確認用です。
+- 現行仕様は `docs/01-current` を優先し、`docs/03-plans`、`docs/04-reports`、`docs/05-security` は作成時点の記録として扱います。
 
 ## テスト手順
 
@@ -207,7 +209,7 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\tests\run_unit_tests
 
 - 新規 `*.md` は作成日と作成者を入れる
 - 既存 `*.md` は更新日を更新する
-- UI/UX に関わる変更は [README.md](../README.md) と [user-manual.md](user-manual.md) に反映する
+- UI/UX に関わる変更は [README.md](../../README.md) と [01-user-manual.md](01-user-manual.md) に反映する
 
 ## 迷ったときの優先順位
 

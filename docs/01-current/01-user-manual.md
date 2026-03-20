@@ -6,14 +6,14 @@
 
 補助資料:
 
-- 文書一覧: [index.md](index.md)
-- 構成ガイド: [project-layout.md](project-layout.md)
-- 障害対応: [troubleshooting.md](troubleshooting.md)
-- V2 体験ガイド: [v2-sample-walkthrough.md](v2-sample-walkthrough.md)
+- 文書一覧: [index.md](../index.md)
+- 構成ガイド: [project-layout.md](03-project-layout.md)
+- 障害対応: [troubleshooting.md](02-troubleshooting.md)
+- V2 体験ガイド: [v2-sample-walkthrough.md](../02-guides/01-v2-sample-walkthrough.md)
 - サンプルPDF: `samples/v2/pdf`
-- サンプル一覧: [../samples/README.md](../samples/README.md)
+- サンプル一覧: [samples/README.md](../../samples/README.md)
 
-V2 を最初に触る人は、まず [v2-sample-walkthrough.md](v2-sample-walkthrough.md) の順番で試すと、操作と利便性を短時間で把握できます。
+V2 を最初に触る人は、まず [v2-sample-walkthrough.md](../02-guides/01-v2-sample-walkthrough.md) の順番で試すと、操作と利便性を短時間で把握できます。
 
 ## 1. このツールの概要
 
@@ -45,7 +45,7 @@ V2 を最初に触る人は、まず [v2-sample-walkthrough.md](v2-sample-walkth
 
 ## 2. まずこれだけ見れば使える最短手順
 
-1. [run_pdf2excel.bat](../run_pdf2excel.bat) をローカル展開先からダブルクリックします。
+1. [run_pdf2excel.bat](../../run_pdf2excel.bat) をローカル展開先からダブルクリックします。
    - 正式運用では `VER2 Secure` のみを使います。
    - `run_pdf2excel.bat` はダブルクリックで必ず最初にメニューを表示します。
 2. 表示されたメニューで `1` を押します。
@@ -87,7 +87,7 @@ V2 を最初に触る人は、まず [v2-sample-walkthrough.md](v2-sample-walkth
 既存テンプレートがなくても、空の Excel ブックに VBA モジュール 2 つを取り込めば再作成できます。
 
 1. Excel で空のブックを開き、`xlsm` 形式で保存します。
-2. VBA エディターを開き、標準モジュールとして [../template/vba/PDF2ExcelMacros.bas](../template/vba/PDF2ExcelMacros.bas) と [../template/vba/PDF2ExcelTemplateBuilder.bas](../template/vba/PDF2ExcelTemplateBuilder.bas) を取り込みます。
+2. VBA エディターを開き、標準モジュールとして [PDF2ExcelMacros.bas](../../template/vba/PDF2ExcelMacros.bas) と [PDF2ExcelTemplateBuilder.bas](../../template/vba/PDF2ExcelTemplateBuilder.bas) を取り込みます。
 3. `BuildPDF2ExcelV2TemplateInActiveWorkbook` を実行します。
 4. `Control / Result / Errors / Summary / Review` が自動作成されます。
 5. `run_pdf2excel` で使う場合は、保存した `xlsm` を `template/PDF2Excel_V2_Converter.xlsm` に置き換えます。
@@ -509,7 +509,7 @@ OCR 前提の画像 PDF ではなく、文字を選択できるテキスト PDF 
 - テンプレート:
   - `template/PDF2Excel_V2_Converter.xlsm`
 - テスト結果レポート:
-- [test-report.md](../reports/test-report.md)
+- [test-report.md](../../reports/test-report.md)
 
 ## 13. テスト済みの内容
 
@@ -525,7 +525,7 @@ OCR 前提の画像 PDF ではなく、文字を選択できるテキスト PDF 
 - 一時ファイル清掃
 - Excel プロセス残留なし
 
-詳しい結果は [test-report.md](../reports/test-report.md) を参照してください。
+詳しい結果は [test-report.md](../../reports/test-report.md) を参照してください。
 
 ## 14. 最後に
 

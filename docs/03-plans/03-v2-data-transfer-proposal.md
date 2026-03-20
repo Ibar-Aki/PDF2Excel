@@ -1,4 +1,4 @@
-# V2 生データ転記提案
+﻿# V2 生データ転記提案
 
 - 作成日: 2026-03-15 10:25 JST
 - 作成者: Codex (GPT-5)
@@ -148,7 +148,7 @@
 - 元Excel:
   - [2026年02月_作業員勤怠一覧_PoC.xlsx](../samples/common/source/construction_transfer_poc/2026年02月_作業員勤怠一覧_PoC.xlsx)
 - プロファイル:
-  - [construction_transfer_poc.json](../config/profiles/v2/construction_transfer_poc.json)
+  - [construction_transfer_poc.json](../../config/profiles/v2/construction_transfer_poc.json)
 
 この PoC には、次を入れています。
 

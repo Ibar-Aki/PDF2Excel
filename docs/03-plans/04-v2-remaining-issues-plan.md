@@ -1,4 +1,4 @@
-# V2 残課題 実装計画
+﻿# V2 残課題 実装計画
 
 - 作成日: 2026-03-15 20:58 JST
 - 作成者: Codex (GPT-5)
@@ -7,11 +7,11 @@
 
 ## 注記
 
-- 本文は当時の残課題計画です。現状の完了状況は [CHANGELOG.md](../CHANGELOG.md) と [technical-description.md](technical-description.md) を優先してください。
+- 本文は当時の残課題計画です。現状の完了状況は [CHANGELOG.md](../../CHANGELOG.md) と [technical-description.md](../01-current/04-technical-description.md) を優先してください。
 
 ## 1. 概要
 
-V2 TDD 実装報告 ([v2-tdd-implementation-report.md](file:///C:/Work_Codex/PDF2Excel/docs/v2-tdd-implementation-report.md)) で挙げた残課題 4 件を実装する計画です。
+V2 TDD 実装報告 ([v2-tdd-implementation-report.md](/C:/Work_Codex/PDF2Excel/docs/04-reports/01-v2-tdd-implementation-report.md)) で挙げた残課題 4 件を実装する計画です。
 
 **設計方針**: 特定帳票向けの PoC を前提に実装しますが、プロファイル JSON の設定だけで任意の帳票に適用できる汎用設計とします。ハードコードされた列番号や帳票固有のロジックは一切入れません。
 

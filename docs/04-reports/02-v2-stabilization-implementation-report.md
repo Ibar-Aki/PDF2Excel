@@ -1,4 +1,4 @@
-# V2 安定化・時刻正規化 実装報告
+﻿# V2 安定化・時刻正規化 実装報告
 
 - 作成日: 2026-03-15 22:45 JST
 - 作成者: Codex (GPT-5)
@@ -6,7 +6,7 @@
 
 ## 注記
 
-- 本文は安定化実装時点の報告書です。現行の正式導線は `run_pdf2excel.bat` = `VER2 Secure` であり、最新仕様は [README.md](../README.md) と [technical-description.md](technical-description.md) を優先してください。
+- 本文は安定化実装時点の報告書です。現行の正式導線は `run_pdf2excel.bat` = `VER2 Secure` であり、最新仕様は [README.md](../../README.md) と [technical-description.md](../01-current/04-technical-description.md) を優先してください。
 
 ## 1. 目的
 

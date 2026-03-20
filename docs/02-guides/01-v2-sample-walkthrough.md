@@ -1,4 +1,4 @@
-# PDF2Excel V2 サンプル体験ガイド
+﻿# PDF2Excel V2 サンプル体験ガイド
 
 - 作成日: 2026-03-20 10:45 JST
 - 作成者: Codex (GPT-5)
@@ -18,11 +18,11 @@
 
 1. このフォルダをローカル PC に展開します。共有フォルダ上では実行しません。
 2. Excel(M365) デスクトップ版が起動できることを確認します。
-3. 必要なら [run_pdf2excel.bat](../run_pdf2excel.bat) を一度実行し、メニューの `[0] 環境チェック` を通してください。
+3. 必要なら [run_pdf2excel.bat](../../run_pdf2excel.bat) を一度実行し、メニューの `[0] 環境チェック` を通してください。
 4. V2 サンプルの置き場所を確認します。
    - PDF: [samples/v2/pdf/construction_transfer_poc](../samples/v2/pdf/construction_transfer_poc)
    - 元帳票: [samples/v2/source/construction_transfer_poc](../samples/v2/source/construction_transfer_poc)
-   - プロファイル: [construction_transfer_poc.json](../config/profiles/v2/construction_transfer_poc.json)
+   - プロファイル: [construction_transfer_poc.json](../../config/profiles/v2/construction_transfer_poc.json)
 
 ## 3. まず試すサンプル
 
@@ -45,7 +45,7 @@
 
 ### 4-1. 基本成功パターン
 
-1. [run_pdf2excel.bat](../run_pdf2excel.bat) をダブルクリックします。
+1. [run_pdf2excel.bat](../../run_pdf2excel.bat) をダブルクリックします。
 2. メニュー上部の現在プロファイルが `生データ転記サンプルプロファイル` であることを確認します。
    - 違う場合は `[9] プロファイルを選ぶ` から `construction_transfer_poc` を選びます。
 3. `[1] PDFファイルを選んで変換` を押します。
@@ -141,6 +141,6 @@ V2 は、PDF を Excel に変えるだけのツールではありません。
 
 ## 8. 次に読む文書
 
-- 操作全体を知りたい: [user-manual.md](user-manual.md)
-- V2 サンプル一覧を見たい: [samples/v2/README.md](../samples/v2/README.md)
-- サンプル全体の一覧を見たい: [samples/README.md](../samples/README.md)
+- 操作全体を知りたい: [user-manual.md](../01-current/01-user-manual.md)
+- V2 サンプル一覧を見たい: [samples/v2/README.md](../../samples/v2/README.md)
+- サンプル全体の一覧を見たい: [samples/README.md](../../samples/README.md)

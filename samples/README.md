@@ -11,7 +11,7 @@
 - `samples/v2`
   - 生データ転記向けサンプルです。
   - 最初に試す順番は [samples/v2/README.md](v2/README.md) を参照してください。
-  - 操作手順まで含めた体験ガイドは [docs/v2-sample-walkthrough.md](../docs/v2-sample-walkthrough.md) を参照してください。
+  - 操作手順まで含めた体験ガイドは [01-v2-sample-walkthrough.md](../docs/02-guides/01-v2-sample-walkthrough.md) を参照してください。
 - `legacy/v1/samples`
   - `VER1` の互換確認用サンプルです。通常利用者向けの導線からは外しています。
 
