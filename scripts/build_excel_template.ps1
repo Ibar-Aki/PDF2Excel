@@ -257,6 +257,7 @@ $sheet2 = $null
 $sheet3 = $null
 $sheet4 = $null
 $sheet5 = $null
+$shouldWriteTemplateIntegrityManifest = $false
 $resolvedTemplateVariant = Resolve-TemplateVariant -TemplatePath $TemplatePath -ExplicitVariant $TemplateVariant
 
 try {
@@ -286,7 +287,7 @@ try {
     $workbook.SaveAs($TemplatePath, 52)
     Import-VbaModule -Workbook $workbook -ModulePath $VbaModulePath
     $workbook.Save()
-    Write-TemplateIntegrityManifest
+    $shouldWriteTemplateIntegrityManifest = $true
 
     Write-Host "テンプレートを作成しました: $TemplatePath"
     Write-Host "テンプレート種別: $resolvedTemplateVariant"
@@ -315,4 +316,8 @@ try {
     $excel | Release-ComObject
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
+}
+
+if ($shouldWriteTemplateIntegrityManifest) {
+    Write-TemplateIntegrityManifest
 }

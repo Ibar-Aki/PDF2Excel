@@ -686,6 +686,57 @@ function Invoke-TestProcess {
     }
 }
 
+function Invoke-CmdBatchCapture {
+    param(
+        [Parameter(Mandatory = $true)][string]$BatchPath,
+        [string[]]$Arguments,
+        [string]$StdInText = '',
+        [int]$TimeoutSeconds = 60
+    )
+
+    $currentOutputEncoding = [Console]::OutputEncoding
+    $currentOutputEncodingPreference = $OutputEncoding
+
+    try {
+        [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+        $OutputEncoding = [Console]::OutputEncoding
+
+        if ($null -eq $Arguments) {
+            $Arguments = @()
+        }
+
+        if ([string]::IsNullOrEmpty($StdInText)) {
+            $commandLine = @('/c', $BatchPath) + $Arguments
+            return Invoke-TestProcess -FilePath 'cmd.exe' -ArgumentList $commandLine -TimeoutSeconds $TimeoutSeconds
+        }
+
+        $tempInputPath = Join-Path $resultsRoot ("cmd-input-{0}.txt" -f ([guid]::NewGuid().ToString('N')))
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($tempInputPath, $StdInText, $utf8NoBom)
+
+        try {
+            $escapedBatchPath = $BatchPath.Replace('"', '""')
+            $escapedArguments = @($Arguments | ForEach-Object {
+                if ($_ -match '\s') {
+                    '"' + ($_.Replace('"', '""')) + '"'
+                } else {
+                    $_
+                }
+            })
+            $escapedInputPath = $tempInputPath.Replace('"', '""')
+            $commandString = '(type "{0}") | "{1}" {2}' -f $escapedInputPath, $escapedBatchPath, ($escapedArguments -join ' ')
+            return Invoke-TestProcess -FilePath 'cmd.exe' -ArgumentList @('/c', $commandString) -TimeoutSeconds $TimeoutSeconds
+        } finally {
+            if (Test-Path -LiteralPath $tempInputPath) {
+                Remove-Item -LiteralPath $tempInputPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    } finally {
+        [Console]::OutputEncoding = $currentOutputEncoding
+        $OutputEncoding = $currentOutputEncodingPreference
+    }
+}
+
 function Get-TestCases {
     return @(
         [pscustomobject]@{ Name = 'テンプレート再生成'; Scenario = 'テンプレート再生成が成功し、xlsm の更新日時が進むこと'; TimeoutSeconds = 120 },
@@ -967,7 +1018,8 @@ function Invoke-NamedScenario {
             return 'v2 Wizard 生成を確認'
         }
         'V2 BAT ダブルクリックでメニュー表示' {
-            $combinedOutput = '8' | & cmd.exe /c $batScriptV2 2>&1 | Out-String
+            $capture = Invoke-CmdBatchCapture -BatchPath $batScriptV2 -StdInText "8`r`n" -TimeoutSeconds 60
+            $combinedOutput = (($capture.StdOut + [Environment]::NewLine + $capture.StdErr).Trim())
             Assert-True -Condition ($combinedOutput.Contains('PDF2Excel VER2')) -Message ('V2 BAT 無引数起動で VER2 タイトルが見つかりません: ' + $combinedOutput)
             Assert-True -Condition ($combinedOutput.Contains('[1] PDFファイルを選んで変換')) -Message ('V2 BAT 無引数起動でメニュー項目が見つかりません: ' + $combinedOutput)
             Assert-True -Condition ($combinedOutput.Contains('[9] プロファイルを選ぶ')) -Message ('V2 BAT 無引数起動でプロファイル選択項目が見つかりません: ' + $combinedOutput)

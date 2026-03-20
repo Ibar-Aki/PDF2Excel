@@ -207,7 +207,8 @@ function Save-MenuState {
         selectedProfileName = $SelectedProfileName
         updatedAt           = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
     } | ConvertTo-Json
-    Set-Content -LiteralPath $statePath -Value $payload -Encoding UTF8
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($statePath, $payload, $utf8)
 }
 
 function Resolve-CurrentProfileName {
