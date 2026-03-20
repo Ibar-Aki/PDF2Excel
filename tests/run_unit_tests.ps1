@@ -2,6 +2,7 @@
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$legacyRoot = Join-Path $projectRoot 'legacy\v1'
 $resultsRoot = Join-Path $projectRoot 'tests\results'
 $reportsRoot = Join-Path $projectRoot 'reports'
 $jsonReportPath = Join-Path $resultsRoot 'unit-test-results.json'
@@ -355,9 +356,9 @@ $testResults += Invoke-UnitTest -Name 'V2 BAT は ASCII かつ RemoteSigned で�
 
 $testResults += Invoke-UnitTest -Name '正式運用 BAT は V2 Secure を起動し RemoteSigned に統一されている' -Body {
     $batText = Get-Content -LiteralPath (Join-Path $projectRoot 'run_pdf2excel.bat') -Raw -Encoding ASCII
-    $v1Bat = Get-Content -LiteralPath (Join-Path $projectRoot 'run_pdf2excel_v1.bat') -Raw -Encoding ASCII
-    $v1Script = Get-Content -LiteralPath (Join-Path $projectRoot 'scripts\run_pdf2excel_v1.ps1') -Raw -Encoding UTF8
-    $v1Menu = Get-Content -LiteralPath (Join-Path $projectRoot 'scripts\run_pdf2excel_menu_v1.ps1') -Raw -Encoding UTF8
+    $v1Bat = Get-Content -LiteralPath (Join-Path $legacyRoot 'run_pdf2excel_v1.bat') -Raw -Encoding ASCII
+    $v1Script = Get-Content -LiteralPath (Join-Path $legacyRoot 'scripts\run_pdf2excel_v1.ps1') -Raw -Encoding UTF8
+    $v1Menu = Get-Content -LiteralPath (Join-Path $legacyRoot 'scripts\run_pdf2excel_menu_v1.ps1') -Raw -Encoding UTF8
     Assert-True -Condition ($batText.Contains('ExecutionPolicy RemoteSigned')) -Message '正式運用 BAT に RemoteSigned がありません。'
     Assert-True -Condition ($batText.Contains('-VersionMode v2')) -Message '正式運用 BAT が V2 を起動していません。'
     Assert-True -Condition ($batText.Contains('-DefaultSecurityMode Secure')) -Message '正式運用 BAT が Secure を既定化していません。'
@@ -366,7 +367,8 @@ $testResults += Invoke-UnitTest -Name '正式運用 BAT は V2 Secure を起動�
         Assert-True -Condition ($text.Contains('ExecutionPolicy RemoteSigned')) -Message 'V1 導線に RemoteSigned がありません。'
         Assert-True -Condition (-not $text.Contains('ExecutionPolicy Bypass')) -Message 'V1 導線に Bypass が残っています。'
     }
-    return 'run_pdf2excel.bat は V2 Secure、開発導線も RemoteSigned を確認'
+    Assert-True -Condition ($v1Menu.Contains('ProfileDirOverride')) -Message 'V1 legacy メニューが profile override を渡していません。'
+    return 'run_pdf2excel.bat は V2 Secure、legacy 導線も RemoteSigned を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'テストとビルド導線に Bypass が残っていない' -Body {
@@ -409,10 +411,10 @@ $testResults += Invoke-UnitTest -Name '共通メニューは共有パス制約�
 $testResults += Invoke-UnitTest -Name '共通メニューは完了メッセージを版別に分ける' -Body {
     $menuPath = Join-Path $projectRoot 'scripts\run_pdf2excel_menu.ps1'
     $menuText = Get-Content -LiteralPath $menuPath -Raw -Encoding UTF8
-    Assert-True -Condition ($menuText.Contains('$completionSheetMessage = if ($VersionMode -eq ''v2'')')) -Message '完了メッセージの版別分岐がありません。'
+    Assert-True -Condition ($menuText.Contains('$completionSheetMessage = if ([string]::IsNullOrWhiteSpace($CompletionSheetMessageOverride))')) -Message '完了メッセージの override 分岐がありません。'
     Assert-True -Condition ($menuText.Contains('Result / Review / Errors / Summary を確認してください。')) -Message 'V2 用完了メッセージがありません。'
     Assert-True -Condition ($menuText.Contains('Result / Errors / Summary を確認してください。')) -Message 'V1 用完了メッセージがありません。'
-    return 'V1/V2 完了メッセージ分岐を確認'
+    return 'V1/V2 完了メッセージと override 分岐を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'handoff ビルドは VBA モジュールを同梱する' -Body {
@@ -543,7 +545,18 @@ $testResults += Invoke-UnitTest -Name 'build_handoff_package は V2 限定再生
     Assert-True -Condition ($scriptText.Contains("[ValidateSet('all', 'v1', 'v2')]")) -Message 'TargetVersion の ValidateSet が見つかりません。'
     Assert-True -Condition ($scriptText.Contains('[string]$TargetVersion = ''v2''')) -Message 'TargetVersion の既定値が v2 ではありません。'
     Assert-True -Condition ($scriptText.Contains('$TargetVersion -ne ''all''')) -Message 'TargetVersion のフィルタ分岐が見つかりません。'
-    return 'TargetVersion フィルタを確認'
+    Assert-True -Condition ($scriptText.Contains("RunBat = 'legacy\v1\run_pdf2excel_v1.bat'")) -Message 'legacy v1 BAT の参照が見つかりません。'
+    Assert-True -Condition ($scriptText.Contains("ReadmeSource = 'legacy\v1\handoff\HANDOFF_README_SOURCE.md'")) -Message 'legacy v1 handoff README の参照が見つかりません。'
+    return 'TargetVersion 既定値 v2 と legacy v1 配布元を確認'
+}
+
+$testResults += Invoke-UnitTest -Name 'run_integration_tests は Suite 指定で smoke full legacy を切り替えられる' -Body {
+    $integrationText = Get-Content -LiteralPath (Join-Path $projectRoot 'tests\run_integration_tests.ps1') -Raw -Encoding UTF8
+    Assert-True -Condition ($integrationText.Contains("[ValidateSet('smoke', 'full', 'legacy', 'all')]")) -Message 'Suite の ValidateSet が見つかりません。'
+    Assert-True -Condition ($integrationText.Contains('[string]$Suite = ''smoke''')) -Message 'Suite の既定値が smoke ではありません。'
+    Assert-True -Condition ($integrationText.Contains('function Get-SelectedTestCases')) -Message 'Suite 切り替え関数が見つかりません。'
+    Assert-True -Condition ($integrationText.Contains('- 実行スイート: {0}')) -Message 'レポートの実行スイート表示が見つかりません。'
+    return 'Suite switch / report summary を確認'
 }
 
 $testResults += Invoke-UnitTest -Name 'run.lock は匿名化され、Secure cleanup 失敗時の警告を持つ' -Body {
@@ -918,8 +931,12 @@ $testResults += Invoke-UnitTest -Name 'run_pdf2excel.bat は ASCII のみで構�
 }
 
 $testResults += Invoke-UnitTest -Name 'run_pdf2excel_v1.bat と run_pdf2excel_v2.bat は ASCII のみで構成される' -Body {
-    foreach ($batName in @('run_pdf2excel_v1.bat', 'run_pdf2excel_v2.bat')) {
-        $batPath = Join-Path $projectRoot $batName
+    $batPaths = @(
+        (Join-Path $legacyRoot 'run_pdf2excel_v1.bat'),
+        (Join-Path $projectRoot 'run_pdf2excel_v2.bat')
+    )
+    foreach ($batPath in $batPaths) {
+        $batName = Split-Path -Leaf $batPath
         $bytes = [System.IO.File]::ReadAllBytes($batPath)
         $nonAscii = @($bytes | Where-Object { $_ -gt 127 })
         Assert-True -Condition ($nonAscii.Count -eq 0) -Message "$batName に非 ASCII バイトが含まれています。"
@@ -936,8 +953,12 @@ $testResults += Invoke-UnitTest -Name 'run_pdf2excel_menu.ps1 は UTF-8 BOM で�
 }
 
 $testResults += Invoke-UnitTest -Name '版別メニュー PowerShell は UTF-8 BOM で保存される' -Body {
-    foreach ($menuName in @('run_pdf2excel_menu_v1.ps1', 'run_pdf2excel_menu_v2.ps1')) {
-        $menuPath = Join-Path $projectRoot ("scripts\{0}" -f $menuName)
+    $menuPaths = @(
+        (Join-Path $legacyRoot 'scripts\run_pdf2excel_menu_v1.ps1'),
+        (Join-Path $projectRoot 'scripts\run_pdf2excel_menu_v2.ps1')
+    )
+    foreach ($menuPath in $menuPaths) {
+        $menuName = Split-Path -Leaf $menuPath
         $bytes = [System.IO.File]::ReadAllBytes($menuPath)
         Assert-True -Condition ($bytes.Length -ge 3) -Message "$menuName が空です。"
         Assert-True -Condition ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) -Message "$menuName が UTF-8 BOM ではありません。"

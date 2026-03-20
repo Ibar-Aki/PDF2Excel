@@ -10,7 +10,7 @@
 - 構成ガイド: [project-layout.md](project-layout.md)
 - 障害対応: [troubleshooting.md](troubleshooting.md)
 - V2 体験ガイド: [v2-sample-walkthrough.md](v2-sample-walkthrough.md)
-- サンプルPDF: `samples/v1/pdf`, `samples/v2/pdf`
+- サンプルPDF: `samples/v2/pdf`
 - サンプル一覧: [../samples/README.md](../samples/README.md)
 
 V2 を最初に触る人は、まず [v2-sample-walkthrough.md](v2-sample-walkthrough.md) の順番で試すと、操作と利便性を短時間で把握できます。
@@ -403,11 +403,12 @@ PowerShell 実行時には、主に次の情報が表示されます。
 - `24:00` / `24：00` / `24:00:00` は有効値として扱います。`24:30` は `要確認` です。
 - `Result` 側は全件、`Review` 側は確認優先行という役割分担です。
 
-### 統合テスト全件実行
+### 保守者向けテスト運用
 
-- `tests/run_integration_tests.ps1` を `CaseName` なしで実行すると、定義済みシナリオを全件実行します。
+- 通常回帰は `tests/run_integration_tests.ps1 -Suite smoke` を使います。
+- リリース前の広めの確認は `tests/run_integration_tests.ps1 -Suite full` を使います。
+- `VER1` 互換確認は `tests/run_integration_tests.ps1 -Suite legacy` で保守時だけ実行します。
 - 既知の Excel COM 一時失敗だけは 1 回だけ再試行します。再試行したケースはレポートの `RetryCount` / `RetriedBy` で確認できます。
-- それ以外の失敗は再試行せず、そのまま失敗として残します。
 
 ### Errors シート
 

@@ -40,10 +40,11 @@ $packageDefinitions = @(
         PackageRoot = Join-Path $handoffRoot 'PDF2Excel_V1_Minimal'
         ZipPath = Join-Path $handoffRoot 'PDF2Excel_V1_Minimal.zip'
         TemplateFile = 'PDF2Excel_V1_Converter.xlsm'
-        RunBat = 'run_pdf2excel_v1.bat'
-        MenuScript = 'run_pdf2excel_menu_v1.ps1'
-        RunScript = 'run_pdf2excel_v1.ps1'
-        ReadmeSource = 'handoff\HANDOFF_README_SOURCE.md'
+        RunBat = 'legacy\v1\run_pdf2excel_v1.bat'
+        MenuScript = 'legacy\v1\scripts\run_pdf2excel_menu_v1.ps1'
+        RunScript = 'legacy\v1\scripts\run_pdf2excel_v1.ps1'
+        ReadmeSource = 'legacy\v1\handoff\HANDOFF_README_SOURCE.md'
+        ProfileSourceDir = 'legacy\v1\config\profiles'
     },
     [pscustomobject]@{
         VersionMode = 'v2'
@@ -54,6 +55,7 @@ $packageDefinitions = @(
         MenuScript = $null
         RunScript = $null
         ReadmeSource = 'handoff\HANDOFF_README_V2_SOURCE.md'
+        ProfileSourceDir = 'config\profiles\v2'
     }
 )
 
@@ -85,15 +87,15 @@ foreach ($package in $packageDefinitions) {
 
     if (-not [string]::IsNullOrWhiteSpace($package.RunScript)) {
         $filesToCopy += @{
-            Source = Join-Path $projectRoot ("scripts\{0}" -f $package.RunScript)
-            Destination = Join-Path $package.PackageRoot ("scripts\{0}" -f $package.RunScript)
+            Source = Join-Path $projectRoot $package.RunScript
+            Destination = Join-Path $package.PackageRoot ("scripts\{0}" -f ([System.IO.Path]::GetFileName($package.RunScript)))
         }
     }
 
     if (-not [string]::IsNullOrWhiteSpace($package.MenuScript)) {
         $filesToCopy += @{
-            Source = Join-Path $projectRoot ("scripts\{0}" -f $package.MenuScript)
-            Destination = Join-Path $package.PackageRoot ("scripts\{0}" -f $package.MenuScript)
+            Source = Join-Path $projectRoot $package.MenuScript
+            Destination = Join-Path $package.PackageRoot ("scripts\{0}" -f ([System.IO.Path]::GetFileName($package.MenuScript)))
         }
     }
 
@@ -101,7 +103,7 @@ foreach ($package in $packageDefinitions) {
         Copy-Item -LiteralPath $file.Source -Destination $file.Destination -Force
     }
 
-    Get-ChildItem -LiteralPath (Join-Path $projectRoot ("config\profiles\{0}" -f $package.VersionMode)) -Filter '*.json' -File | ForEach-Object {
+    Get-ChildItem -LiteralPath (Join-Path $projectRoot $package.ProfileSourceDir) -Filter '*.json' -File | ForEach-Object {
         Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $package.PackageRoot ("config\profiles\{0}\{1}" -f $package.VersionMode, $_.Name)) -Force
     }
 

@@ -7,7 +7,7 @@ $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $samplesRoot = Join-Path $projectRoot 'samples'
 $pdfRoot = Join-Path $samplesRoot 'pdf'
 $sourceRoot = Join-Path $samplesRoot 'source'
-$versionedSamplesRoot = Join-Path $samplesRoot 'v1'
+$versionedSamplesRoot = Join-Path $projectRoot 'legacy\v1\samples'
 $versionedSamplesRootV2 = Join-Path $samplesRoot 'v2'
 
 function Ensure-Directory {

@@ -41,7 +41,7 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - 正式運用では、出力された `xlsx` だけを部署共有へ移動してください。スクリプトやテンプレートを共有フォルダ上で直接更新しないでください。
 - ダブルクリック起動では、必ず最初にメニューを表示します。
 
-`VER1` の BAT / PowerShell ラッパーは開発・検証用として repo に残していますが、正式運用の案内対象にはしません。
+`VER1` の BAT / PowerShell ラッパーと旧サンプルは [legacy/v1](legacy/v1) へ隔離しています。正式運用・通常配布・通常回帰の案内対象にはしません。
 
 画面に出る番号メニューから選ぶだけで変換できます。
 
@@ -69,15 +69,13 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 - `scripts/run_pdf2excel_menu.ps1`
   - 日本語の共通対話メニューです。既定では `VER2` を前提に動作します。
 - `scripts/new_profile_scaffold.ps1`
-  - v1/v2 のプロファイル雛形を生成する保守者向けスクリプトです。`VER2` では設定ウィザード付きで主要な抽出設定を順番に入力できます。
+  - 主に `VER2` のプロファイル雛形を生成する保守者向けスクリプトです。`VER2` では設定ウィザード付きで主要な抽出設定を順番に入力できます。
 - `scripts/run_pdf2excel_v2.ps1`
   - 共通コア `run_pdf2excel.ps1` を `VER2 Secure` 既定で起動するラッパーです。
-- `scripts/run_pdf2excel_v1.ps1` / `scripts/run_pdf2excel_v1.bat`
-  - 開発・検証用の旧導線です。正式運用の案内対象外です。
+- `legacy/v1/`
+  - `VER1` の旧導線、旧プロファイル、旧サンプル、旧 handoff 定義をまとめた保守専用領域です。
 - `docs/`
   - 利用マニュアルとフォルダ構成ガイドを置いています。
-- `samples/v1/`
-  - `VER1` 用のサンプル PDF と元 Excel です。
 - `samples/v2/`
   - `VER2` 用の生データ転記サンプルです。`2ページ同一列`、`6ページ同一列`、`ヘッダー不一致負例`、`時刻確認負例` を含みます。
 - `scripts/run_pdf2excel.ps1`
@@ -88,8 +86,6 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
   - Excel テンプレートへ取り込む VBA モジュールです。
 - `template/vba/PDF2ExcelTemplateBuilder.bas`
   - 空の Excel ブックに取り込んで実行すると、テンプレート相当のシート構成と基本マクロを生成するブートストラップ用 VBA モジュールです。
-- `config/profiles/v1/`
-  - `VER1` 用プロファイルです。既定の `default.json` と、日本語の `勤怠管理表`、`売上日報`、`在庫一覧`、`問い合わせ管理表` を置きます。
 - `config/profiles/v2/`
   - `VER2` 用プロファイルです。生データ転記用の `construction_transfer_poc.json` を置きます。
 - `input/`
@@ -113,11 +109,11 @@ Excel(M365) の Power Query を使って、複数のテキストPDFをまとめ�
 ```text
 PDF2Excel
 ├─ run_pdf2excel.bat
-├─ run_pdf2excel_v1.bat
 ├─ run_pdf2excel_v2.bat
 ├─ README.md
 ├─ docs/
-├─ samples/pdf/
+├─ legacy/v1/
+├─ samples/
 ├─ scripts/
 ├─ template/
 ├─ tests/
@@ -226,12 +222,20 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run_pdf2exce
 
 ## テスト
 
-統合テストは [run_integration_tests.ps1](tests/run_integration_tests.ps1) で実行できます。
+統合テストは [run_integration_tests.ps1](tests/run_integration_tests.ps1) で `Suite` 単位に実行できます。
 
 ユニットテストは [run_unit_tests.ps1](tests/run_unit_tests.ps1) で実行できます。
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\tests\run_integration_tests.ps1
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\tests\run_integration_tests.ps1 -Suite smoke
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\tests\run_integration_tests.ps1 -Suite full
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\tests\run_integration_tests.ps1 -Suite legacy
 ```
 
 結果は次に出力されます。
@@ -240,5 +244,5 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\tests\run_integratio
 - JSON: [integration-test-results.json](tests/results/integration-test-results.json)
 - ユニットテストレポート: [unit-test-report.md](reports/unit-test-report.md)
 
-統合テストは `CaseName` を付けなければ全件実行です。  
-全件実行では、既知の Excel COM 一時失敗だけを 1 回だけ再試行し、`RetryCount` / `RetriedBy` をレポートへ残します。
+通常回帰は `-Suite smoke`、リリース前の広めの確認は `-Suite full`、`VER1` 互換確認は `-Suite legacy` を使ってください。  
+`CaseName` は後方互換で残しており、既知の Excel COM 一時失敗だけを 1 回だけ再試行し、`RetryCount` / `RetriedBy` をレポートへ残します。

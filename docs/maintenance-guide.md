@@ -39,6 +39,7 @@
 
 - 利用者の正式入口は `run_pdf2excel.bat` (`VER2 Secure`) を維持する
 - 実行時生成物は `output`、`%LOCALAPPDATA%\PDF2Excel\logs`、`reports`、`tests/results` に閉じ込める
+- `VER1` は [legacy/v1](../legacy/v1) に隔離し、通常導線・通常配布・通常回帰から外す
 - ドキュメント更新をコード変更と同じタイミングで行う
 - 帳票認識精度の変更は、実PDFを使った目視確認まで行う
 - handoff 配布物はコード変更後に必ず再同期する
@@ -52,6 +53,7 @@
 - [run_pdf2excel.bat](../run_pdf2excel.bat)
 - [run_pdf2excel_menu.ps1](../scripts/run_pdf2excel_menu.ps1)
 - [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
+- [legacy/v1/run_pdf2excel_v1.bat](../legacy/v1/run_pdf2excel_v1.bat)
 - [README.md](../README.md)
 - [user-manual.md](user-manual.md)
 
@@ -93,8 +95,8 @@
 テンプレート再生成:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_excel_template.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_handoff_package.ps1 -TargetVersion v2
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\build_excel_template.ps1
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\build_handoff_package.ps1 -TargetVersion v2
 ```
 
 ### 3. PDF 抽出ルールを変えたい
@@ -125,19 +127,31 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_handoff_pack
 - `VER2` の `[6]` は設定ウィザード前提です。
 - 非対話 CLI 互換を壊さないことを優先してください。
 
+## legacy/v1 の扱い
+
+- `legacy/v1` には `VER1` の BAT、PowerShell ラッパー、旧プロファイル、旧サンプル、旧 handoff README を残しています。
+- `VER1` を直す場合でも、正式導線の `run_pdf2excel.bat` や利用者向け文書を `VER1` 中心に戻さないでください。
+- `Shift_JIS` ミラーの `.sjis.bas` は配布時に必要なため維持します。正本は UTF-8 の `.bas` です。
+
 ## テスト手順
 
 統合テスト:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_integration_tests.ps1
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\tests\run_integration_tests.ps1 -Suite smoke
 ```
 
 ユニットテスト:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run_unit_tests.ps1
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\tests\run_unit_tests.ps1
 ```
+
+補足:
+
+- `-Suite smoke`: `VER2` 正式導線だけの通常回帰
+- `-Suite full`: `VER2` の広めの確認。多ページ、Wizard、性能、異常系を含む
+- `-Suite legacy`: `legacy/v1` の互換確認。必要なときだけ実行
 
 確認すべき観点:
 

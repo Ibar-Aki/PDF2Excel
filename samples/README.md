@@ -6,44 +6,44 @@
 
 `samples` フォルダには、PDF2Excel の動作確認に使えるサンプル帳票を置いています。
 
-- `samples/v1`
-  - 標準変換向けサンプルです。
 - `samples/v2`
   - 生データ転記向けサンプルです。
   - 最初に試す順番は [samples/v2/README.md](v2/README.md) を参照してください。
   - 操作手順まで含めた体験ガイドは [docs/v2-sample-walkthrough.md](../docs/v2-sample-walkthrough.md) を参照してください。
+- `legacy/v1/samples`
+  - `VER1` の互換確認用サンプルです。通常利用者向けの導線からは外しています。
 
-## 日本語勤怠管理表サンプル
+## legacy 用 日本語勤怠管理表サンプル
 
 - PDF: `pdf/attendance_jp/2026年03月_勤怠管理表.pdf`
 - PDF: `pdf/attendance_jp/2026年04月_勤怠管理表.pdf`
 - 元Excel: `source/attendance_jp/2026年03月_勤怠管理表.xlsx`
 - 元Excel: `source/attendance_jp/2026年04月_勤怠管理表.xlsx`
-- 推奨プロファイル: `../config/profiles/v1/attendance_monthly_jp.json`
+- 推奨プロファイル: `../legacy/v1/config/profiles/attendance_monthly_jp.json`
 
-## 日本語売上日報サンプル
+## legacy 用 日本語売上日報サンプル
 
 - PDF: `pdf/sales_daily_jp/2026-03-15_売上日報_東京店.pdf`
 - PDF: `pdf/sales_daily_jp/2026-03-16_売上日報_横浜店.pdf`
 - 元Excel: `source/sales_daily_jp/2026-03-15_売上日報_東京店.xlsx`
 - 元Excel: `source/sales_daily_jp/2026-03-16_売上日報_横浜店.xlsx`
-- 推奨プロファイル: `../config/profiles/v1/sales_daily_jp.json`
+- 推奨プロファイル: `../legacy/v1/config/profiles/sales_daily_jp.json`
 
-## 日本語在庫一覧サンプル
+## legacy 用 日本語在庫一覧サンプル
 
 - PDF: `pdf/inventory_jp/春季_在庫一覧_倉庫A.pdf`
 - PDF: `pdf/inventory_jp/春季_在庫一覧_倉庫B.pdf`
 - 元Excel: `source/inventory_jp/春季_在庫一覧_倉庫A.xlsx`
 - 元Excel: `source/inventory_jp/春季_在庫一覧_倉庫B.xlsx`
-- 推奨プロファイル: `../config/profiles/v1/inventory_list_jp.json`
+- 推奨プロファイル: `../legacy/v1/config/profiles/inventory_list_jp.json`
 
-## 日本語問い合わせ管理表サンプル
+## legacy 用 日本語問い合わせ管理表サンプル
 
 - PDF: `pdf/inquiry_jp/2026年03月_問い合わせ管理表_第1週.pdf`
 - PDF: `pdf/inquiry_jp/2026年03月_問い合わせ管理表_第2週.pdf`
 - 元Excel: `source/inquiry_jp/2026年03月_問い合わせ管理表_第1週.xlsx`
 - 元Excel: `source/inquiry_jp/2026年03月_問い合わせ管理表_第2週.xlsx`
-- 推奨プロファイル: `../config/profiles/v1/inquiry_weekly_jp.json`
+- 推奨プロファイル: `../legacy/v1/config/profiles/inquiry_weekly_jp.json`
 
 ## 生データ転記サンプル
 
@@ -73,7 +73,7 @@
 次のコマンドで、日本語サンプル帳票一式を再生成できます。
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_sample_pdfs.ps1
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\build_sample_pdfs.ps1
 ```
 
 ## 試し方

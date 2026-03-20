@@ -16,7 +16,7 @@
 - [user-manual.md](user-manual.md)
   - 現在のメニュー操作、`[0] 環境チェック`、`[6] VER2 設定ウィザード` を含む利用手順の最新版です。
 - [project-layout.md](project-layout.md)
-  - フォルダ構成、生成物の置き場所、`reports/` の扱いを含む構成案内の最新版です。
+  - フォルダ構成、`legacy/v1` の位置づけ、生成物の置き場所、`reports/` の扱いを含む構成案内の最新版です。
 - [technical-description.md](technical-description.md)
   - 現在の `VER2 Secure` 構成、環境チェック、実行履歴、テンプレート整合性チェックを含む技術説明の最新版です。
 - [troubleshooting.md](troubleshooting.md)
@@ -83,7 +83,7 @@
 ## 保守・改修向け
 
 - [maintenance-guide.md](maintenance-guide.md)
-  - テンプレート更新、テスト、リリース前確認のための保守手順です。
+  - テンプレート更新、`smoke/full/legacy` テスト、`legacy/v1` 保守、リリース前確認のための手順です。
 - [requirements-specification.md](requirements-specification.md)
   - 仕様確認や変更影響の整理を行うときの基準文書です。
 - [technical-description.md](technical-description.md)

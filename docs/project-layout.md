@@ -13,12 +13,11 @@
 ```text
 PDF2Excel
 ├─ run_pdf2excel.bat        正式運用入口 (VER2 Secure)
-├─ run_pdf2excel_v1.bat     VER1 の入口
 ├─ run_pdf2excel_v2.bat     VER2 を明示起動する入口
 ├─ README.md                最初に読む概要
 ├─ docs/                    マニュアルと構成説明
 ├─ config/                  帳票プロファイルと整合性マニフェスト
-├─ samples/v1/              VER1 サンプル
+├─ legacy/v1/               VER1 の旧導線・旧サンプル・旧プロファイル
 ├─ samples/v2/              VER2 サンプル
 ├─ scripts/                 PowerShell 本体と共通関数
 ├─ template/                Excel テンプレートと VBA
@@ -37,20 +36,16 @@ PDF2Excel
   - 正式運用で使う `VER2 Secure` の入口です。
 - [run_pdf2excel_v2.bat](../run_pdf2excel_v2.bat)
   - `VER2 Secure` を明示して起動したいときの入口です。
-- [run_pdf2excel_v1.bat](../run_pdf2excel_v1.bat)
-  - `VER1` の開発・検証用入口です。
 - [README.md](../README.md)
   - 全体概要を短く確認できます。
 - [user-manual.md](user-manual.md)
   - 詳しい使い方です。
-- `config/profiles/v1`
-  - `VER1` 用プロファイルです。
 - `config/profiles/v2`
   - `VER2` 用プロファイルです。
-- `samples/v1`
-  - `VER1` のサンプル PDF と元 Excel です。
 - `samples/v2`
   - `VER2` の生データ転記サンプルです。
+- `legacy/v1`
+  - `VER1` の BAT、PowerShell ラッパー、旧プロファイル、旧サンプル、旧 handoff 定義を置きます。
 - `output`
   - 変換後の Excel が出ます。
 - `%LOCALAPPDATA%\PDF2Excel\logs`
@@ -62,14 +57,10 @@ PDF2Excel
 
 - [run_pdf2excel.ps1](../scripts/run_pdf2excel.ps1)
   - 変換本体です。
-- [run_pdf2excel_v1.ps1](../scripts/run_pdf2excel_v1.ps1)
-  - `VER1` ラッパーです。
 - [run_pdf2excel_v2.ps1](../scripts/run_pdf2excel_v2.ps1)
   - `VER2` ラッパーです。
 - [run_pdf2excel_menu.ps1](../scripts/run_pdf2excel_menu.ps1)
   - 日本語の共通対話メニューです。`[9] プロファイル選択` と `[0] 環境チェック` を含みます。
-- [run_pdf2excel_menu_v1.ps1](../scripts/run_pdf2excel_menu_v1.ps1)
-  - `VER1` のメニュー入口です。
 - [run_pdf2excel_menu_v2.ps1](../scripts/run_pdf2excel_menu_v2.ps1)
   - `VER2` 用ラッパーです。内部では共通メニューを呼び出します。
 - [new_profile_scaffold.ps1](../scripts/new_profile_scaffold.ps1)
@@ -89,7 +80,7 @@ PDF2Excel
 - [PDF2ExcelTemplateBuilder.sjis.bas](../template/vba/PDF2ExcelTemplateBuilder.sjis.bas)
   - その Shift_JIS 互換用ミラーです。
 - [run_integration_tests.ps1](../tests/run_integration_tests.ps1)
-  - 統合テストです。
+  - 統合テストです。`smoke / full / legacy` の 3 スイートで運用します。
 - [run_unit_tests.ps1](../tests/run_unit_tests.ps1)
   - ユニットテストです。
 - [test-report.md](../reports/test-report.md)
@@ -105,6 +96,7 @@ PDF2Excel
 - `output` は成果物置き場です。必要なものだけ残してください。
 - `logs` は主に開発・検証導線で使います。`VER2 Secure` の既定ログは `%LOCALAPPDATA%\PDF2Excel\logs` に出ます。
 - `config/profiles` は帳票ごとの設定置き場です。新しい帳票を増やすときはここへ JSON を追加します。
+- `legacy/v1` は通常運用で触らない領域です。`VER1` 保守が必要なときだけ参照してください。
 - `config/template-integrity.json` はテンプレートと VBA モジュールの整合性確認に使います。
 - `reports/run-history.csv` と `reports/environment-check.md` は運用レポートです。追跡対象にしない前提で扱います。
 - `tests/results` と `tests/work` はテストの生成物です。通常は空で問題ありません。

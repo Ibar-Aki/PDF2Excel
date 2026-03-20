@@ -1,6 +1,8 @@
 ﻿param(
     [string]$CaseName,
-    [string]$SingleResultPath
+    [string]$SingleResultPath,
+    [ValidateSet('smoke', 'full', 'legacy', 'all')]
+    [string]$Suite = 'smoke'
 )
 
 Set-StrictMode -Version Latest
@@ -19,21 +21,22 @@ $profileFixtureDir = Join-Path $fixturesRoot 'profile10'
 $japanesePdfDir = Join-Path $fixturesRoot 'japanese'
 $bulkPdfDir = Join-Path $fixturesRoot 'bulk50'
 $attendancePdfDir = Join-Path $fixturesRoot 'attendance_jp'
-$sampleAttendancePdfDir = Join-Path $projectRoot 'samples\v1\pdf\attendance_jp'
-$sampleSalesPdfDir = Join-Path $projectRoot 'samples\v1\pdf\sales_daily_jp'
-$sampleInventoryPdfDir = Join-Path $projectRoot 'samples\v1\pdf\inventory_jp'
-$sampleInquiryPdfDir = Join-Path $projectRoot 'samples\v1\pdf\inquiry_jp'
+$legacyRoot = Join-Path $projectRoot 'legacy\v1'
+$sampleAttendancePdfDir = Join-Path $legacyRoot 'samples\pdf\attendance_jp'
+$sampleSalesPdfDir = Join-Path $legacyRoot 'samples\pdf\sales_daily_jp'
+$sampleInventoryPdfDir = Join-Path $legacyRoot 'samples\pdf\inventory_jp'
+$sampleInquiryPdfDir = Join-Path $legacyRoot 'samples\pdf\inquiry_jp'
 $sampleConstructionPocPdfDir = Join-Path $projectRoot 'samples\v2\pdf\construction_transfer_poc'
 $resultsRoot = Join-Path $testsRoot 'results'
 $reportsRoot = Join-Path $projectRoot 'reports'
 $runScript = Join-Path $projectRoot 'scripts\run_pdf2excel.ps1'
-$runScriptV1 = Join-Path $projectRoot 'scripts\run_pdf2excel_v1.ps1'
+$runScriptV1 = Join-Path $legacyRoot 'scripts\run_pdf2excel_v1.ps1'
 $runScriptV2 = Join-Path $projectRoot 'scripts\run_pdf2excel_v2.ps1'
 $scaffoldScript = Join-Path $projectRoot 'scripts\new_profile_scaffold.ps1'
 $buildTemplateScript = Join-Path $projectRoot 'scripts\build_excel_template.ps1'
 $buildSamplesScript = Join-Path $projectRoot 'scripts\build_sample_pdfs.ps1'
 $batScript = Join-Path $projectRoot 'run_pdf2excel.bat'
-$batScriptV1 = Join-Path $projectRoot 'run_pdf2excel_v1.bat'
+$batScriptV1 = Join-Path $legacyRoot 'run_pdf2excel_v1.bat'
 $batScriptV2 = Join-Path $projectRoot 'run_pdf2excel_v2.bat'
 $commonScript = Join-Path $projectRoot 'scripts\pdf2excel.common.ps1'
 $templatePathV1 = Join-Path $projectRoot 'template\PDF2Excel_V1_Converter.xlsm'
@@ -104,10 +107,10 @@ function Remove-PathWithRetry {
 
 $suiteBaselineExcel = @(Get-ExcelProcessIds)
 $script:customProfilePath = Join-Path $workRoot 'profile10.json'
-$script:attendanceProfilePath = Join-Path $projectRoot 'config\profiles\v1\attendance_monthly_jp.json'
-$script:salesProfilePath = Join-Path $projectRoot 'config\profiles\v1\sales_daily_jp.json'
-$script:inventoryProfilePath = Join-Path $projectRoot 'config\profiles\v1\inventory_list_jp.json'
-$script:inquiryProfilePath = Join-Path $projectRoot 'config\profiles\v1\inquiry_weekly_jp.json'
+$script:attendanceProfilePath = Join-Path $legacyRoot 'config\profiles\attendance_monthly_jp.json'
+$script:salesProfilePath = Join-Path $legacyRoot 'config\profiles\sales_daily_jp.json'
+$script:inventoryProfilePath = Join-Path $legacyRoot 'config\profiles\inventory_list_jp.json'
+$script:inquiryProfilePath = Join-Path $legacyRoot 'config\profiles\inquiry_weekly_jp.json'
 $script:constructionPocProfilePath = Join-Path $projectRoot 'config\profiles\v2\construction_transfer_poc.json'
 $script:selfPath = $MyInvocation.MyCommand.Path
 
@@ -482,7 +485,8 @@ function New-ReportMarkdown {
     param(
         [Parameter(Mandatory = $true)]$TestResults,
         [Parameter(Mandatory = $true)][datetime]$StartedAt,
-        [Parameter(Mandatory = $true)][datetime]$FinishedAt
+        [Parameter(Mandatory = $true)][datetime]$FinishedAt,
+        [Parameter(Mandatory = $true)][string]$ExecutedSuite
     )
 
     $duration = [int]($FinishedAt - $StartedAt).TotalSeconds
@@ -503,6 +507,7 @@ function New-ReportMarkdown {
         ('- 実施日時: {0} JST - {1} JST' -f $StartedAt.ToString("yyyy-MM-dd HH:mm:ss"), $FinishedAt.ToString("yyyy-MM-dd HH:mm:ss")),
         ('- 対象環境: {0}' -f $testEnv),
         '- 対象機能: PowerShell / BAT / Excel(M365) による PDF2Excel 一括変換',
+        ('- 実行スイート: {0}' -f $ExecutedSuite),
         ('- 結果概要: {0} 件成功 / {1} 件失敗' -f $passCount, $failCount),
         ('- 所要時間: {0} 秒' -f $duration),
         ('- 再試行発生: {0} 件' -f $retriedCount),
@@ -850,8 +855,36 @@ function Invoke-CmdBatchCapture {
     }
 }
 
+function Get-CaseSuites {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    switch ($Name) {
+        'BAT 経由の変換' { return @('smoke', 'full') }
+        'BAT 直実行で待機しない' { return @('smoke', 'full') }
+        '環境チェック' { return @('smoke', 'full') }
+        '環境チェックで stale lock を識別' { return @('smoke', 'full') }
+        '環境チェックで壊れた lock を識別' { return @('smoke', 'full') }
+        '壊れた RunReport をメニューで通知' { return @('smoke', 'full') }
+        '建設現場転記PoCの変換' { return @('smoke', 'full') }
+        '一時領域の後片付け' { return @('smoke', 'full') }
+        'Excel プロセス残留なし' { return @('smoke', 'full') }
+        '50件一括変換性能' { return @('full') }
+        '放棄 mutex から自動回復' { return @('full') }
+        '実行履歴台帳' { return @('full') }
+        'V2 プロファイル Wizard 生成' { return @('full') }
+        'V2 BAT ダブルクリックでメニュー表示' { return @('full') }
+        'V2 BAT 引数付きで直接変換' { return @('full') }
+        '統合テスト補足は要約表示' { return @('full') }
+        'V2 2ページ同一列の変換' { return @('full') }
+        'V2 6ページ同一列の変換' { return @('full') }
+        'V2 ヘッダー不一致負例の分離' { return @('full') }
+        'V2 時刻確認負例の分離' { return @('full') }
+        default { return @('legacy') }
+    }
+}
+
 function Get-TestCases {
-    return @(
+    $cases = @(
         [pscustomobject]@{ Name = 'テンプレート再生成'; Scenario = 'テンプレート再生成が成功し、xlsm の更新日時が進むこと'; TimeoutSeconds = 120 },
         [pscustomobject]@{ Name = 'PowerShell 経由の正常変換'; Scenario = '有効な PDF 2 件を PowerShell から変換し、Result 行数を確認すること'; TimeoutSeconds = 180 },
         [pscustomobject]@{ Name = '単票 PDF の変換'; Scenario = '1 件だけの PDF フォルダでも正常に変換できること'; TimeoutSeconds = 180 },
@@ -889,6 +922,23 @@ function Get-TestCases {
         [pscustomobject]@{ Name = '一時領域の後片付け'; Scenario = '実行後に output/runtime/runs 配下へ残骸が残らないこと'; TimeoutSeconds = 60 },
         [pscustomobject]@{ Name = 'Excel プロセス残留なし'; Scenario = 'スイート完了後に余分な EXCEL.exe が残らないこと'; TimeoutSeconds = 60 }
     )
+
+    foreach ($case in $cases) {
+        $case | Add-Member -NotePropertyName Suites -NotePropertyValue (Get-CaseSuites -Name $case.Name) -Force
+    }
+
+    return $cases
+}
+
+function Get-SelectedTestCases {
+    param([Parameter(Mandatory = $true)][string]$RequestedSuite)
+
+    $cases = @(Get-TestCases)
+    if ($RequestedSuite -eq 'all') {
+        return $cases
+    }
+
+    return @($cases | Where-Object { $_.Suites -contains $RequestedSuite })
 }
 
 function Invoke-NamedScenario {
@@ -1693,8 +1743,12 @@ if (-not [string]::IsNullOrWhiteSpace($CaseName)) {
 }
 
 Initialize-TestFixtures
+$selectedCases = @(Get-SelectedTestCases -RequestedSuite $Suite)
+if ($selectedCases.Count -eq 0) {
+    throw "Suite に対応するテストケースがありません: $Suite"
+}
 $testResults = @()
-foreach ($definition in Get-TestCases) {
+foreach ($definition in $selectedCases) {
     $testResults += Invoke-IsolatedTestCase -Definition $definition
 }
 
@@ -1703,11 +1757,12 @@ $timeFinished = Get-Date
 $summary = [pscustomobject]@{
     StartedAt  = $timeStarted
     FinishedAt = $timeFinished
+    Suite      = $Suite
     Results    = $testResults
 }
 
 $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $jsonReportPath -Encoding UTF8
-$reportMarkdown = New-ReportMarkdown -TestResults $testResults -StartedAt $timeStarted -FinishedAt $timeFinished
+$reportMarkdown = New-ReportMarkdown -TestResults $testResults -StartedAt $timeStarted -FinishedAt $timeFinished -ExecutedSuite $Suite
 $reportMarkdown | Set-Content -LiteralPath $markdownReportPath -Encoding UTF8
 
 $failed = @($testResults | Where-Object Status -eq 'FAIL')
@@ -1715,6 +1770,6 @@ if ($failed.Count -gt 0) {
     Write-Error ("統合テストに失敗しました: " + ($failed.Name -join ', '))
 }
 
-Write-Host "統合テスト成功: $(@($testResults | Where-Object Status -eq 'PASS').Count) / $($testResults.Count)"
+Write-Host "統合テスト成功 ($Suite): $(@($testResults | Where-Object Status -eq 'PASS').Count) / $($testResults.Count)"
 Write-Host "Markdown レポート: $markdownReportPath"
 Write-Host "JSON レポート: $jsonReportPath"
