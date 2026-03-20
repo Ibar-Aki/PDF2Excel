@@ -8,6 +8,11 @@
     [ValidateSet('Standard', 'Secure')]
     [string]$DefaultSecurityMode,
     [string]$DefaultProfileName,
+    [string]$ProfileDirOverride,
+    [string]$ManualPathOverride,
+    [string]$SystemLabelOverride,
+    [string]$CompletionSheetMessageOverride,
+    [string]$ProfileBaseDirOverride,
     [switch]$ForceMenu
 )
 
@@ -23,8 +28,8 @@ $scriptRoot = $PSScriptRoot
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptRoot '..'))
 $runScript = if ([string]::IsNullOrWhiteSpace($RunScriptPath)) { Join-Path $scriptRoot ("run_pdf2excel_{0}.ps1" -f $VersionMode) } else { $RunScriptPath }
 $profileScaffoldScript = Join-Path $scriptRoot 'new_profile_scaffold.ps1'
-$manualPath = Join-Path $projectRoot 'docs\user-manual.md'
-$profileDir = Join-Path $projectRoot ("config\profiles\{0}" -f $VersionMode)
+$manualPath = if ([string]::IsNullOrWhiteSpace($ManualPathOverride)) { Join-Path $projectRoot 'docs\user-manual.md' } else { [System.IO.Path]::GetFullPath($ManualPathOverride) }
+$profileDir = if ([string]::IsNullOrWhiteSpace($ProfileDirOverride)) { Join-Path $projectRoot ("config\profiles\{0}" -f $VersionMode) } else { [System.IO.Path]::GetFullPath($ProfileDirOverride) }
 $outputDir = Join-Path $projectRoot 'output'
 $secureRuntimeDir = Get-LocalAppDataPdf2ExcelPath -ChildPath 'runtime'
 $isSecureDefault = ($VersionMode -eq 'v2' -and $DefaultSecurityMode -eq 'Secure')
@@ -39,8 +44,16 @@ $logsDir = if ($isSecureDefault) {
     Join-Path $projectRoot 'logs'
 }
 $script:executionLocation = Get-PathLocationInfo -Path $projectRoot
-$systemLabel = if ($VersionMode -eq 'v2') { 'PDF2Excel VER2 - 生データ転記' } else { 'PDF2Excel VER1 - 開発用標準変換' }
-$completionSheetMessage = if ($VersionMode -eq 'v2') { 'Result / Review / Errors / Summary を確認してください。' } else { 'Result / Errors / Summary を確認してください。' }
+$systemLabel = if ([string]::IsNullOrWhiteSpace($SystemLabelOverride)) {
+    if ($VersionMode -eq 'v2') { 'PDF2Excel VER2 - 生データ転記' } else { 'PDF2Excel VER1 - 開発用標準変換' }
+} else {
+    $SystemLabelOverride
+}
+$completionSheetMessage = if ([string]::IsNullOrWhiteSpace($CompletionSheetMessageOverride)) {
+    if ($VersionMode -eq 'v2') { 'Result / Review / Errors / Summary を確認してください。' } else { 'Result / Errors / Summary を確認してください。' }
+} else {
+    $CompletionSheetMessageOverride
+}
 
 function Assert-SecureLocalStorageAvailable {
     if (-not $isSecureDefault) {
@@ -92,7 +105,12 @@ function Invoke-RunScript {
             -not ($Arguments -contains '-ProfileName') -and
             -not ($Arguments -contains '-ProfilePath')
         ) {
-            $effectiveArguments += @('-ProfileName', $script:currentProfileName)
+            $selectedProfile = @((Get-AvailableProfiles) | Where-Object Name -eq $script:currentProfileName | Select-Object -First 1)
+            if ($selectedProfile.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace([string]$selectedProfile[0].Path)) {
+                $effectiveArguments += @('-ProfilePath', $selectedProfile[0].Path)
+            } else {
+                $effectiveArguments += @('-ProfileName', $script:currentProfileName)
+            }
         }
     }
 
@@ -101,17 +119,22 @@ function Invoke-RunScript {
     & powershell @shellArgs @effectiveArguments | Out-Host
     $exitCode = $LASTEXITCODE
     $report = $null
+    $reportReadError = $null
     if (Test-Path -LiteralPath $reportPath) {
         try {
             $report = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8 | ConvertFrom-Json
         } catch {
+            $reportReadError = "実行レポートを読み取れませんでした: $($_.Exception.Message)"
         }
         Remove-Item -LiteralPath $reportPath -Force -ErrorAction SilentlyContinue
+    } else {
+        $reportReadError = '実行レポートが作成されませんでした。ログを確認してください。'
     }
 
     return [pscustomobject]@{
-        ExitCode = $exitCode
-        Report   = $report
+        ExitCode        = $exitCode
+        Report          = $report
+        ReportReadError = $reportReadError
     }
 }
 
@@ -136,6 +159,11 @@ function Invoke-ProfileScaffoldScript {
     $shellArgs += @('-File', $profileScaffoldScript, '-VersionMode', $VersionMode)
     if ($VersionMode -eq 'v2') {
         $shellArgs += '-Wizard'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ProfileBaseDirOverride)) {
+        $shellArgs += @('-ProfileBaseDirOverride', $ProfileBaseDirOverride)
+    } elseif (-not [string]::IsNullOrWhiteSpace($ProfileDirOverride)) {
+        $shellArgs += @('-ProfileBaseDirOverride', $profileDir)
     }
     & powershell @shellArgs
     return $LASTEXITCODE
@@ -334,6 +362,9 @@ function Show-RunFailure {
     } else {
         Write-Host ("詳細は '{0}' のログを確認してください。" -f $logsDir)
     }
+    if (-not [string]::IsNullOrWhiteSpace($RunResult.ReportReadError)) {
+        Write-Host ("補足: {0}" -f $RunResult.ReportReadError)
+    }
     Pause
 }
 
@@ -356,6 +387,9 @@ function Show-RunSuccess {
     } else {
         Write-Host ("出力先: {0}" -f $outputDir)
         Write-Host ("ログ先: {0}" -f $logsDir)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RunResult.ReportReadError)) {
+        Write-Host ("補足: {0}" -f $RunResult.ReportReadError)
     }
     Write-Host $completionSheetMessage
     Prompt-PostRunAction -Report $RunResult.Report
@@ -397,7 +431,11 @@ if (-not [string]::IsNullOrWhiteSpace($script:currentProfileName)) {
     Save-MenuState -SelectedProfileName $script:currentProfileName
 }
 if (-not $ForceMenu -and $remainingArgs.Count -gt 0) {
-    exit ((Invoke-RunScript -Arguments $remainingArgs).ExitCode)
+    $directRunResult = Invoke-RunScript -Arguments $remainingArgs
+    if (-not [string]::IsNullOrWhiteSpace($directRunResult.ReportReadError)) {
+        Write-Host ("補足: {0}" -f $directRunResult.ReportReadError)
+    }
+    exit $directRunResult.ExitCode
 }
 
 while ($true) {

@@ -1348,7 +1348,7 @@ exit 0
             }
         }
         '統合テスト補足は要約表示' {
-            $report = New-ReportMarkdown -StartedAt (Get-Date).AddSeconds(-5) -FinishedAt (Get-Date) -TestResults @(
+            $report = New-ReportMarkdown -StartedAt (Get-Date).AddSeconds(-5) -FinishedAt (Get-Date) -ExecutedSuite 'full' -TestResults @(
                 [pscustomobject]@{
                     Name         = 'noisy'
                     Scenario     = 'dummy'

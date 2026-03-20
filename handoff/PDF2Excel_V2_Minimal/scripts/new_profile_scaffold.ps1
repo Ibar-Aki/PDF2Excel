@@ -4,6 +4,7 @@
     [string]$ProfileName,
     [string]$DisplayName,
     [string]$OutputPath,
+    [string]$ProfileBaseDirOverride,
     [switch]$Wizard,
     [switch]$Force
 )
@@ -18,6 +19,11 @@ $ErrorActionPreference = 'Stop'
 $OutputEncoding = [Console]::OutputEncoding
 
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$profileBaseDir = if ([string]::IsNullOrWhiteSpace($ProfileBaseDirOverride)) {
+    Join-Path $projectRoot ("config\profiles\{0}" -f $VersionMode)
+} else {
+    [System.IO.Path]::GetFullPath($ProfileBaseDirOverride)
+}
 $profileObject = $null
 
 function Get-DefaultProfileScaffoldValues {
@@ -375,7 +381,7 @@ function Invoke-V2Wizard {
     $defaults = Get-DefaultProfileScaffoldValues -ResolvedVersionMode 'v2' -ResolvedProfileName $resolvedProfileName -ResolvedDisplayName $RequestedDisplayName
     $resolvedDisplayName = Read-OptionalValue -Prompt '表示名を入力してください' -DefaultValue $defaults.DisplayName
     $defaultOutputPath = if ([string]::IsNullOrWhiteSpace($RequestedOutputPath)) {
-        Join-Path (Join-Path $projectRoot 'config\profiles\v2') ("{0}.json" -f $resolvedProfileName)
+        Join-Path $profileBaseDir ("{0}.json" -f $resolvedProfileName)
     } else {
         $RequestedOutputPath
     }
@@ -442,7 +448,7 @@ if ($Wizard -and $VersionMode -eq 'v2') {
         $DisplayName = Read-OptionalValue -Prompt '表示名を入力してください' -DefaultValue $defaultDisplayName
     }
 
-    $defaultOutputPath = Join-Path (Join-Path $projectRoot ("config\profiles\{0}" -f $VersionMode)) ("{0}.json" -f $ProfileName)
+    $defaultOutputPath = Join-Path $profileBaseDir ("{0}.json" -f $ProfileName)
     if ([string]::IsNullOrWhiteSpace($OutputPath)) {
         $OutputPath = Read-OptionalValue -Prompt '保存先を入力してください' -DefaultValue $defaultOutputPath
     }
